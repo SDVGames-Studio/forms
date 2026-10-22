@@ -1,8 +1,10 @@
-[gd_scene load_steps=5 format=3 uid="uid://ceagfc4lub4ch"]
+[gd_scene load_steps=6 format=3 uid="uid://ceagfc4lub4ch"]
 
 [ext_resource type="Script" uid="uid://q200uqb4ywjn" path="res://Player.gd" id="1_bexhn"]
 
 [ext_resource type="Script" path="res://LevelFinish.gd" id="2_finish"]
+
+[ext_resource type="Script" path="res://Weapon.gd" id="3_weapon"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_shape"]
 size = Vector2(1152, 120)
@@ -45,6 +47,9 @@ color = Color(1, 0.84, 0.2, 1)
 
 [node name="PlayerShape" type="CollisionShape2D" parent="Player"]
 shape = SubResource("CircleShape2D_shape")
+
+[node name="Weapon" type="Node2D" parent="Player"]
+script = ExtResource("3_weapon")
 
 [node name="Finish" type="Area2D" parent="."]
 position = Vector2(1100, 520)
