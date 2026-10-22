@@ -1,0 +1,111 @@
+[gd_scene load_steps=5 format=3 uid="uid://bx8k2level2fa"]
+
+[ext_resource type="Script" path="res://Player.gd" id="1_player"]
+
+[ext_resource type="Script" path="res://LevelFinish.gd" id="2_finish"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_ground"]
+size = Vector2(2304, 120)
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_shape"]
+radius = 32
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_platform"]
+size = Vector2(260, 40)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_finish"]
+size = Vector2(48, 128)
+
+[node name="Level2" type="Node2D"]
+
+[node name="Ground" type="StaticBody2D" parent="."]
+position = Vector2(1152, 588)
+
+[node name="GroundShape" type="CollisionShape2D" parent="Ground"]
+shape = SubResource("RectangleShape2D_ground")
+
+[node name="GroundVisual" type="ColorRect" parent="Ground"]
+offset_left = -1152.0
+offset_top = -60.0
+offset_right = 1152.0
+offset_bottom = 60.0
+color = Color(0.3, 0.25, 0.45, 1)
+
+[node name="GapPit" type="ColorRect" parent="."]
+offset_left = 500.0
+offset_top = 600.0
+offset_right = 700.0
+offset_bottom = 1152.0
+color = Color(0.09, 0.05, 0.16, 1)
+
+[node name="Platform1" type="StaticBody2D" parent="."]
+position = Vector2(600, 470)
+
+[node name="Platform1Shape" type="CollisionShape2D" parent="Platform1"]
+shape = SubResource("RectangleShape2D_platform")
+
+[node name="Platform1Visual" type="ColorRect" parent="Platform1"]
+offset_left = -130.0
+offset_top = -20.0
+offset_right = 130.0
+offset_bottom = 20.0
+color = Color(0.3, 0.25, 0.45, 1)
+
+[node name="Platform2" type="StaticBody2D" parent="."]
+position = Vector2(1000, 360)
+
+[node name="Platform2Shape" type="CollisionShape2D" parent="Platform2"]
+shape = SubResource("RectangleShape2D_platform")
+
+[node name="Platform2Visual" type="ColorRect" parent="Platform2"]
+offset_left = -130.0
+offset_top = -20.0
+offset_right = 130.0
+offset_bottom = 20.0
+color = Color(0.3, 0.25, 0.45, 1)
+
+[node name="Platform3" type="StaticBody2D" parent="."]
+position = Vector2(1420, 460)
+
+[node name="Platform3Shape" type="CollisionShape2D" parent="Platform3"]
+shape = SubResource("RectangleShape2D_platform")
+
+[node name="Platform3Visual" type="ColorRect" parent="Platform3"]
+offset_left = -130.0
+offset_top = -20.0
+offset_right = 130.0
+offset_bottom = 20.0
+color = Color(0.3, 0.25, 0.45, 1)
+
+[node name="Player" type="CharacterBody2D" parent="."]
+position = Vector2(200, 480)
+script = ExtResource("1_player")
+
+[node name="Camera" type="Camera2D" parent="Player"]
+position_smoothing_enabled = true
+position_smoothing_speed = 8.0
+
+[node name="PlayerVisual" type="ColorRect" parent="Player"]
+offset_left = -32.0
+offset_top = -32.0
+offset_right = 32.0
+offset_bottom = 32.0
+color = Color(1, 0.84, 0.2, 1)
+
+[node name="PlayerShape" type="CollisionShape2D" parent="Player"]
+shape = SubResource("CircleShape2D_shape")
+
+[node name="Finish" type="Area2D" parent="."]
+position = Vector2(2150, 500)
+script = ExtResource("2_finish")
+next_scene = "res://Main.tscn"
+
+[node name="FinishShape" type="CollisionShape2D" parent="Finish"]
+shape = SubResource("RectangleShape2D_finish")
+
+[node name="FinishVisual" type="ColorRect" parent="Finish"]
+offset_left = -24.0
+offset_top = -64.0
+offset_right = 24.0
+offset_bottom = 64.0
+color = Color(0.2, 0.7, 0.95, 0.6)
