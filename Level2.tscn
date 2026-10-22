@@ -1,8 +1,10 @@
-[gd_scene load_steps=5 format=3 uid="uid://bx8k2level2fa"]
+[gd_scene load_steps=7 format=3 uid="uid://bx8k2level2fa"]
 
 [ext_resource type="Script" path="res://Player.gd" id="1_player"]
 
 [ext_resource type="Script" path="res://LevelFinish.gd" id="2_finish"]
+
+[ext_resource type="Script" path="res://Weapon.gd" id="3_weapon"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_ground"]
 size = Vector2(2304, 120)
@@ -94,6 +96,9 @@ color = Color(1, 0.84, 0.2, 1)
 
 [node name="PlayerShape" type="CollisionShape2D" parent="Player"]
 shape = SubResource("CircleShape2D_shape")
+
+[node name="Weapon" type="Node2D" parent="Player"]
+script = ExtResource("3_weapon")
 
 [node name="Finish" type="Area2D" parent="."]
 position = Vector2(2150, 500)
