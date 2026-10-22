@@ -1,0 +1,133 @@
+name: build
+
+on:
+  push:
+    branches:
+      - dev
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GODOT_VERSION: 4.7-stable
+
+jobs:
+  export:
+    name: Export builds
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Godot and export templates
+        run: |
+          set -e
+          curl -L --retry 3 -o /tmp/godot.zip \
+            "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}/Godot_v${GODOT_VERSION}_linux.x86_64.zip"
+          unzip -o /tmp/godot.zip -d /tmp/godot
+          sudo install /tmp/godot/Godot_v${GODOT_VERSION}_linux.x86_64 /usr/local/bin/godot
+
+          curl -L --retry 3 -o /tmp/templates.tpz \
+            "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}/Godot_v${GODOT_VERSION}_export_templates.tpz"
+          mkdir -p ~/.local/share/godot/export_templates/${GODOT_VERSION%-stable}.stable
+          unzip -o /tmp/templates.tpz -d /tmp/tpz
+          mv /tmp/tpz/templates/* ~/.local/share/godot/export_templates/${GODOT_VERSION%-stable}.stable/
+
+      - name: Import project assets
+        run: godot --headless --import . 2>&1 || true
+
+      - name: Setup debug keystore for Android
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq openjdk-17-jre-headless
+          keytool -genkeypair -v -keystore ~/.android/debug.keystore \
+            -alias androiddebugkey -storepass android -keypass android \
+            -keyalg RSA -keysize 2048 -validity 10000 \
+            -dname "CN=Android Debug,O=Android,C=US"
+
+      - name: Export Linux
+        run: mkdir -p build/linux && godot --headless --export-debug "Linux" build/linux/Forms.x86_64 .
+
+      - name: Export Windows
+        run: mkdir -p build/windows && godot --headless --export-debug "Windows" build/windows/Forms.exe .
+
+      - name: Export Web
+        run: mkdir -p build/web && godot --headless --export-debug "Web" build/web/index.html .
+
+      - name: Export Android
+        run: mkdir -p build/android && godot --headless --export-debug "Android" build/android/Forms.apk .
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: forms-builds
+          path: |
+            build/linux/Forms.x86_64
+            build/windows/Forms.exe
+            build/android/Forms.apk
+          if-no-files-found: error
+
+      - name: Upload web build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: forms-web
+          path: build/web
+          if-no-files-found: error
+
+  release:
+    name: Create release
+    needs: export
+    if: github.ref == 'refs/heads/dev'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download builds
+        uses: actions/download-artifact@v4
+        with:
+          name: forms-builds
+          path: dist
+
+      - name: Create latest release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete latest --repo "$GITHUB_REPOSITORY" --yes 2>/dev/null || true
+          git push origin :refs/tags/latest 2>/dev/null || true
+          gh release create latest dist/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Latest build" \
+            --notes "Automated build from dev branch (${{ github.sha }})." \
+            --target "$GITHUB_SHA"
+
+  pages:
+    name: Deploy web game to GitHub Pages
+    needs: export
+    if: github.ref == 'refs/heads/dev'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Download web build
+        uses: actions/download-artifact@v4
+        with:
+          name: forms-web
+          path: site
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
