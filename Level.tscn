@@ -1,12 +1,17 @@
-[gd_scene format=3 uid="uid://ceagfc4lub4ch"]
+[gd_scene load_steps=5 format=3 uid="uid://ceagfc4lub4ch"]
 
 [ext_resource type="Script" uid="uid://q200uqb4ywjn" path="res://Player.gd" id="1_bexhn"]
+
+[ext_resource type="Script" path="res://LevelFinish.gd" id="2_finish"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_shape"]
 size = Vector2(1152, 120)
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_shape"]
 radius = 32
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_finish"]
+size = Vector2(48, 128)
 
 [node name="Level" type="Node2D"]
 
@@ -40,3 +45,18 @@ color = Color(1, 0.84, 0.2, 1)
 
 [node name="PlayerShape" type="CollisionShape2D" parent="Player"]
 shape = SubResource("CircleShape2D_shape")
+
+[node name="Finish" type="Area2D" parent="."]
+position = Vector2(1100, 520)
+script = ExtResource("2_finish")
+next_scene = "res://Level2.tscn"
+
+[node name="FinishShape" type="CollisionShape2D" parent="Finish"]
+shape = SubResource("RectangleShape2D_finish")
+
+[node name="FinishVisual" type="ColorRect" parent="Finish"]
+offset_left = -24.0
+offset_top = -64.0
+offset_right = 24.0
+offset_bottom = 64.0
+color = Color(0.2, 0.7, 0.95, 0.6)
