@@ -17,6 +17,9 @@ func _ready() -> void:
 	shape.shape = circle
 	add_child(shape)
 
+	# Any solid hit (player, NPC, ground) stops the bullet.
+	body_entered.connect(func(_body: Node2D) -> void: queue_free())
+
 	var visual := ColorRect.new()
 	visual.offset_left = -8.0
 	visual.offset_top = -8.0
