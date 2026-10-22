@@ -1,0 +1,42 @@
+[gd_scene format=3 uid="uid://ceagfc4lub4ch"]
+
+[ext_resource type="Script" uid="uid://q200uqb4ywjn" path="res://Player.gd" id="1_bexhn"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_shape"]
+size = Vector2(1152, 120)
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_shape"]
+radius = 32
+
+[node name="Level" type="Node2D"]
+
+[node name="Ground" type="StaticBody2D" parent="."]
+position = Vector2(576, 588)
+
+[node name="GroundShape" type="CollisionShape2D" parent="Ground"]
+shape = SubResource("RectangleShape2D_shape")
+
+[node name="GroundVisual" type="ColorRect" parent="Ground"]
+offset_left = -576.0
+offset_top = -60.0
+offset_right = 576.0
+offset_bottom = 60.0
+color = Color(0.22, 0.45, 0.28, 1)
+
+[node name="Player" type="CharacterBody2D" parent="."]
+position = Vector2(576, 480)
+script = ExtResource("1_bexhn")
+
+[node name="Camera" type="Camera2D" parent="Player"]
+position_smoothing_enabled = true
+position_smoothing_speed = 8.0
+
+[node name="PlayerVisual" type="ColorRect" parent="Player"]
+offset_left = -32.0
+offset_top = -32.0
+offset_right = 32.0
+offset_bottom = 32.0
+color = Color(1, 0.84, 0.2, 1)
+
+[node name="PlayerShape" type="CollisionShape2D" parent="Player"]
+shape = SubResource("CircleShape2D_shape")

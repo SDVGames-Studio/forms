@@ -1,8 +1,8 @@
 extends Control
 ## Main menu for Forms.
 ##
-## Buttons are wired in _ready(): Play and Settings are placeholders
-## until their screens exist; Quit closes the game.
+## Buttons are wired in _ready(): Play starts the simple level (issue #1);
+## Settings is a placeholder until its screen exists; Quit closes the game.
 
 @onready var _play_button: Button = %PlayButton
 @onready var _settings_button: Button = %SettingsButton
@@ -17,7 +17,7 @@ func _ready() -> void:
 
 
 func _on_play_pressed() -> void:
-	print("Play pressed") # TODO: go to the battle setup screen.
+	get_tree().change_scene_to_file("res://Level.tscn")
 
 
 func _on_settings_pressed() -> void:
