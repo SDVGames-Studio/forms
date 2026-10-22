@@ -1,0 +1,85 @@
+[gd_scene format=3 uid="uid://c6gbhf1gpnoda"]
+
+[ext_resource type="Script" uid="uid://clerkrsmxi46f" path="res://Main.gd" id="1_glv2v"]
+
+[node name="Main" type="Control" unique_id=893575422]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_glv2v")
+
+[node name="Background" type="ColorRect" parent="." unique_id=766281441]
+layout_mode = 0
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color(0.09, 0.05, 0.16, 1)
+
+[node name="Menu" type="CenterContainer" parent="." unique_id=1738263035]
+layout_mode = 0
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="Rows" type="VBoxContainer" parent="Menu" unique_id=1669855900]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="Title" type="Label" parent="Menu/Rows" unique_id=1951480959]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.84, 0.2, 1)
+theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.45)
+theme_override_colors/font_outline_color = Color(0.16, 0.05, 0.1, 1)
+theme_override_constants/shadow_offset_x = 0
+theme_override_constants/shadow_offset_y = 8
+theme_override_constants/outline_size = 18
+theme_override_font_sizes/font_size = 120
+text = "FORMS"
+horizontal_alignment = 1
+
+[node name="Spacer" type="Control" parent="Menu/Rows" unique_id=664658847]
+custom_minimum_size = Vector2(0, 28)
+layout_mode = 2
+
+[node name="PlayButton" type="Button" parent="Menu/Rows" unique_id=604655153]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(300, 60)
+layout_mode = 2
+size_flags_horizontal = 4
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_colors/font_focus_color = Color(1, 0.84, 0.2, 1)
+theme_override_colors/font_pressed_color = Color(1, 0.55, 0.15, 1)
+theme_override_colors/font_hover_color = Color(1, 0.84, 0.2, 1)
+theme_override_colors/font_outline_color = Color(0.1, 0.06, 0.14, 1)
+theme_override_constants/outline_size = 6
+theme_override_font_sizes/font_size = 32
+text = "Play"
+
+[node name="SettingsButton" type="Button" parent="Menu/Rows" unique_id=1770275005]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(300, 60)
+layout_mode = 2
+size_flags_horizontal = 4
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_colors/font_focus_color = Color(1, 0.84, 0.2, 1)
+theme_override_colors/font_pressed_color = Color(1, 0.55, 0.15, 1)
+theme_override_colors/font_hover_color = Color(1, 0.84, 0.2, 1)
+theme_override_colors/font_outline_color = Color(0.1, 0.06, 0.14, 1)
+theme_override_constants/outline_size = 6
+theme_override_font_sizes/font_size = 32
+text = "Settings"
+
+[node name="QuitButton" type="Button" parent="Menu/Rows" unique_id=370278513]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(300, 60)
+layout_mode = 2
+size_flags_horizontal = 4
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_colors/font_focus_color = Color(1, 0.84, 0.2, 1)
+theme_override_colors/font_pressed_color = Color(1, 0.55, 0.15, 1)
+theme_override_colors/font_hover_color = Color(1, 0.84, 0.2, 1)
+theme_override_colors/font_outline_color = Color(0.1, 0.06, 0.14, 1)
+theme_override_constants/outline_size = 6
+theme_override_font_sizes/font_size = 32
+text = "Quit"
