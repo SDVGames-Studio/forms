@@ -3,10 +3,19 @@ extends CharacterBody2D
 ##
 ## Left/right movement plus jump, driven by the move_left/move_right/jump
 ## actions (WASD and arrow keys, Space); gravity is applied while airborne.
+##
+## Issue #33: the player controls their WHOLE team — every team member uses
+## this script. Exactly one member is `controlled` (driven by input); the
+## rest follow the controlled one as AI. TeamController (autoload) switches
+## the controlled member with N (next) / P (previous). All members share the
+## same shape and color and show a name above the health bar.
 
 const SPEED := 320.0
 const JUMP_VELOCITY := -560.0
 const GRAVITY := 1200.0
+
+## Issue #33: follow behaviour for non-controlled team members.
+const FOLLOW_DISTANCE := 90.0
 
 signal health_changed(health: int, max_health: int)
 
@@ -14,12 +23,51 @@ const MAX_HEALTH := 100
 const BAR_WIDTH := 64.0
 const BAR_HEIGHT := 8.0
 
+## Issue #33: name shown above the health bar.
+@export var display_name := "Player"
+
 var health: int = MAX_HEALTH
 var _bar_fill: ColorRect
+var _camera: Camera2D
+
+## Issue #33: true for the member currently driven by player input.
+var controlled := false
 
 
 func _ready() -> void:
+	# One group for every member of the player's team; the NPC team AI
+	# targets "player"/"team" so all members are valid opponents.
+	add_to_group("player")
+	add_to_group("team")
+	add_to_group("player_team")
+	# Issue #33: if no team member ended up controlled (fresh scene),
+	# the first one takes control.
+	if not controlled:
+		call_deferred("_claim_control_if_none")
 	_build_health_bar()
+	set_controlled(controlled)
+
+
+## Issue #33: if no team member ended up controlled (fresh scene), the
+## first one takes control.
+func _claim_control_if_none() -> void:
+	for member in get_tree().get_nodes_in_group("player_team"):
+		if member.get("controlled") == true:
+			return
+	set_controlled(true)
+
+
+## Issue #33: switch input control to/from this member.
+func set_controlled(value: bool) -> void:
+	controlled = value
+	if _camera == null:
+		_camera = get_node_or_null("Camera") as Camera2D
+		if _camera == null:
+			_camera = Camera2D.new()
+			_camera.position_smoothing_enabled = true
+			_camera.position_smoothing_speed = 8.0
+			add_child(_camera)
+	_camera.enabled = value
 
 
 ## Issue #6: apply damage and update the health bar.
@@ -36,7 +84,17 @@ func heal(amount: int) -> void:
 
 
 # Small bar above the player, built in code like the other visuals.
+# Issue #33: a name label sits above the bar.
 func _build_health_bar() -> void:
+	var name_label := Label.new()
+	name_label.text = display_name
+	name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	name_label.offset_left = -70.0
+	name_label.offset_top = -62.0
+	name_label.offset_right = 70.0
+	name_label.offset_bottom = -46.0
+	add_child(name_label)
+
 	var background := ColorRect.new()
 	background.offset_left = -BAR_WIDTH / 2.0
 	background.offset_top = -44.0
@@ -64,17 +122,41 @@ func _update_bar() -> void:
 	_bar_fill.color = Color(0.75 - 0.5 * ratio, 0.25 + 0.5 * ratio, 0.3, 1)
 
 
+## Issue #33: the teammate this member follows while not controlled.
+func _follow_target() -> Node2D:
+	for node in get_tree().get_nodes_in_group("player_team"):
+		var member := node as Node2D
+		if member != null and member != self and member.get("controlled") == true:
+			return member
+	return null
+
+
 func _physics_process(delta: float) -> void:
 	if not is_on_floor():
 		velocity.y += GRAVITY * delta
 
-	if Input.is_action_just_pressed("jump") and is_on_floor():
-		velocity.y = JUMP_VELOCITY
+	if controlled:
+		if Input.is_action_just_pressed("jump") and is_on_floor():
+			velocity.y = JUMP_VELOCITY
 
-	var direction := Input.get_axis("move_left", "move_right")
-	if direction != 0.0:
-		velocity.x = direction * SPEED
+		var direction := Input.get_axis("move_left", "move_right")
+		if direction != 0.0:
+			velocity.x = direction * SPEED
+		else:
+			velocity.x = move_toward(velocity.x, 0.0, SPEED * delta)
 	else:
-		velocity.x = move_toward(velocity.x, 0.0, SPEED * delta)
+		# Uncontrolled team member: AI-follow the controlled one.
+		var target := _follow_target()
+		var to_target := Vector2.ZERO
+		if target != null:
+			var side := 1.0 if int(get_instance_id()) % 2 == 0 else -1.0
+			to_target = target.global_position \
+				+ Vector2(FOLLOW_DISTANCE * side, 0.0) - global_position
+		var direction := 0.0
+		if absf(to_target.x) > 16.0:
+			direction = signf(to_target.x)
+		velocity.x = direction * SPEED
+		if is_on_floor() and (to_target.y < -80.0 or is_on_wall()):
+			velocity.y = JUMP_VELOCITY
 
 	move_and_slide()

@@ -21,6 +21,9 @@ func _physics_process(delta: float) -> void:
 	if parent and parent.velocity.x != 0.0:
 		_facing = signf(parent.velocity.x)
 
+	# Issue #33: only the controlled team member fires on input.
+	if parent == null or parent.get("controlled") != true:
+		return
 	if Input.is_action_just_pressed("shoot") and _cooldown_left == 0.0:
 		_shoot()
 
