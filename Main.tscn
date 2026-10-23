@@ -54,19 +54,8 @@ theme_override_colors/font_hover_color = Color(1, 0.84, 0.2, 1)
 theme_override_colors/font_outline_color = Color(0.1, 0.06, 0.14, 1)
 theme_override_constants/outline_size = 6
 theme_override_font_sizes/font_size = 32
-text = "Level 1"
+text = "New game"
 
-[node name="Level2Button" type="Button" parent="Menu/Rows" unique_id=604655154]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(300, 60)
-layout_mode = 2
-size_flags_horizontal = 4
-theme_override_colors/font_color = Color(1, 1, 1, 1)
-theme_override_colors/font_focus_color = Color(1, 0.84, 0.2, 1)
-theme_override_colors/font_pressed_color = Color(1, 0.55, 0.15, 1)
-theme_override_colors/font_hover_color = Color(1, 0.84, 0.2, 1)
-theme_override_colors/font_outline_color = Color(0.1, 0.06, 0.14, 1)
-theme_override_constants/outline_size = 6
 [node name="SettingsButton" type="Button" parent="Menu/Rows" unique_id=1770275005]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(300, 60)
