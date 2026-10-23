@@ -1,3 +1,4 @@
+```yaml
 name: build
 
 on:
@@ -47,12 +48,11 @@ jobs:
       - name: Import project assets
         run: godot --headless --editor --import --path .
 
-      - name: Setup debug keystore for Android
+      - name: Setup Android signing tools
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq openjdk-17-jre-headless
           mkdir -p ~/.android
-
           keytool -genkeypair \
             -keystore ~/.android/debug.keystore \
             -alias androiddebugkey \
@@ -78,20 +78,12 @@ jobs:
       - name: Verify Android release keystore
         env:
           KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
         run: |
           keytool -list \
             -keystore "$GITHUB_WORKSPACE/.android/forms-release.p12" \
             -storepass "$KEYSTORE_PASSWORD" \
-            -alias "${{ secrets.ANDROID_KEY_ALIAS }}"
-
-      - name: Verify Android signing alias
-        env:
-          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-        run: |
-          keytool -list \
-            -keystore "$GITHUB_WORKSPACE/.android/forms-release.p12" \
-            -storepass "$KEYSTORE_PASSWORD" \
-            -alias "${{ secrets.ANDROID_KEY_ALIAS }}"
+            -alias "$KEY_ALIAS"
 
       - name: Export Android
         env:
@@ -101,23 +93,34 @@ jobs:
         run: |
           mkdir -p build/android
           godot --headless --export-release "Android" build/android/Forms.apk
-
+          test -s build/android/Forms.apk
 
       - name: Export Linux
-        run: mkdir -p build/linux && godot --headless --export-release "Linux" build/linux/Forms.x86_64
+        run: |
+          mkdir -p build/linux
+          godot --headless --export-release "Linux" build/linux/Forms.x86_64
+          test -s build/linux/Forms.x86_64
+          test -s build/linux/Forms.pck
 
       - name: Export Windows
-        run: mkdir -p build/windows && godot --headless --export-release "Windows" build/windows/Forms.exe
+        run: |
+          mkdir -p build/windows
+          godot --headless --export-release "Windows" build/windows/Forms.exe
+          test -s build/windows/Forms.exe
 
       - name: Export Web
-        run: mkdir -p build/web && godot --headless --export-release "Web" build/web/index.html
+        run: |
+          mkdir -p build/web
+          godot --headless --export-release "Web" build/web/index.html
+          test -s build/web/index.html
 
-      - name: Upload artifacts
+      - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
           name: forms-builds
           path: |
             build/linux/Forms.x86_64
+            build/linux/Forms.pck
             build/windows/Forms.exe
             build/android/Forms.apk
           if-no-files-found: error
@@ -152,6 +155,7 @@ jobs:
 
           gh release create latest \
             dist/linux/Forms.x86_64 \
+            dist/linux/Forms.pck \
             dist/windows/Forms.exe \
             dist/android/Forms.apk \
             --repo "$GITHUB_REPOSITORY" \
@@ -185,3 +189,4 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v5
+```
