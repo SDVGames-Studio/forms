@@ -6,6 +6,7 @@ extends Area2D
 
 const LIFETIME := 2.0
 const SPEED := 900.0
+const DAMAGE := 10
 
 var velocity := Vector2.ZERO
 
@@ -17,8 +18,8 @@ func _ready() -> void:
 	shape.shape = circle
 	add_child(shape)
 
-	# Any solid hit (player, NPC, ground) stops the bullet.
-	body_entered.connect(func(_body: Node2D) -> void: queue_free())
+	# Any solid hit stops the bullet; characters with health take damage.
+	body_entered.connect(_on_body_entered)
 
 	var visual := ColorRect.new()
 	visual.offset_left = -8.0
@@ -30,6 +31,12 @@ func _ready() -> void:
 
 	# Expire after a while so bullets never accumulate.
 	get_tree().create_timer(LIFETIME).timeout.connect(queue_free)
+
+
+func _on_body_entered(body: Node2D) -> void:
+	if body.has_method("take_damage"):
+		body.take_damage(DAMAGE)
+	queue_free()
 
 
 func _physics_process(delta: float) -> void:
