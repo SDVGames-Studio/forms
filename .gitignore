@@ -1,3 +1,25 @@
 # Godot 4+ specific ignores
 .godot/
 /android/
+
+# Godot editor/user artifacts
+*.tmp
+*.bak
+*.orig
+*.swp
+.DS_Store
+
+# Export builds
+export/
+builds/
+*.exe
+*.pck
+*.zip
+
+# IDE / editor files
+.idea/
+.vscode/
+*.blend1
+
+# OS artifacts
+Thumbs.db
