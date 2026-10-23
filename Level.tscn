@@ -90,6 +90,10 @@ color = Color(0.5, 0.3, 0.85, 1)
 position = Vector2(880, 480)
 script = ExtResource("4_npc")
 
+[node name="Npc2" type="CharacterBody2D" parent="."]
+position = Vector2(990, 480)
+script = ExtResource("4_npc")
+
 [node name="Finish" type="Area2D" parent="."]
 position = Vector2(1100, 520)
 script = ExtResource("2_finish")

@@ -2,9 +2,10 @@ extends CharacterBody2D
 ## First NPC (issue #5).
 ##
 ## An enemy figure that holds a weapon and tries to hit the player:
-## it walks toward the player, keeps a preferred distance, and fires
-## projectiles at them when in range (line of sight is not checked in this
-## first slice). Reuses Bullet.gd so no new assets are needed.
+## Issue #35: NPCs now fight as a computer-controlled TEAM — each NPC
+## targets the nearest opposing figure (player or teammate), keeps its
+## own flank slot so team members spread out instead of stacking, and
+## jumps when blocked or when its target is above it.
 
 const BulletScript := preload("res://Bullet.gd")
 
@@ -14,6 +15,11 @@ const ATTACK_RANGE := 500.0
 const COOLDOWN := 1.2
 const BULLET_SPEED := 500.0
 const KEEP_DISTANCE := 140.0
+
+## Issue #35: team coordination constants.
+const FLANK_SPACING := 110.0
+const SEPARATION := 90.0
+const JUMP_VELOCITY := -560.0
 
 ## Issue #14: NPCs are now fightable — they have health, a health bar and
 ## die when it runs out. Layer 1|2 so player bullets (mask 1) and teammate
@@ -26,11 +32,17 @@ var health: int = MAX_HEALTH
 var _bar_fill: ColorRect
 var _visual: ColorRect
 var _dead := false
+var _target: Node2D
+var _flank_slot := 0.0  # Per-instance offset so team members spread out.
 
 
 func _ready() -> void:
 	collision_layer = 3
 	add_to_group("enemy")
+	add_to_group("enemy_team")
+	# Stable per-instance flank slot (index within the enemy team).
+	var members := get_tree().get_nodes_in_group("enemy_team")
+	_flank_slot = float(members.find(self)) - (float(members.size() - 1) / 2.0)
 	var shape := CollisionShape2D.new()
 	var circle := CircleShape2D.new()
 	circle.radius = 32.0
@@ -103,26 +115,57 @@ func _physics_process(delta: float) -> void:
 	if not is_on_floor():
 		velocity.y += GRAVITY * delta
 
-	_player = get_tree().get_first_node_in_group("player")
-	if _player == null:
+	_target = _nearest_opponent()
+	if _target == null:
 		velocity.x = move_toward(velocity.x, 0.0, SPEED * delta)
 		move_and_slide()
 		return
 
-	var to_player := _player.global_position - global_position
-	var distance := to_player.length()
+	# Aim at the chosen target, offset by this NPC's flank slot so the
+	# team surrounds the opponents instead of forming a single column.
+	var goal := _target.global_position \
+		+ Vector2(KEEP_DISTANCE + absf(_flank_slot) * FLANK_SPACING, 0.0) \
+			* (1.0 if _flank_slot >= 0.0 else -1.0)
+	var to_target := goal - global_position
+	var distance := _target.global_position.distance_to(global_position)
 
-	# Walk toward the player, stopping at KEEP_DISTANCE.
-	if distance > KEEP_DISTANCE:
-		velocity.x = signf(to_player.x) * SPEED
-	else:
-		velocity.x = move_toward(velocity.x, 0.0, SPEED * delta)
+	var direction := 0.0
+	if absf(to_target.x) > 16.0:
+		direction = signf(to_target.x)
+	# Separation: back off from other enemies we are stacking on.
+	for other in get_tree().get_nodes_in_group("enemy_team"):
+		if other == self:
+			continue
+		var away := global_position.x - other.global_position.x
+		if absf(away) < SEPARATION and absf(global_position.y - other.global_position.y) < 40.0:
+			direction += signf(away) * 0.5
+	velocity.x = clampf(direction, -1.0, 1.0) * SPEED
+
+	# Jump when blocked or when the target is clearly above us.
+	if is_on_floor() and (is_on_wall() or _target.global_position.y < global_position.y - 80.0):
+		velocity.y = JUMP_VELOCITY
 
 	# Take a shot when in range and cooled down.
 	if distance <= ATTACK_RANGE and _cooldown_left == 0.0:
-		_shoot(to_player.normalized())
+		_shoot((_target.global_position - global_position).normalized())
 
 	move_and_slide()
+
+
+## Issue #35: nearest opposing figure — the player or any teammate.
+func _nearest_opponent() -> Node2D:
+	var best: Node2D = null
+	var best_distance := INF
+	for group in ["player", "team"]:
+		for node in get_tree().get_nodes_in_group(group):
+			var candidate := node as Node2D
+			if candidate == null:
+				continue
+			var d := global_position.distance_to(candidate.global_position)
+			if d < best_distance:
+				best_distance = d
+				best = candidate
+	return best
 
 
 func _shoot(direction: Vector2) -> void:
