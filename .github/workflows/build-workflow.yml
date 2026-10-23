@@ -81,7 +81,8 @@ jobs:
         run: |
           keytool -list \
             -keystore "$GITHUB_WORKSPACE/.android/forms-release.p12" \
-            -storepass "$KEYSTORE_PASSWORD"
+            -storepass "$KEYSTORE_PASSWORD" \
+            -alias "${{ secrets.ANDROID_KEY_ALIAS }}"
 
       - name: Verify Android signing alias
         env:
