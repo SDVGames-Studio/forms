@@ -41,6 +41,9 @@ jobs:
           unzip -o /tmp/templates.tpz -d /tmp/tpz
           mv /tmp/tpz/templates/* ~/.local/share/godot/export_templates/${GODOT_VERSION%-stable}.stable/
 
+      - name: Disable Godot MCP for CI
+        run: python3 scripts/disable_godot_mcp.py
+
       - name: Import project assets
         run: godot --headless --editor --import --path .
 
