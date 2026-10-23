@@ -25,7 +25,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install Godot and export templates
         run: |
@@ -42,27 +42,35 @@ jobs:
           mv /tmp/tpz/templates/* ~/.local/share/godot/export_templates/${GODOT_VERSION%-stable}.stable/
 
       - name: Import project assets
-        run: godot --headless --import . 2>&1 || true
+        run: godot --headless --editor --import --path .
 
       - name: Setup debug keystore for Android
         run: |
-          sudo apt-get update -qq && sudo apt-get install -y -qq openjdk-17-jre-headless
-          keytool -genkeypair -v -keystore ~/.android/debug.keystore \
-            -alias androiddebugkey -storepass android -keypass android \
-            -keyalg RSA -keysize 2048 -validity 10000 \
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq openjdk-17-jre-headless
+          mkdir -p ~/.android
+
+          keytool -genkeypair \
+            -keystore ~/.android/debug.keystore \
+            -alias androiddebugkey \
+            -storepass android \
+            -keypass android \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
             -dname "CN=Android Debug,O=Android,C=US"
 
       - name: Export Linux
-        run: mkdir -p build/linux && godot --headless --export-debug "Linux" build/linux/Forms.x86_64 .
+        run: mkdir -p build/linux && godot --headless --export-release "Linux" build/linux/Forms.x86_64
 
       - name: Export Windows
-        run: mkdir -p build/windows && godot --headless --export-debug "Windows" build/windows/Forms.exe .
+        run: mkdir -p build/windows && godot --headless --export-release "Windows" build/windows/Forms.exe
 
       - name: Export Web
-        run: mkdir -p build/web && godot --headless --export-debug "Web" build/web/index.html .
+        run: mkdir -p build/web && godot --headless --export-release "Web" build/web/index.html
 
       - name: Export Android
-        run: mkdir -p build/android && godot --headless --export-debug "Android" build/android/Forms.apk .
+        run: mkdir -p build/android && godot --headless --export-release "Android" build/android/Forms.apk
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -97,12 +105,18 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release delete latest --repo "$GITHUB_REPOSITORY" --yes 2>/dev/null || true
-          git push origin :refs/tags/latest 2>/dev/null || true
-          gh release create latest dist/* \
+          gh release delete latest \
+            --repo "$GITHUB_REPOSITORY" \
+            --cleanup-tag \
+            --yes 2>/dev/null || true
+
+          gh release create latest \
+            dist/linux/Forms.x86_64 \
+            dist/windows/Forms.exe \
+            dist/android/Forms.apk \
             --repo "$GITHUB_REPOSITORY" \
             --title "Latest build" \
-            --notes "Automated build from dev branch (${{ github.sha }})." \
+            --notes "Automated build from dev branch ($GITHUB_SHA)." \
             --target "$GITHUB_SHA"
 
   pages:
@@ -121,13 +135,13 @@ jobs:
           path: site
 
       - name: Setup Pages
-        uses: actions/configure-pages@v5
+        uses: actions/configure-pages@v6
 
       - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v5
         with:
           path: site
 
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
