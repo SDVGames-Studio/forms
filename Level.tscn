@@ -3,12 +3,10 @@
 [ext_resource type="Script" uid="uid://q200uqb4ywjn" path="res://Player.gd" id="1_bexhn"]
 
 [ext_resource type="Script" path="res://LevelFinish.gd" id="2_finish"]
-
 [ext_resource type="Script" path="res://Weapon.gd" id="3_weapon"]
 
 [ext_resource type="Script" path="res://Npc.gd" id="4_npc"]
 
-[ext_resource type="Script" path="res://Teammate.gd" id="5_teammate"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_shape"]
 size = Vector2(1152, 120)
@@ -37,7 +35,9 @@ color = Color(0.22, 0.45, 0.28, 1)
 [node name="Player" type="CharacterBody2D" parent="."]
 position = Vector2(576, 480)
 groups = ["player"]
+collision_layer = 9
 script = ExtResource("1_bexhn")
+display_name = "Player 1"
 
 [node name="Camera" type="Camera2D" parent="Player"]
 position_smoothing_enabled = true
@@ -56,43 +56,53 @@ shape = SubResource("CircleShape2D_shape")
 [node name="Weapon" type="Node2D" parent="Player"]
 script = ExtResource("3_weapon")
 
-[node name="Teammate1" type="CharacterBody2D" parent="." groups=["team"]]
+[node name="Teammate1" type="CharacterBody2D" parent="."]
 position = Vector2(440, 480)
-collision_layer = 4
-script = ExtResource("5_teammate")
+collision_layer = 9
+script = ExtResource("1_bexhn")
+display_name = "Player 2"
 
 [node name="Teammate1Shape" type="CollisionShape2D" parent="Teammate1"]
 shape = SubResource("CircleShape2D_shape")
 
 [node name="Teammate1Visual" type="ColorRect" parent="Teammate1"]
-offset_left = -28.0
-offset_top = -28.0
-offset_right = 28.0
-offset_bottom = 28.0
-color = Color(0.2, 0.6, 0.9, 1)
+offset_left = -32.0
+offset_top = -32.0
+offset_right = 32.0
+offset_bottom = 32.0
+color = Color(1, 0.84, 0.2, 1)
 
-[node name="Teammate2" type="CharacterBody2D" parent="." groups=["team"]]
+[node name="Weapon" type="Node2D" parent="Teammate1"]
+script = ExtResource("3_weapon")
+
+[node name="Teammate2" type="CharacterBody2D" parent="."]
 position = Vector2(700, 480)
-collision_layer = 4
-script = ExtResource("5_teammate")
+collision_layer = 9
+script = ExtResource("1_bexhn")
+display_name = "Player 3"
 
 [node name="Teammate2Shape" type="CollisionShape2D" parent="Teammate2"]
 shape = SubResource("CircleShape2D_shape")
 
 [node name="Teammate2Visual" type="ColorRect" parent="Teammate2"]
-offset_left = -28.0
-offset_top = -28.0
-offset_right = 28.0
-offset_bottom = 28.0
-color = Color(0.5, 0.3, 0.85, 1)
+offset_left = -32.0
+offset_top = -32.0
+offset_right = 32.0
+offset_bottom = 32.0
+color = Color(1, 0.84, 0.2, 1)
+
+[node name="Weapon" type="Node2D" parent="Teammate2"]
+script = ExtResource("3_weapon")
 
 [node name="Npc" type="CharacterBody2D" parent="."]
 position = Vector2(880, 480)
 script = ExtResource("4_npc")
+display_name = "Enemy 1"
 
 [node name="Npc2" type="CharacterBody2D" parent="."]
 position = Vector2(990, 480)
 script = ExtResource("4_npc")
+display_name = "Enemy 2"
 
 [node name="Finish" type="Area2D" parent="."]
 position = Vector2(1100, 520)

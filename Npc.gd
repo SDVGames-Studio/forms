@@ -28,6 +28,9 @@ const MAX_HEALTH := 60
 const BAR_WIDTH := 56.0
 const BAR_HEIGHT := 7.0
 
+## Issue #33: name shown above the health bar.
+@export var display_name := "Enemy"
+
 var health: int = MAX_HEALTH
 var _bar_fill: ColorRect
 var _visual: ColorRect
@@ -61,6 +64,15 @@ func _ready() -> void:
 
 
 func _build_health_bar() -> void:
+	var name_label := Label.new()
+	name_label.text = display_name
+	name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	name_label.offset_left = -70.0
+	name_label.offset_top = -62.0
+	name_label.offset_right = 70.0
+	name_label.offset_bottom = -46.0
+	add_child(name_label)
+
 	var background := ColorRect.new()
 	background.offset_left = -BAR_WIDTH / 2.0
 	background.offset_top = -44.0
@@ -172,6 +184,9 @@ func _shoot(direction: Vector2) -> void:
 	_cooldown_left = COOLDOWN
 	var bullet := Area2D.new()
 	bullet.set_script(BulletScript)
+	# Issue #33: the player's team lives on layer 8, so enemy bullets
+	# need 1|8 to hit both team members and the ground.
+	bullet.collision_mask = 9
 	bullet.velocity = direction * BULLET_SPEED
 	bullet.global_position = global_position + direction * 40.0
 	get_parent().add_child(bullet)

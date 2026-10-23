@@ -85,7 +85,9 @@ color = Color(0.3, 0.25, 0.45, 1)
 
 [node name="Player" type="CharacterBody2D" parent="."]
 position = Vector2(200, 480)
+collision_layer = 9
 script = ExtResource("1_player")
+display_name = "Player 1"
 
 [node name="Camera" type="Camera2D" parent="Player"]
 position_smoothing_enabled = true
@@ -107,6 +109,7 @@ script = ExtResource("3_weapon")
 [node name="Npc" type="CharacterBody2D" parent="."]
 position = Vector2(1300, 400)
 script = ExtResource("4_npc")
+display_name = "Enemy 1"
 
 [node name="NpcShape" type="CollisionShape2D" parent="Npc"]
 shape = SubResource("CircleShape2D_npc")
@@ -121,6 +124,7 @@ color = Color(0.75, 0.2, 0.45, 1)
 [node name="Npc2" type="CharacterBody2D" parent="."]
 position = Vector2(1450, 400)
 script = ExtResource("4_npc")
+display_name = "Enemy 2"
 
 [node name="Npc2Shape" type="CollisionShape2D" parent="Npc2"]
 shape = SubResource("CircleShape2D_npc")
