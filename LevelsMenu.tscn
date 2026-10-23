@@ -1,0 +1,85 @@
+[gd_scene load_steps=2 format=3 uid="uid://blvls32menu1"]
+
+[ext_resource type="Script" path="res://LevelsMenu.gd" id="1_lvlm"]
+
+[node name="LevelsMenu" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_lvlm")
+
+[node name="Background" type="ColorRect" parent="."]
+layout_mode = 0
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color(0.09, 0.05, 0.16, 1)
+
+[node name="Menu" type="CenterContainer" parent="."]
+layout_mode = 0
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="Rows" type="VBoxContainer" parent="Menu"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="Title" type="Label" parent="Menu/Rows"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.84, 0.2, 1)
+theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.45)
+theme_override_colors/font_outline_color = Color(0.16, 0.05, 0.1, 1)
+theme_override_constants/shadow_offset_x = 0
+theme_override_constants/shadow_offset_y = 8
+theme_override_constants/outline_size = 18
+theme_override_font_sizes/font_size = 80
+text = "LEVELS"
+horizontal_alignment = 1
+
+[node name="Spacer" type="Control" parent="Menu/Rows"]
+custom_minimum_size = Vector2(0, 28)
+layout_mode = 2
+
+[node name="Level1Button" type="Button" parent="Menu/Rows"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(300, 60)
+layout_mode = 2
+size_flags_horizontal = 4
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_colors/font_focus_color = Color(1, 0.84, 0.2, 1)
+theme_override_colors/font_pressed_color = Color(1, 0.55, 0.15, 1)
+theme_override_colors/font_hover_color = Color(1, 0.84, 0.2, 1)
+theme_override_colors/font_outline_color = Color(0.1, 0.06, 0.14, 1)
+theme_override_constants/outline_size = 6
+theme_override_font_sizes/font_size = 32
+text = "Level 1"
+
+[node name="Level2Button" type="Button" parent="Menu/Rows"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(300, 60)
+layout_mode = 2
+size_flags_horizontal = 4
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_colors/font_focus_color = Color(1, 0.84, 0.2, 1)
+theme_override_colors/font_pressed_color = Color(1, 0.55, 0.15, 1)
+theme_override_colors/font_hover_color = Color(1, 0.84, 0.2, 1)
+theme_override_colors/font_outline_color = Color(0.1, 0.06, 0.14, 1)
+theme_override_constants/outline_size = 6
+theme_override_font_sizes/font_size = 32
+text = "Level 2"
+
+[node name="BackButton" type="Button" parent="Menu/Rows"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(300, 60)
+layout_mode = 2
+size_flags_horizontal = 4
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_colors/font_focus_color = Color(1, 0.84, 0.2, 1)
+theme_override_colors/font_pressed_color = Color(1, 0.55, 0.15, 1)
+theme_override_colors/font_hover_color = Color(1, 0.84, 0.2, 1)
+theme_override_colors/font_outline_color = Color(0.1, 0.06, 0.14, 1)
+theme_override_constants/outline_size = 6
+theme_override_font_sizes/font_size = 32
+text = "Back"
