@@ -1,10 +1,12 @@
-[gd_scene load_steps=7 format=3 uid="uid://bx8k2level2fa"]
+[gd_scene load_steps=10 format=3 uid="uid://bx8k2level2fa"]
 
 [ext_resource type="Script" path="res://Player.gd" id="1_player"]
 
 [ext_resource type="Script" path="res://LevelFinish.gd" id="2_finish"]
 
 [ext_resource type="Script" path="res://Weapon.gd" id="3_weapon"]
+
+[ext_resource type="Script" path="res://Npc.gd" id="4_npc"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_ground"]
 size = Vector2(2304, 120)
@@ -17,6 +19,8 @@ size = Vector2(260, 40)
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_finish"]
 size = Vector2(48, 128)
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_npc"]
 
 [node name="Level2" type="Node2D"]
 
@@ -99,6 +103,20 @@ shape = SubResource("CircleShape2D_shape")
 
 [node name="Weapon" type="Node2D" parent="Player"]
 script = ExtResource("3_weapon")
+
+[node name="Npc" type="CharacterBody2D" parent="."]
+position = Vector2(1300, 400)
+script = ExtResource("4_npc")
+
+[node name="NpcShape" type="CollisionShape2D" parent="Npc"]
+shape = SubResource("CircleShape2D_npc")
+
+[node name="NpcVisual" type="ColorRect" parent="Npc"]
+offset_left = -32.0
+offset_top = -32.0
+offset_right = 32.0
+offset_bottom = 32.0
+color = Color(0.75, 0.2, 0.45, 1)
 
 [node name="Finish" type="Area2D" parent="."]
 position = Vector2(2150, 500)
