@@ -83,6 +83,15 @@ jobs:
             -keystore "$GITHUB_WORKSPACE/.android/forms-release.p12" \
             -storepass "$KEYSTORE_PASSWORD"
 
+      - name: Verify Android signing alias
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          keytool -list \
+            -keystore "$GITHUB_WORKSPACE/.android/forms-release.p12" \
+            -storepass "$KEYSTORE_PASSWORD" \
+            -alias "${{ secrets.ANDROID_KEY_ALIAS }}"
+
       - name: Export Android
         env:
           GODOT_ANDROID_KEYSTORE_RELEASE_PATH: ${{ github.workspace }}/.android/forms-release.p12
