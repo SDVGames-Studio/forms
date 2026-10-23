@@ -67,10 +67,31 @@ jobs:
         env:
           KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
         run: |
-          mkdir -p "$HOME/.android"
+          set -euo pipefail
+          test -n "$KEYSTORE_BASE64"
+          mkdir -p "$GITHUB_WORKSPACE/.android"
           echo "$KEYSTORE_BASE64" | base64 --decode \
-            > "$HOME/.android/forms-release.keystore"
-          chmod 600 "$HOME/.android/forms-release.keystore"
+            > "$GITHUB_WORKSPACE/.android/forms-release.p12"
+          chmod 600 "$GITHUB_WORKSPACE/.android/forms-release.p12"
+          test -s "$GITHUB_WORKSPACE/.android/forms-release.p12"
+
+      - name: Verify Android release keystore
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          keytool -list \
+            -keystore "$GITHUB_WORKSPACE/.android/forms-release.p12" \
+            -storepass "$KEYSTORE_PASSWORD"
+
+      - name: Export Android
+        env:
+          GODOT_ANDROID_KEYSTORE_RELEASE_PATH: ${{ github.workspace }}/.android/forms-release.p12
+          GODOT_ANDROID_KEYSTORE_RELEASE_USER: ${{ secrets.ANDROID_KEY_ALIAS }}
+          GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          mkdir -p build/android
+          godot --headless --export-release "Android" build/android/Forms.apk
+
 
       - name: Export Linux
         run: mkdir -p build/linux && godot --headless --export-release "Linux" build/linux/Forms.x86_64
@@ -80,15 +101,6 @@ jobs:
 
       - name: Export Web
         run: mkdir -p build/web && godot --headless --export-release "Web" build/web/index.html
-
-      - name: Export Android
-        env:
-          GODOT_ANDROID_KEYSTORE_RELEASE_PATH: ${{ runner.home }}/.android/forms-release.keystore
-          GODOT_ANDROID_KEYSTORE_RELEASE_USER: ${{ secrets.ANDROID_KEY_ALIAS }}
-          GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-        run: |
-          mkdir -p build/android
-          godot --headless --export-release "Android" build/android/Forms.apk
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
