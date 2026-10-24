@@ -14,6 +14,12 @@ const SPEED := 320.0
 const JUMP_VELOCITY := -560.0
 const GRAVITY := 1200.0
 
+## Issue #48 rework: y of the level's central line. When > 0, gravity always
+## pulls toward the line — normal above it, reversed below it — so a figure
+## walking off an edge falls, but after crossing the middle of the level the
+## fall reverses and the figure lands back on the other side of the line.
+@export var center_line_y := 0.0
+
 ## Issue #40: non-controlled team members just stay where they are.
 
 signal health_changed(health: int, max_health: int)
@@ -122,12 +128,19 @@ func _update_bar() -> void:
 
 
 func _physics_process(delta: float) -> void:
+	# Issue #48 rework: pick the gravity side from the position relative to
+	# the central line and orient the floor accordingly (upside-down below).
+	var dir := 1.0
+	if center_line_y > 0.0:
+		dir = 1.0 if global_position.y < center_line_y else -1.0
+		up_direction = Vector2.UP if dir > 0.0 else Vector2.DOWN
+
 	if not is_on_floor():
-		velocity.y += GRAVITY * delta
+		velocity.y += GRAVITY * dir * delta
 
 	if controlled:
 		if Input.is_action_just_pressed("jump") and is_on_floor():
-			velocity.y = JUMP_VELOCITY
+			velocity.y = JUMP_VELOCITY * dir
 
 		var direction := Input.get_axis("move_left", "move_right")
 		if direction != 0.0:
