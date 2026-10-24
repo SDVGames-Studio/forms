@@ -92,6 +92,7 @@ display_name = "Player 1"
 [node name="Camera" type="Camera2D" parent="Player"]
 position_smoothing_enabled = true
 position_smoothing_speed = 8.0
+zoom = Vector2(0.5, 0.5)
 
 [node name="PlayerVisual" type="ColorRect" parent="Player"]
 offset_left = -32.0
