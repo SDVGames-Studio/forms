@@ -35,6 +35,11 @@ const BAR_HEIGHT := 7.0
 ## stands upside-down on the underside of a ceiling/line).
 @export var gravity_dir := 1.0
 
+## Issue #48 rework: y of the level's central line. When > 0, gravity side is
+## chosen every frame from the position relative to the line (normal above,
+## reversed below) instead of the static gravity_dir.
+@export var center_line_y := 0.0
+
 var health: int = MAX_HEALTH
 var _bar_fill: ColorRect
 var _visual: ColorRect
@@ -133,8 +138,12 @@ func _physics_process(delta: float) -> void:
 	if _dead:
 		return
 	_cooldown_left = maxf(0.0, _cooldown_left - delta)
+	var dir := gravity_dir
+	if center_line_y > 0.0:
+		dir = 1.0 if global_position.y < center_line_y else -1.0
+		up_direction = Vector2.UP if dir > 0.0 else Vector2.DOWN
 	if not is_on_floor():
-		velocity.y += GRAVITY * gravity_dir * delta
+		velocity.y += GRAVITY * dir * delta
 
 	_target = _nearest_opponent()
 	if _target == null:
@@ -165,7 +174,7 @@ func _physics_process(delta: float) -> void:
 
 	# Jump when blocked or when the target is clearly above us.
 	if is_on_floor() and (is_on_wall() or (_target.global_position.y - global_position.y) * gravity_dir < -80.0):
-		velocity.y = JUMP_VELOCITY * gravity_dir
+		velocity.y = JUMP_VELOCITY * dir
 
 	# Take a shot when in range and cooled down.
 	if distance <= ATTACK_RANGE and _cooldown_left == 0.0:
