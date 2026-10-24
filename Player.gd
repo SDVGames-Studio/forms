@@ -133,10 +133,9 @@ func _physics_process(delta: float) -> void:
 		if direction != 0.0:
 			velocity.x = direction * SPEED
 		else:
-			velocity.x = move_toward(velocity.x, 0.0, SPEED * delta)
+			velocity.x = 0.0
 	else:
-		# Issue #40: uncontrolled team member just stays (friction stop,
-		# gravity handled above).
-		velocity.x = move_toward(velocity.x, 0.0, SPEED * delta)
+		# Issue #40/#58: uncontrolled team member just stays put (no glide).
+		velocity.x = 0.0
 
 	move_and_slide()

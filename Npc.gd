@@ -138,7 +138,8 @@ func _physics_process(delta: float) -> void:
 
 	_target = _nearest_opponent()
 	if _target == null:
-		velocity.x = move_toward(velocity.x, 0.0, SPEED * delta)
+		# Issue #58: stop instantly instead of gliding to a halt.
+		velocity.x = 0.0
 		move_and_slide()
 		return
 
