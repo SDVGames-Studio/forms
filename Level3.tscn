@@ -1,10 +1,11 @@
-[gd_scene load_steps=8 format=3 uid="uid://cev3lline3lvl"]
+[gd_scene load_steps=10 format=3 uid="uid://cev3lline3lvl"]
 
 [ext_resource type="Script" path="res://Player.gd" id="1_player"]
 
 [ext_resource type="Script" path="res://LevelFinish.gd" id="2_finish"]
 
 [ext_resource type="Script" path="res://Npc.gd" id="3_npc"]
+[ext_resource type="Script" path="res://Weapon.gd" id="5_weapon"]
 
 [ext_resource type="Script" path="res://ZoomCamera.gd" id="4_zoomcam"]
 
@@ -60,6 +61,9 @@ color = Color(1, 0.84, 0.2, 1)
 [node name="PlayerShape" type="CollisionShape2D" parent="Player"]
 shape = SubResource("CircleShape2D_shape")
 
+[node name="Weapon" type="Node2D" parent="Player"]
+script = ExtResource("5_weapon")
+
 [node name="Teammate1" type="CharacterBody2D" parent="."]
 position = Vector2(180, 400)
 collision_layer = 8
@@ -77,6 +81,9 @@ color = Color(1, 0.84, 0.2, 1)
 [node name="Teammate1Shape" type="CollisionShape2D" parent="Teammate1"]
 shape = SubResource("CircleShape2D_shape")
 
+[node name="Weapon" type="Node2D" parent="Teammate1"]
+script = ExtResource("5_weapon")
+
 [node name="Teammate2" type="CharacterBody2D" parent="."]
 position = Vector2(420, 400)
 collision_layer = 8
@@ -93,6 +100,9 @@ color = Color(1, 0.84, 0.2, 1)
 
 [node name="Teammate2Shape" type="CollisionShape2D" parent="Teammate2"]
 shape = SubResource("CircleShape2D_shape")
+
+[node name="Weapon" type="Node2D" parent="Teammate2"]
+script = ExtResource("5_weapon")
 
 [node name="Npc" type="CharacterBody2D" parent="."]
 position = Vector2(1300, 640)
