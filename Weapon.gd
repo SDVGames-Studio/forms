@@ -32,6 +32,8 @@ func _shoot() -> void:
 	_cooldown_left = COOLDOWN
 	var bullet := Area2D.new()
 	bullet.set_script(BulletScript)
+	# Issue #39: enemies moved to layer 2 (world is 1) — hit both.
+	bullet.collision_mask = 3
 	bullet.velocity = Vector2(BULLET_SPEED * _facing, 0.0)
 	bullet.global_position = global_position + Vector2(_facing * 36.0, 0.0)
 	get_parent().get_parent().add_child(bullet)

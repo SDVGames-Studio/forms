@@ -35,7 +35,8 @@ color = Color(0.22, 0.45, 0.28, 1)
 [node name="Player" type="CharacterBody2D" parent="."]
 position = Vector2(576, 480)
 groups = ["player"]
-collision_layer = 9
+collision_layer = 8
+collision_mask = 1
 script = ExtResource("1_bexhn")
 display_name = "Player 1"
 
@@ -59,7 +60,8 @@ script = ExtResource("3_weapon")
 
 [node name="Teammate1" type="CharacterBody2D" parent="."]
 position = Vector2(440, 480)
-collision_layer = 9
+collision_layer = 8
+collision_mask = 1
 script = ExtResource("1_bexhn")
 display_name = "Player 2"
 
@@ -78,7 +80,8 @@ script = ExtResource("3_weapon")
 
 [node name="Teammate2" type="CharacterBody2D" parent="."]
 position = Vector2(700, 480)
-collision_layer = 9
+collision_layer = 8
+collision_mask = 1
 script = ExtResource("1_bexhn")
 display_name = "Player 3"
 

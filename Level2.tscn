@@ -85,7 +85,8 @@ color = Color(0.3, 0.25, 0.45, 1)
 
 [node name="Player" type="CharacterBody2D" parent="."]
 position = Vector2(200, 480)
-collision_layer = 9
+collision_layer = 8
+collision_mask = 1
 script = ExtResource("1_player")
 display_name = "Player 1"
 
