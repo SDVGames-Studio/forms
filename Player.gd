@@ -6,7 +6,7 @@ extends CharacterBody2D
 ##
 ## Issue #33: the player controls their WHOLE team — every team member uses
 ## this script. Exactly one member is `controlled` (driven by input); the
-## rest follow the controlled one as AI. TeamController (autoload) switches
+## rest just stay in place (issue #40). TeamController (autoload) switches
 ## the controlled member with N (next) / P (previous). All members share the
 ## same shape and color and show a name above the health bar.
 
@@ -14,8 +14,7 @@ const SPEED := 320.0
 const JUMP_VELOCITY := -560.0
 const GRAVITY := 1200.0
 
-## Issue #33: follow behaviour for non-controlled team members.
-const FOLLOW_DISTANCE := 90.0
+## Issue #40: non-controlled team members just stay where they are.
 
 signal health_changed(health: int, max_health: int)
 
@@ -122,15 +121,6 @@ func _update_bar() -> void:
 	_bar_fill.color = Color(0.75 - 0.5 * ratio, 0.25 + 0.5 * ratio, 0.3, 1)
 
 
-## Issue #33: the teammate this member follows while not controlled.
-func _follow_target() -> Node2D:
-	for node in get_tree().get_nodes_in_group("player_team"):
-		var member := node as Node2D
-		if member != null and member != self and member.get("controlled") == true:
-			return member
-	return null
-
-
 func _physics_process(delta: float) -> void:
 	if not is_on_floor():
 		velocity.y += GRAVITY * delta
@@ -145,18 +135,8 @@ func _physics_process(delta: float) -> void:
 		else:
 			velocity.x = move_toward(velocity.x, 0.0, SPEED * delta)
 	else:
-		# Uncontrolled team member: AI-follow the controlled one.
-		var target := _follow_target()
-		var to_target := Vector2.ZERO
-		if target != null:
-			var side := 1.0 if int(get_instance_id()) % 2 == 0 else -1.0
-			to_target = target.global_position \
-				+ Vector2(FOLLOW_DISTANCE * side, 0.0) - global_position
-		var direction := 0.0
-		if absf(to_target.x) > 16.0:
-			direction = signf(to_target.x)
-		velocity.x = direction * SPEED
-		if is_on_floor() and (to_target.y < -80.0 or is_on_wall()):
-			velocity.y = JUMP_VELOCITY
+		# Issue #40: uncontrolled team member just stays (friction stop,
+		# gravity handled above).
+		velocity.x = move_toward(velocity.x, 0.0, SPEED * delta)
 
 	move_and_slide()
