@@ -31,6 +31,10 @@ const BAR_HEIGHT := 7.0
 ## Issue #33: name shown above the health bar.
 @export var display_name := "Enemy"
 
+## Issue #48: 1.0 = normal downward gravity, -1.0 = reversed (the figure
+## stands upside-down on the underside of a ceiling/line).
+@export var gravity_dir := 1.0
+
 var health: int = MAX_HEALTH
 var _bar_fill: ColorRect
 var _visual: ColorRect
@@ -44,6 +48,8 @@ func _ready() -> void:
 	# with the world (layer 1), so they never push each other on contact.
 	collision_layer = 2
 	collision_mask = 1
+	if gravity_dir < 0.0:
+		up_direction = Vector2.DOWN
 	add_to_group("enemy")
 	add_to_group("enemy_team")
 	# Stable per-instance flank slot (index within the enemy team).
@@ -128,7 +134,7 @@ func _physics_process(delta: float) -> void:
 		return
 	_cooldown_left = maxf(0.0, _cooldown_left - delta)
 	if not is_on_floor():
-		velocity.y += GRAVITY * delta
+		velocity.y += GRAVITY * gravity_dir * delta
 
 	_target = _nearest_opponent()
 	if _target == null:
@@ -157,8 +163,8 @@ func _physics_process(delta: float) -> void:
 	velocity.x = clampf(direction, -1.0, 1.0) * SPEED
 
 	# Jump when blocked or when the target is clearly above us.
-	if is_on_floor() and (is_on_wall() or _target.global_position.y < global_position.y - 80.0):
-		velocity.y = JUMP_VELOCITY
+	if is_on_floor() and (is_on_wall() or (_target.global_position.y - global_position.y) * gravity_dir < -80.0):
+		velocity.y = JUMP_VELOCITY * gravity_dir
 
 	# Take a shot when in range and cooled down.
 	if distance <= ATTACK_RANGE and _cooldown_left == 0.0:
