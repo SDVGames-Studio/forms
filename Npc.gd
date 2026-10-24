@@ -40,7 +40,10 @@ var _flank_slot := 0.0  # Per-instance offset so team members spread out.
 
 
 func _ready() -> void:
-	collision_layer = 3
+	# Issue #39: characters live on their own layer (2) and collide ONLY
+	# with the world (layer 1), so they never push each other on contact.
+	collision_layer = 2
+	collision_mask = 1
 	add_to_group("enemy")
 	add_to_group("enemy_team")
 	# Stable per-instance flank slot (index within the enemy team).
@@ -184,9 +187,8 @@ func _shoot(direction: Vector2) -> void:
 	_cooldown_left = COOLDOWN
 	var bullet := Area2D.new()
 	bullet.set_script(BulletScript)
-	# Issue #33: the player's team lives on layer 8, so enemy bullets
-	# need 1|8 to hit both team members and the ground.
-	bullet.collision_mask = 9
+	# Issue #39: enemies are on layer 2, world is layer 1 — hit both.
+	bullet.collision_mask = 3
 	bullet.velocity = direction * BULLET_SPEED
 	bullet.global_position = global_position + direction * 40.0
 	get_parent().add_child(bullet)
