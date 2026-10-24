@@ -1,4 +1,4 @@
-[gd_scene load_steps=9 format=3 uid="uid://ceagfc4lub4ch"]
+[gd_scene load_steps=10 format=3 uid="uid://ceagfc4lub4ch"]
 
 [ext_resource type="Script" uid="uid://q200uqb4ywjn" path="res://Player.gd" id="1_bexhn"]
 
@@ -40,7 +40,10 @@ collision_mask = 1
 script = ExtResource("1_bexhn")
 display_name = "Player 1"
 
+[ext_resource type="Script" path="res://ZoomCamera.gd" id="5_zoomcam"]
+
 [node name="Camera" type="Camera2D" parent="Player"]
+script = ExtResource("5_zoomcam")
 position_smoothing_enabled = true
 position_smoothing_speed = 8.0
 zoom = Vector2(0.5, 0.5)
