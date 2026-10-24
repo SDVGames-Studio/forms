@@ -49,6 +49,10 @@ func _ready() -> void:
 	# the first one takes control.
 	if not controlled:
 		call_deferred("_claim_control_if_none")
+	# Issue #39 rework: characters collide with each other but never push —
+	# walking into another figure steps up on top of it (see _physics_process).
+	collision_layer = 8
+	collision_mask = 1 | 2 | 8
 	_build_health_bar()
 	set_controlled(controlled)
 
@@ -152,3 +156,27 @@ func _physics_process(delta: float) -> void:
 		velocity.x = 0.0
 
 	move_and_slide()
+	_climb_on_characters(dir)
+
+
+## Issue #39 rework: when walking into another character, climb on top of it
+## instead of being blocked — figures can step onto each other's heads.
+func _climb_on_characters(dir: float) -> void:
+	for i in get_slide_collision_count():
+		var col := get_slide_collision(i)
+		var other := col.get_collider() as CharacterBody2D
+		if other == null or other == self:
+			continue
+		if not (other.is_in_group("player_team") or other.is_in_group("enemy_team")):
+			continue
+		# Only a frontal hit (normal pointing back at us) while grounded
+		# and actually moving toward the other figure.
+		if absf(col.get_normal().x) < 0.7 or not is_on_floor():
+			continue
+		if absf(velocity.x) > 1.0 and signf(col.get_normal().x) != -signf(velocity.x):
+			continue
+		# Both figures are 64 px circles — stack the centers 64 px apart,
+		# offset along the current gravity direction (supports level 3).
+		global_position = other.global_position - Vector2(0.0, 64.0) * dir
+		velocity.y = 0.0
+		return
