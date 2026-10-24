@@ -49,10 +49,11 @@ var _flank_slot := 0.0  # Per-instance offset so team members spread out.
 
 
 func _ready() -> void:
-	# Issue #39: characters live on their own layer (2) and collide ONLY
-	# with the world (layer 1), so they never push each other on contact.
+	# Issue #39 rework: characters collide with each other (world + both
+	# character layers) but never push — walking into another figure steps
+	# up ON TOP of it instead (see _climb_on_characters).
 	collision_layer = 2
-	collision_mask = 1
+	collision_mask = 1 | 2 | 8
 	if gravity_dir < 0.0:
 		up_direction = Vector2.DOWN
 	add_to_group("enemy")
@@ -138,10 +139,12 @@ func _physics_process(delta: float) -> void:
 	if _dead:
 		return
 	_cooldown_left = maxf(0.0, _cooldown_left - delta)
-	var dir := gravity_dir
+	var dir := 1.0
 	if center_line_y > 0.0:
 		dir = 1.0 if global_position.y < center_line_y else -1.0
 		up_direction = Vector2.UP if dir > 0.0 else Vector2.DOWN
+	elif gravity_dir < 0.0:
+		dir = -1.0
 	if not is_on_floor():
 		velocity.y += GRAVITY * dir * delta
 
@@ -181,6 +184,29 @@ func _physics_process(delta: float) -> void:
 		_shoot((_target.global_position - global_position).normalized())
 
 	move_and_slide()
+	_climb_on_characters(dir)
+
+
+## Issue #39 rework: when moving into another character, climb on top of it
+## instead of being blocked — figures can walk over each other's heads.
+func _climb_on_characters(dir: float) -> void:
+	for i in get_slide_collision_count():
+		var col := get_slide_collision(i)
+		var other := col.get_collider() as CharacterBody2D
+		if other == null or other == self:
+			continue
+		if not (other.is_in_group("player_team") or other.is_in_group("enemy_team")):
+			continue
+		# Only a frontal hit (normal pointing back at us) while grounded.
+		if absf(col.get_normal().x) < 0.7 or not is_on_floor():
+			continue
+		if absf(velocity.x) > 1.0 and signf(col.get_normal().x) != -signf(velocity.x):
+			continue
+		# Both figures are 64 px circles — stack the centers 64 px apart,
+		# offset along the current gravity direction.
+		global_position = other.global_position - Vector2(0.0, 64.0) * dir
+		velocity.y = 0.0
+		return
 
 
 ## Issue #35: nearest opposing figure — the player or any teammate.
