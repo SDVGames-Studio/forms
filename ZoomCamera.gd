@@ -7,14 +7,12 @@ extends Camera2D
 ## with whatever node it is parented to), and zoom persists when control
 ## switches between team members.
 ##
-## Press + / - (or numpad + / -) to zoom in and out. A HUD label in the
-## top-left corner shows the current zoom level.
+## Press + / - (or numpad + / -) to zoom in and out. The zoom level shows
+## in the top-left OSD (issue #76, shared with FPS and the level name).
 
 const ZOOM_STEP := 1.25
 const MIN_ZOOM := 0.25
 const MAX_ZOOM := 3.0
-
-var _label: Label
 
 
 func _ready() -> void:
@@ -23,16 +21,7 @@ func _ready() -> void:
 	add_to_group("player_camera")
 	# Zoom is per-view: keep it identical for every camera in the group so
 	# any camera instance created as a fallback shares the same zoom state.
-	var hud := CanvasLayer.new()
-	hud.name = "ZoomHud"
-	_label = Label.new()
-	_label.name = "ZoomLabel"
-	_label.position = Vector2(12.0, 12.0)
-	_label.text = ""
-	hud.add_child(_label)
-	add_child(hud)
-	_update_label()
-
+	add_child(load("res://OSD.gd").new())
 
 func _process(_delta: float) -> void:
 	var member := _controlled_member()
@@ -61,9 +50,5 @@ func _apply_zoom(factor: float) -> void:
 	for camera in get_tree().get_nodes_in_group("player_camera"):
 		camera.zoom = Vector2(target, target)
 	zoom = Vector2(target, target)
-	_update_label()
 
 
-func _update_label() -> void:
-	if _label:
-		_label.text = "Zoom: %d%%" % roundi(zoom.x * 100.0)
