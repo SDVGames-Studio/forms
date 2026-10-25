@@ -20,6 +20,12 @@ func _ready() -> void:
 	_panel.visible = false
 
 
+func open_menu() -> void:
+	## Public entry point (issue #78: on-screen MENU button).
+	if not _panel.visible and not get_tree().paused:
+		_open()
+
+
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
 		var key := event as InputEventKey

@@ -1,19 +1,19 @@
 extends CanvasLayer
 ## Weapon inventory HUD (issue #49).
 ##
-## Visible only inside the levels (issue #49 rework: hidden on the main
-## menu). Four slots — shotgun,
-## rocket launcher, grenade, melee spear — drawn as rectangles of different
-## shape with their number key. Select with keys 1–4 or by clicking a slot.
-## The selected index is read by every Weapon.gd instance.
+## Visible only inside level scenes (issue #78: gated by the "level"
+## group, never on the main/levels menu screens). On touchscreen devices
+## the panel starts hidden and is toggled with an inventory button in the
+## top-right corner (issue #78).
 
 var selected_weapon := 0
 
 var _slots: Array = []
 
-## Issue #49 rework: the inventory HUD belongs in the levels only —
-## never on the main/levels menu screens.
-const LEVEL_SCENES := ["Level", "Level2", "Level3"]
+var _panel: PanelContainer
+var _toggle_button: Button
+var _mobile_open := false
+
 
 
 const WEAPONS := ["Shotgun", "Rocket", "Grenade", "Spear"]
@@ -22,15 +22,29 @@ const WEAPONS := ["Shotgun", "Rocket", "Grenade", "Spear"]
 func _ready() -> void:
 	layer = 10
 	visible = false
-	var panel := PanelContainer.new()
-	panel.set_anchors_preset(Control.PRESET_CENTER_RIGHT)
+	_panel = PanelContainer.new()
+	_panel.set_anchors_preset(Control.PRESET_CENTER_RIGHT)
 	panel.anchor_left = 1.0
 	panel.anchor_right = 1.0
 	panel.offset_left = -150.0
 	panel.offset_right = -12.0
 	panel.offset_top = -110.0
 	panel.offset_bottom = 110.0
-	add_child(panel)
+	add_child(_panel)
+
+	_toggle_button = Button.new()
+	_toggle_button.text = "🎒"
+	_toggle_button.custom_minimum_size = Vector2(140, 64)
+	_toggle_button.add_theme_font_size_override("font_size", 34)
+	_toggle_button.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	_toggle_button.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	_toggle_button.offset_left = -200.0
+	_toggle_button.offset_right = -20.0
+	_toggle_button.offset_top = 20.0
+	_toggle_button.offset_bottom = 84.0
+	_toggle_button.pressed.connect(_on_toggle_pressed)
+	_toggle_button.visible = false
+	add_child(_toggle_button)
 
 	var vbox := VBoxContainer.new()
 	vbox.add_theme_constant_override("separation", 8)
@@ -54,8 +68,27 @@ func _ready() -> void:
 
 
 func _process(_delta: float) -> void:
-	var scene := get_tree().current_scene
-	visible = scene != null and scene.name in LEVEL_SCENES
+	if _panel == null:
+		return
+	var in_level := _is_in_level()
+	_toggle_button.visible = in_level and DisplayServer.is_touchscreen_available()
+	if not in_level:
+		visible = false
+		return
+	if DisplayServer.is_touchscreen_available():
+		visible = _mobile_open
+		_panel.visible = _mobile_open
+	else:
+		visible = true
+		_panel.visible = true
+
+
+func _is_in_level() -> bool:
+	return get_tree().get_first_node_in_group("level") != null
+
+
+func _on_toggle_pressed() -> void:
+	_mobile_open = not _mobile_open
 
 
 func _unhandled_input(event: InputEvent) -> void:
