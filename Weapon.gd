@@ -31,25 +31,59 @@ const SPEAR_DAMAGE := 25
 var _facing := 1.0
 var _cooldown_left := 0.0
 
+## Issue #68: visual of the weapon currently held "in hands".
+var _held: ColorRect
+var _held_style := -1
+
+## Issue #68: size and color of the held weapon per selected weapon index.
+const HELD_STYLES: Array = [
+	{"size": Vector2(26, 6), "color": Color(0.95, 0.85, 0.3, 1)},   # shotgun
+	{"size": Vector2(30, 8), "color": Color(0.9, 0.35, 0.15, 1)},   # rocket
+	{"size": Vector2(12, 12), "color": Color(0.3, 0.7, 0.3, 1)},    # grenade
+	{"size": Vector2(40, 4), "color": Color(0.8, 0.8, 0.9, 1)},     # spear
+]
+
 ## Currently selected weapon index (0..3), shared through the inventory HUD.
 var selected_weapon := 0
+
+
+func _ready() -> void:
+	_held = ColorRect.new()
+	_held.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_held)
+	_update_held()
 
 
 func _physics_process(delta: float) -> void:
 	_cooldown_left = maxf(0.0, _cooldown_left - delta)
 
 	var parent := get_parent() as CharacterBody2D
+	var new_facing := _facing
 	if parent and parent.velocity.x != 0.0:
-		_facing = signf(parent.velocity.x)
+		new_facing = signf(parent.velocity.x)
 
 	# Issue #33: only the controlled team member fires on input.
-	if parent == null or parent.get("controlled") != true:
+	if parent != null and parent.get("controlled") == true:
+		selected_weapon = WeaponInventory.selected_weapon
+		if Input.is_action_just_pressed("shoot") and _cooldown_left == 0.0:
+			_fire()
+
+	# Issue #68: keep the held weapon in sync with selection and facing.
+	if new_facing != _facing or selected_weapon != _held_style:
+		_facing = new_facing
+		_update_held()
+
+
+## Issue #68: draw the currently selected weapon in front of the wielder.
+func _update_held() -> void:
+	if _held == null:
 		return
-
-	selected_weapon = WeaponInventory.selected_weapon
-
-	if Input.is_action_just_pressed("shoot") and _cooldown_left == 0.0:
-		_fire()
+	_held_style = selected_weapon
+	var style: Dictionary = HELD_STYLES[clampi(selected_weapon, 0, HELD_STYLES.size() - 1)]
+	var size: Vector2 = style["size"]
+	_held.size = size
+	_held.position = Vector2(_facing * 26.0, 0.0) - size / 2.0
+	_held.color = style["color"]
 
 
 func _fire() -> void:
