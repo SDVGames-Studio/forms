@@ -31,6 +31,10 @@ const BAR_HEIGHT := 8.0
 ## Issue #33: name shown above the health bar.
 @export var display_name := "Player"
 
+## Issue #60: every member of a team wears the same team color — all
+## scene-authored body visuals are tinted with it in _ready.
+@export var team_color := Color(1, 0.84, 0.2, 1)
+
 var health: int = MAX_HEALTH
 var _bar_fill: ColorRect
 var _camera: Camera2D
@@ -53,8 +57,18 @@ func _ready() -> void:
 	# walking into another figure steps up on top of it (see _physics_process).
 	collision_layer = 8
 	collision_mask = 1 | 2 | 8
+	_apply_team_color()
 	_build_health_bar()
 	set_controlled(controlled)
+
+
+## Issue #60: tint every ColorRect visual authored in the scene (captured
+## before the health bar adds its own ColorRects) with the team color.
+func _apply_team_color() -> void:
+	for child in get_children():
+		var rect := child as ColorRect
+		if rect != null:
+			rect.color = team_color
 
 
 ## Issue #33: if no team member ended up controlled (fresh scene), the
