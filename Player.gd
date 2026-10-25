@@ -81,16 +81,31 @@ func _claim_control_if_none() -> void:
 
 
 ## Issue #33: switch input control to/from this member.
+## Issue #63: zoom belongs to the player's VIEW, not to a character — every
+## member uses the ONE shared team camera (group "player_camera"): the
+## scene-authored one if present, otherwise one created on demand. The
+## camera itself follows the controlled member (see ZoomCamera.gd).
 func set_controlled(value: bool) -> void:
 	controlled = value
 	if _camera == null:
+		for camera in get_tree().get_nodes_in_group("player_camera"):
+			_camera = camera
+			break
+	if _camera == null:
 		_camera = get_node_or_null("Camera") as Camera2D
 		if _camera == null:
-			_camera = Camera2D.new()
-			_camera.position_smoothing_enabled = true
-			_camera.position_smoothing_speed = 8.0
+			_camera = load("res://ZoomCamera.gd").new()
+			_camera.name = "Camera"
 			add_child(_camera)
-	_camera.enabled = value
+		if not _camera.is_in_group("player_camera"):
+			_camera.add_to_group("player_camera")
+	# Only the member hosting the camera node toggles it with control;
+	# the shared camera itself just follows the controlled member.
+	if _camera.get_parent() == self:
+		_camera.enabled = value
+	else:
+		# Non-hosting member takes control: make sure the shared camera is on.
+		_camera.enabled = _camera.enabled or value
 
 
 ## Issue #6: apply damage and update the health bar.
