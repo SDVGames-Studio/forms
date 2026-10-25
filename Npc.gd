@@ -2,19 +2,26 @@ extends CharacterBody2D
 ## First NPC (issue #5).
 ##
 ## An enemy figure that holds a weapon and tries to hit the player:
-## Issue #35: NPCs now fight as a computer-controlled TEAM — each NPC
-## targets the nearest opposing figure (player or teammate), keeps its
-## own flank slot so team members spread out instead of stacking, and
-## jumps when blocked or when its target is above it.
+## Issue #66: smarter enemy AI — each NPC carries a real Weapon (the same
+## arsenal the player team uses) and plays by the rules:
+##  - TARGET: the lowest-health opposing figure in attack range (focus
+##    fire), otherwise the nearest one, re-evaluated every frame;
+##  - AIM: a view angle like the player (aim_dir) instead of flat shots;
+##  - WEAPONS: switched by distance — spear up close, shotgun at medium
+##    range, rocket farther, grenade lobbed at the farthest targets.
+## The main goal stays: eliminate all other teams.
 
-const BulletScript := preload("res://Bullet.gd")
+const WeaponScript := preload("res://Weapon.gd")
 
 const SPEED := 160.0
 const GRAVITY := 1200.0
 const ATTACK_RANGE := 500.0
-const COOLDOWN := 1.2
-const BULLET_SPEED := 500.0
 const KEEP_DISTANCE := 140.0
+## Issue #66: aim slew speed (rad/s) and per-weapon range bands.
+const AIM_SPEED := 4.0
+const SPEAR_RANGE_NPC := 90.0
+const SHOTGUN_RANGE_NPC := 360.0
+const ROCKET_RANGE_NPC := 620.0
 
 ## Issue #35: team coordination constants.
 const FLANK_SPACING := 110.0
@@ -50,6 +57,16 @@ var _visual: ColorRect
 var _dead := false
 var _target: Node2D
 var _flank_slot := 0.0  # Per-instance offset so team members spread out.
+## Issue #66: current aim (view) angle in radians, like Player.gd.
+var view_angle := 0.0
+## Issue #66: the weapon carried by this NPC (created in _ready).
+var _weapon: Node2D
+
+
+## Issue #66: aim direction — facing raised/lowered by view_angle and
+## oriented against the current gravity side (mirrors Player.aim_dir).
+func aim_dir(facing: float, dir: float) -> Vector2:
+	return Vector2(cos(view_angle) * facing, -sin(view_angle) * dir)
 
 
 ## Issue #60: tint every ColorRect visual authored in the scene (captured
@@ -90,6 +107,14 @@ func _ready() -> void:
 	add_child(_visual)
 
 	_build_health_bar()
+	# Issue #66: give this NPC the standard weapon so it can use the full
+	# arsenal (shotgun / rocket / grenade / spear), not just plain bullets.
+	if get_node_or_null("Weapon") == null:
+		_weapon = WeaponScript.new()
+		_weapon.name = "Weapon"
+		add_child(_weapon)
+	else:
+		_weapon = get_node("Weapon")
 
 
 func _build_health_bar() -> void:
@@ -184,6 +209,12 @@ func _physics_process(delta: float) -> void:
 	var to_target := goal - global_position
 	var distance := _target.global_position.distance_to(global_position)
 
+	# Issue #66: slew the view angle toward the target so the weapon aims
+	# where the NPC looks (positive angle raises the muzzle).
+	var vertical := (_target.global_position.y - global_position.y) * dir
+	var desired_angle := atan2(-vertical, maxf(absf(to_target.x), 1.0))
+	view_angle = move_toward(view_angle, clampf(desired_angle, -1.2, 1.2), AIM_SPEED * delta)
+
 	var direction := 0.0
 	if absf(to_target.x) > 16.0:
 		direction = signf(to_target.x)
@@ -200,9 +231,10 @@ func _physics_process(delta: float) -> void:
 	if is_on_floor() and (is_on_wall() or (_target.global_position.y - global_position.y) * gravity_dir < -80.0):
 		velocity.y = JUMP_VELOCITY * dir
 
-	# Take a shot when in range and cooled down.
-	if distance <= ATTACK_RANGE and _cooldown_left == 0.0:
-		_shoot((_target.global_position - global_position).normalized())
+	# Issue #66: pick the weapon by distance and take a shot when in range.
+	if distance <= ATTACK_RANGE:
+		_pick_weapon(distance)
+		_shoot()
 
 	move_and_slide()
 	_climb_on_characters(dir)
@@ -233,30 +265,49 @@ func _climb_on_characters(dir: float) -> void:
 		return
 
 
-## Issue #35: nearest opposing figure — the player or any teammate.
+## Issue #66 rework: pick an opposing figure — the lowest-health one within
+## attack range (focus fire), otherwise the nearest one. Re-evaluated every
+## frame, so when a target dies the NPC naturally switches to another.
 func _nearest_opponent() -> Node2D:
 	var best: Node2D = null
-	var best_distance := INF
+	var nearest_distance := INF
+	var best_health := INF
 	for group in ["player", "team"]:
 		for node in get_tree().get_nodes_in_group(group):
 			var candidate := node as Node2D
 			if candidate == null:
 				continue
 			var d := global_position.distance_to(candidate.global_position)
-			if d < best_distance:
-				best_distance = d
+			# Track the plain nearest figure as the fallback target.
+			if d < nearest_distance:
+				nearest_distance = d
+				if best == null:
+					best = candidate
+			# Focus fire: prefer the weakest figure in attack range.
+			if d <= ATTACK_RANGE and candidate.get("health") != null \
+					and float(candidate.get("health")) < best_health:
+				best_health = float(candidate.get("health"))
 				best = candidate
 	return best
 
 
-func _shoot(direction: Vector2) -> void:
-	_cooldown_left = COOLDOWN
-	var bullet := Area2D.new()
-	bullet.set_script(BulletScript)
-	# Issue #39: enemies are on layer 2, world is layer 1 — hit both.
-	bullet.collision_mask = 3
-	bullet.velocity = direction * BULLET_SPEED
-	# Issue #57: never hit the shooter itself.
-	bullet.shooter = self
-	bullet.global_position = global_position + direction * 40.0
-	get_parent().add_child(bullet)
+## Issue #66: choose the weapon that fits the distance to the target.
+func _pick_weapon(distance: float) -> void:
+	if _weapon == null:
+		return
+	if distance <= SPEAR_RANGE_NPC:
+		_weapon.selected_weapon = 3  # spear
+	elif distance <= SHOTGUN_RANGE_NPC:
+		_weapon.selected_weapon = 0  # shotgun
+	elif distance <= ROCKET_RANGE_NPC:
+		_weapon.selected_weapon = 1  # rocket
+	else:
+		_weapon.selected_weapon = 2  # grenade (lobbed, explodes on impact)
+
+
+## Issue #66: fire through the carried Weapon (it owns the cooldown, the
+## projectile types and the shooter pass-through from issue #57).
+func _shoot() -> void:
+	if _weapon == null:
+		return
+	_weapon.npc_fire()
