@@ -31,6 +31,10 @@ const BAR_HEIGHT := 7.0
 ## Issue #33: name shown above the health bar.
 @export var display_name := "Enemy"
 
+## Issue #60: every member of a team wears the same team color — body,
+## health bar fill and hit flash all derive from it.
+@export var team_color := Color(0.75, 0.2, 0.45, 1)
+
 ## Issue #48: 1.0 = normal downward gravity, -1.0 = reversed (the figure
 ## stands upside-down on the underside of a ceiling/line).
 @export var gravity_dir := 1.0
@@ -48,6 +52,15 @@ var _target: Node2D
 var _flank_slot := 0.0  # Per-instance offset so team members spread out.
 
 
+## Issue #60: tint every ColorRect visual authored in the scene (captured
+## before the health bar adds its own ColorRects) with the team color.
+func _apply_team_color() -> void:
+	for child in get_children():
+		var rect := child as ColorRect
+		if rect != null:
+			rect.color = team_color
+
+
 func _ready() -> void:
 	# Issue #39 rework: characters collide with each other (world + both
 	# character layers) but never push — walking into another figure steps
@@ -58,6 +71,7 @@ func _ready() -> void:
 		up_direction = Vector2.DOWN
 	add_to_group("enemy")
 	add_to_group("enemy_team")
+	_apply_team_color()
 	# Stable per-instance flank slot (index within the enemy team).
 	var members := get_tree().get_nodes_in_group("enemy_team")
 	_flank_slot = float(members.find(self)) - (float(members.size() - 1) / 2.0)
@@ -72,7 +86,7 @@ func _ready() -> void:
 	_visual.offset_top = -32.0
 	_visual.offset_right = 32.0
 	_visual.offset_bottom = 32.0
-	_visual.color = Color(0.75, 0.2, 0.45, 1)
+	_visual.color = team_color
 	add_child(_visual)
 
 	_build_health_bar()
@@ -100,7 +114,7 @@ func _build_health_bar() -> void:
 	_bar_fill.offset_left = 1.0
 	_bar_fill.offset_top = 1.0
 	_bar_fill.offset_bottom = -1.0
-	_bar_fill.color = Color(0.75, 0.2, 0.45, 1)
+	_bar_fill.color = team_color
 	background.add_child(_bar_fill)
 	_update_bar()
 
@@ -121,7 +135,7 @@ func take_damage(amount: int) -> void:
 	# Hit flash.
 	_visual.color = Color(1.0, 0.6, 0.7, 1)
 	get_tree().create_timer(0.1).timeout.connect(
-		func() -> void: _visual.color = Color(0.75, 0.2, 0.45, 1))
+		func() -> void: _visual.color = team_color)
 	if health == 0:
 		_die()
 
