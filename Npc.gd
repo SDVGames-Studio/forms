@@ -194,6 +194,13 @@ func _physics_process(delta: float) -> void:
 	if not is_on_floor():
 		velocity.y += GRAVITY * dir * delta
 
+	# Issue #65: only the active character of the team on turn may act.
+	if TurnController.game_over or TurnController.active_team != TurnController.TEAM_ENEMY \
+			or TurnController.active_member != self:
+		velocity.x = 0.0
+		move_and_slide()
+		return
+
 	_target = _nearest_opponent()
 	if _target == null:
 		# Issue #58: stop instantly instead of gliding to a halt.

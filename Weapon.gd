@@ -79,8 +79,10 @@ func _physics_process(delta: float) -> void:
 		_gravity_dir = new_dir
 		_update_held()
 
-	# Issue #33: only the controlled team member fires on input.
-	if parent != null and parent.get("controlled") == true:
+	# Issue #33: only the controlled team member fires on input, and only
+	# during the player team's turn (issue #65).
+	if parent != null and parent.get("controlled") == true \
+			and TurnController.active_team == TurnController.TEAM_PLAYER:
 		selected_weapon = WeaponInventory.selected_weapon
 		if Input.is_action_just_pressed("shoot") and _cooldown_left == 0.0:
 			_fire()
@@ -114,6 +116,8 @@ func _fire() -> void:
 		1: _fire_rocket()
 		2: _fire_grenade()
 		3: _thrust_spear()
+	# Issue #65: a shot ends the move — hand the turn over.
+	TurnController.notify_shot()
 
 
 ## Issue #66: NPC entry point — the enemy AI fires through the same weapon

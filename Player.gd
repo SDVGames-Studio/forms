@@ -190,7 +190,7 @@ func _physics_process(delta: float) -> void:
 	if not is_on_floor():
 		velocity.y += GRAVITY * dir * delta
 
-	if controlled:
+	if controlled and TurnController.active_team == TurnController.TEAM_PLAYER:
 		if Input.is_action_just_pressed("jump") and is_on_floor():
 			velocity.y = JUMP_VELOCITY * dir
 

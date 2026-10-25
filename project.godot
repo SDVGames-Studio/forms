@@ -24,6 +24,7 @@ InGameMenu="*res://InGameMenu.gd"
 TeamController="*res://TeamController.gd"
 WeaponInventory="*res://WeaponInventory.gd"
 TouchControls="*res://TouchControls.gd"
+TurnController="*res://TurnController.gd"
 
 [display]
 
