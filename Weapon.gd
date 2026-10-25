@@ -116,6 +116,14 @@ func _fire() -> void:
 		3: _thrust_spear()
 
 
+## Issue #66: NPC entry point — the enemy AI fires through the same weapon
+## (same cooldown, same projectiles, same shooter pass-through).
+func npc_fire() -> void:
+	if _cooldown_left > 0.0:
+		return
+	_fire()
+
+
 func _spawn_projectile(type: int, velocity: Vector2, damage: int, lifetime: float,
 		size: Vector2, color: Color, blast_radius: float = 0.0) -> Area2D:
 	var projectile := Area2D.new()
