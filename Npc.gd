@@ -149,10 +149,17 @@ func _die() -> void:
 	tween.tween_callback(queue_free)
 
 
+var _climb_tween: Tween
+
+
 func _physics_process(delta: float) -> void:
 	if _dead:
 		return
 	_cooldown_left = maxf(0.0, _cooldown_left - delta)
+	# Issue #39 rework: while a climb animation plays, hold position.
+	if _climb_tween != null and _climb_tween.is_valid():
+		velocity = Vector2.ZERO
+		return
 	var dir := 1.0
 	if center_line_y > 0.0:
 		dir = 1.0 if global_position.y < center_line_y else -1.0
@@ -218,8 +225,11 @@ func _climb_on_characters(dir: float) -> void:
 			continue
 		# Both figures are 64 px circles — stack the centers 64 px apart,
 		# offset along the current gravity direction.
-		global_position = other.global_position - Vector2(0.0, 64.0) * dir
-		velocity.y = 0.0
+		# Smooth climb: animate up over a fraction of a second instead of
+		# snapping instantly.
+		velocity = Vector2.ZERO
+		_climb_tween = create_tween().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+		_climb_tween.tween_property(self, "global_position", other.global_position - Vector2(0.0, 64.0) * dir, 0.2)
 		return
 
 

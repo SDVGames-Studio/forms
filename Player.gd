@@ -160,7 +160,14 @@ func _update_bar() -> void:
 	_bar_fill.color = Color(0.75 - 0.5 * ratio, 0.25 + 0.5 * ratio, 0.3, 1)
 
 
+var _climb_tween: Tween
+
+
 func _physics_process(delta: float) -> void:
+	# Issue #39 rework: while a climb animation plays, hold position.
+	if _climb_tween != null and _climb_tween.is_valid():
+		velocity = Vector2.ZERO
+		return
 	# Issue #48 rework: pick the gravity side from the position relative to
 	# the central line and orient the floor accordingly (upside-down below).
 	var dir := 1.0
@@ -206,6 +213,9 @@ func _climb_on_characters(dir: float) -> void:
 			continue
 		# Both figures are 64 px circles — stack the centers 64 px apart,
 		# offset along the current gravity direction (supports level 3).
-		global_position = other.global_position - Vector2(0.0, 64.0) * dir
-		velocity.y = 0.0
+		# Smooth climb: animate up over a fraction of a second instead of
+		# snapping instantly.
+		velocity = Vector2.ZERO
+		_climb_tween = create_tween().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+		_climb_tween.tween_property(self, "global_position", other.global_position - Vector2(0.0, 64.0) * dir, 0.2)
 		return
