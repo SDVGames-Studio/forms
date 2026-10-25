@@ -36,6 +36,9 @@ var _level: Node = null
 var _turn_left := 0.0
 ## True while the post-shot delay runs — input is frozen.
 var _switching := false
+## Bumped on every shot; stale post-shot timers carry an old serial and
+## are ignored so they can't cut a fresh turn short (issue #85).
+var _shot_serial := 0
 var _layer: CanvasLayer
 var _label: Label
 
@@ -48,8 +51,9 @@ func _process(delta: float) -> void:
 	if _level == null or game_over or _switching:
 		return
 	# The active character died mid-turn — hand over immediately.
+	# queue_free()d members must be treated as dead too (issue #85).
 	if active_member != null:
-		var hp = active_member.get("health")
+		var hp = active_member.get("health") if is_instance_valid(active_member) else 0
 		if not (hp is int) or hp <= 0:
 			_end_turn()
 			return
@@ -65,8 +69,10 @@ func notify_shot() -> void:
 	if _level == null or game_over or _switching or active_team == "":
 		return
 	_switching = true
+	_shot_serial += 1
 	_update_label()
-	get_tree().create_timer(AFTER_SHOT_DELAY).timeout.connect(_end_turn)
+	get_tree().create_timer(AFTER_SHOT_DELAY).timeout.connect(
+		_end_turn.bind(_shot_serial))
 
 
 func _on_level_changed() -> void:
@@ -80,6 +86,7 @@ func _on_level_changed() -> void:
 		active_member = null
 		game_over = false
 		_switching = false
+		_shot_serial = 0
 		return
 	_start_round()
 
@@ -124,7 +131,7 @@ func _begin_turn(team: String) -> void:
 		_check_win()
 		return
 	if team == TEAM_PLAYER:
-		# The player keeps whichever character is currently controlled.
+		# The player keeps whichever character is currently controlled…
 		for member in members:
 			if member.get("controlled") == true:
 				active_member = member
@@ -133,11 +140,18 @@ func _begin_turn(team: String) -> void:
 		active_member = members.pick_random()
 	if active_member == null:
 		active_member = members[0]
+		# …but if the controlled member died, hand control to a survivor,
+		# otherwise the player team could never act again (issue #85).
+		if team == TEAM_PLAYER and active_member.has_method("set_controlled"):
+			active_member.set_controlled(true)
 	_update_label()
 
 
-func _end_turn() -> void:
+func _end_turn(from_serial: int = -1) -> void:
 	if _level == null or game_over:
+		return
+	# A stale post-shot timer must not cut a fresh turn short (issue #85).
+	if from_serial != -1 and from_serial != _shot_serial:
 		return
 	_switching = false
 	_check_win()
