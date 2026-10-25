@@ -50,6 +50,12 @@ var _switch_wait := 0.0
 var _in_transition := false
 var _layer: CanvasLayer
 var _label: Label
+var _hint_label: Label
+## Issue #87: one-line hint of what the player should do right now.
+const HINT_ROLL := "Rolling for the first team..."
+const HINT_PLAYER := "Move: A/D or arrows • Jump: Space • Aim: W/S or Up/Down • Shoot: F • Character: N/P • Weapon: 1-4"
+const HINT_ENEMY := "Enemy turn — wait for your move..."
+const HINT_SWITCH := "Shot fired — passing the turn..."
 
 
 func _process(delta: float) -> void:
@@ -95,6 +101,7 @@ func _on_level_changed() -> void:
 			_layer.queue_free()
 			_layer = null
 			_label = null
+			_hint_label = null
 		active_team = ""
 		active_member = null
 		game_over = false
@@ -226,6 +233,8 @@ func _check_win() -> void:
 		var winner := TEAM_ENEMY if players == 0 else TEAM_PLAYER
 		_label.text = "%s WINS!" % TEAM_NAMES[winner]
 		_label.add_theme_color_override("font_color", TEAM_COLORS[winner])
+	if _hint_label != null:
+		_hint_label.text = ""
 
 
 func _build_ui() -> void:
@@ -242,6 +251,15 @@ func _build_ui() -> void:
 	_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_label.add_theme_font_size_override("font_size", 22)
 	_layer.add_child(_label)
+	_hint_label = Label.new()
+	_hint_label.anchor_left = 0.0
+	_hint_label.anchor_right = 1.0
+	_hint_label.offset_top = 40.0
+	_hint_label.offset_bottom = 64.0
+	_hint_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_hint_label.add_theme_font_size_override("font_size", 14)
+	_hint_label.add_theme_color_override("font_color", Color(1, 1, 1, 0.75))
+	_layer.add_child(_hint_label)
 	_update_label()
 
 
@@ -251,7 +269,22 @@ func _update_label() -> void:
 	if active_team == "":
 		if not game_over:
 			_label.text = ""
+			if _hint_label != null:
+				_hint_label.text = HINT_ROLL
 		return
 	var team_name: String = TEAM_NAMES[active_team]
 	_label.text = "%s — %d s" % [team_name, ceili(_turn_left)]
 	_label.add_theme_color_override("font_color", TEAM_COLORS[active_team])
+	_update_hint()
+
+
+## Issue #87: context hint under the turn timer.
+func _update_hint() -> void:
+	if _hint_label == null:
+		return
+	if _switching:
+		_hint_label.text = HINT_SWITCH
+	elif active_team == TEAM_PLAYER:
+		_hint_label.text = HINT_PLAYER
+	else:
+		_hint_label.text = HINT_ENEMY
