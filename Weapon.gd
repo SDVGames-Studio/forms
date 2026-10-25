@@ -29,7 +29,15 @@ const SPEAR_RANGE := 70.0
 const SPEAR_DAMAGE := 25
 
 var _facing := 1.0
+var _gravity_dir := 1.0
 var _cooldown_left := 0.0
+
+## Issue #67: current aim direction of the wielder (view angle applied).
+func _aim() -> Vector2:
+	var parent := get_parent() as CharacterBody2D
+	if parent != null and parent.has_method("aim_dir"):
+		return parent.aim_dir(_facing, _gravity_dir)
+	return Vector2(_facing, 0.0)
 
 ## Issue #68: visual of the weapon currently held "in hands".
 var _held: ColorRect
@@ -59,8 +67,17 @@ func _physics_process(delta: float) -> void:
 
 	var parent := get_parent() as CharacterBody2D
 	var new_facing := _facing
+	var new_dir := _gravity_dir
 	if parent and parent.velocity.x != 0.0:
 		new_facing = signf(parent.velocity.x)
+	if parent != null:
+		var line_y = parent.get("center_line_y")
+		if line_y != null and line_y > 0.0:
+			new_dir = 1.0 if parent.global_position.y < line_y else -1.0
+	if new_facing != _facing or new_dir != _gravity_dir:
+		_facing = new_facing
+		_gravity_dir = new_dir
+		_update_held()
 
 	# Issue #33: only the controlled team member fires on input.
 	if parent != null and parent.get("controlled") == true:
@@ -69,9 +86,13 @@ func _physics_process(delta: float) -> void:
 			_fire()
 
 	# Issue #68: keep the held weapon in sync with selection and facing.
-	if new_facing != _facing or selected_weapon != _held_style:
-		_facing = new_facing
+	if selected_weapon != _held_style:
 		_update_held()
+	# Issue #67: keep the held weapon aligned with the character's view.
+	if _held != null and parent != null:
+		var aim: Vector2 = parent.aim_dir(_facing, _gravity_dir)
+		var style: Dictionary = HELD_STYLES[clampi(selected_weapon, 0, HELD_STYLES.size() - 1)]
+		_held.position = aim * 26.0 - style["size"] / 2.0
 
 
 ## Issue #68: draw the currently selected weapon in front of the wielder.
@@ -102,27 +123,29 @@ func _spawn_projectile(type: int, velocity: Vector2, damage: int, lifetime: floa
 	projectile.setup(type, velocity, damage, lifetime, size, color, blast_radius)
 	# Issue #57: remember the wielder so shots pass through them.
 	projectile.shooter = get_parent()
-	projectile.global_position = global_position + Vector2(_facing * 36.0, 0.0)
+	projectile.global_position = global_position + _aim() * 36.0
 	get_parent().get_parent().add_child(projectile)
 	return projectile
 
 
 func _fire_shotgun() -> void:
+	var aim := _aim()
 	for i in 5:
 		var spread := deg_to_rad(-8.0 + 4.0 * i)
-		var velocity := Vector2(PELLET_SPEED * _facing, 0.0).rotated(spread)
+		var velocity := aim.rotated(spread) * PELLET_SPEED
 		_spawn_projectile(Projectile.Type.PELLET, velocity, PELLET_DAMAGE,
 			PELLET_LIFETIME, Vector2(10, 4), Color(0.95, 0.85, 0.3, 1))
 
 
 func _fire_rocket() -> void:
 	_spawn_projectile(Projectile.Type.ROCKET,
-		Vector2(ROCKET_SPEED * _facing, 0.0), ROCKET_DAMAGE, ROCKET_LIFETIME,
+		_aim() * ROCKET_SPEED, ROCKET_DAMAGE, ROCKET_LIFETIME,
 		Vector2(22, 8), Color(0.9, 0.35, 0.15, 1), ROCKET_BLAST)
 
 
 func _fire_grenade() -> void:
-	var velocity := Vector2(GRENADE_SPEED * _facing, -320.0)
+	var aim := _aim()
+	var velocity := (Vector2(GRENADE_SPEED, -320.0) * Vector2(_facing, 1.0)).rotated(aim.angle())
 	_spawn_projectile(Projectile.Type.GRENADE, velocity, GRENADE_DAMAGE,
 		GRENADE_FUSE, Vector2(14, 14), Color(0.3, 0.7, 0.3, 1), GRENADE_BLAST)
 
@@ -142,12 +165,12 @@ func _thrust_spear() -> void:
 			continue
 		var offset := body.global_position - global_position
 		var distance := offset.length()
-		if distance <= best_distance and signf(offset.x) == _facing:
+		if distance <= best_distance and offset.normalized().dot(_aim()) > 0.5:
 			best = body
 			best_distance = distance
 	if best:
 		best.take_damage(SPEAR_DAMAGE)
 	# Visual thrust: a short-lived rectangle in front of the wielder.
 	_spawn_projectile(Projectile.Type.PELLET,
-		Vector2(SPEAR_RANGE / 0.1 * _facing, 0.0), 0, 0.1,
+		_aim() * (SPEAR_RANGE / 0.1), 0, 0.1,
 		Vector2(SPEAR_RANGE, 6), Color(0.8, 0.8, 0.9, 0.8))

@@ -36,6 +36,18 @@ const BAR_HEIGHT := 8.0
 @export var team_color := Color(1, 0.84, 0.2, 1)
 
 var health: int = MAX_HEALTH
+
+## Issue #67: character's view (aim) angle in radians, 0 = horizontal.
+## Positive raises the view, negative lowers it. Controlled with the
+## view_up/view_down actions (W/S and Arrow Up/Down).
+const VIEW_SPEED := 2.2
+const VIEW_MAX := 1.2
+var view_angle := 0.0
+
+## Issue #67: direction the character looks/aims in — facing direction
+## raised/lowered by view_angle, oriented against the current gravity side.
+func aim_dir(facing: float, dir: float) -> Vector2:
+	return Vector2(cos(view_angle) * facing, -sin(view_angle) * dir)
 var _bar_fill: ColorRect
 var _camera: Camera2D
 
@@ -187,6 +199,9 @@ func _physics_process(delta: float) -> void:
 			velocity.x = direction * SPEED
 		else:
 			velocity.x = 0.0
+		# Issue #67: raise/lower the view with W/S / Arrow Up/Down.
+		var view_axis := Input.get_axis("view_down", "view_up")
+		view_angle = clampf(view_angle + view_axis * VIEW_SPEED * delta, -VIEW_MAX, VIEW_MAX)
 	else:
 		# Issue #40/#58: uncontrolled team member just stays put (no glide).
 		velocity.x = 0.0
