@@ -9,6 +9,8 @@ const SPEED := 900.0
 const DAMAGE := 10
 
 var velocity := Vector2.ZERO
+## Issue #57: the character that fired us — we pass through it.
+var shooter: Node2D = null
 
 
 func _ready() -> void:
@@ -34,6 +36,8 @@ func _ready() -> void:
 
 
 func _on_body_entered(body: Node2D) -> void:
+	if body == shooter:
+		return
 	if body.has_method("take_damage"):
 		body.take_damage(DAMAGE)
 	queue_free()

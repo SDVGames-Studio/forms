@@ -232,5 +232,7 @@ func _shoot(direction: Vector2) -> void:
 	# Issue #39: enemies are on layer 2, world is layer 1 — hit both.
 	bullet.collision_mask = 3
 	bullet.velocity = direction * BULLET_SPEED
+	# Issue #57: never hit the shooter itself.
+	bullet.shooter = self
 	bullet.global_position = global_position + direction * 40.0
 	get_parent().add_child(bullet)
