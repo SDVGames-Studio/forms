@@ -18,7 +18,7 @@ radius = 32
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_finish"]
 size = Vector2(48, 128)
 
-[node name="Level" type="Node2D"]
+[node name="Level" type="Node2D" groups=["level"]]
 
 [node name="Ground" type="StaticBody2D" parent="."]
 position = Vector2(576, 588)
