@@ -23,6 +23,7 @@ MCPGameInspector="*res://addons/godot_mcp/mcp_game_inspector_service.gd"
 InGameMenu="*res://InGameMenu.gd"
 TeamController="*res://TeamController.gd"
 WeaponInventory="*res://WeaponInventory.gd"
+TouchControls="*res://TouchControls.gd"
 
 [display]
 
