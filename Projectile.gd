@@ -14,6 +14,9 @@ var velocity := Vector2.ZERO
 var damage := 10
 var blast_radius := 0.0
 var lifetime := 2.0
+## Issue #57: the character that fired us — we pass through it so a shot
+## spawning on top of the shooter never damages (or explodes on) them.
+var shooter: Node2D = null
 var _size := Vector2(12, 6)
 var _color := Color.WHITE
 
@@ -29,7 +32,9 @@ func setup(p_type: int, p_velocity: Vector2, p_damage: int, p_lifetime: float, p
 
 
 func _ready() -> void:
-	collision_mask = 3
+	# Layers 1|2 = world + enemy team; issue #57 adds layer 8 (player team)
+	# so shots can also hit the shooter's own teammates — friendly fire.
+	collision_mask = 1 | 2 | 8
 	var shape := CollisionShape2D.new()
 	var rect := RectangleShape2D.new()
 	rect.size = _size
@@ -65,6 +70,9 @@ func _on_expire() -> void:
 
 
 func _on_body_entered(body: Node2D) -> void:
+	# Issue #57: never interact with the character that fired us.
+	if body == shooter:
+		return
 	if blast_radius > 0.0:
 		_explode()
 		return

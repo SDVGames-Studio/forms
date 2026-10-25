@@ -66,6 +66,8 @@ func _spawn_projectile(type: int, velocity: Vector2, damage: int, lifetime: floa
 	var projectile := Area2D.new()
 	projectile.set_script(ProjectileScript)
 	projectile.setup(type, velocity, damage, lifetime, size, color, blast_radius)
+	# Issue #57: remember the wielder so shots pass through them.
+	projectile.shooter = get_parent()
 	projectile.global_position = global_position + Vector2(_facing * 36.0, 0.0)
 	get_parent().get_parent().add_child(projectile)
 	return projectile
@@ -95,12 +97,14 @@ func _thrust_spear() -> void:
 	# Instant melee hit: damage the closest target in front within range.
 	var parent := get_parent() as Node2D
 	var targets: Array = []
+	# Issue #57: friendly fire — a spear thrust can also hit teammates.
+	targets.append_array(get_tree().get_nodes_in_group("player_team"))
 	targets.append_array(get_tree().get_nodes_in_group("enemy_team"))
 	var best: Node2D = null
 	var best_distance := SPEAR_RANGE
 	for node in targets:
 		var body := node as Node2D
-		if body == null or not body.has_method("take_damage"):
+		if body == null or body == parent or not body.has_method("take_damage"):
 			continue
 		var offset := body.global_position - global_position
 		var distance := offset.length()
