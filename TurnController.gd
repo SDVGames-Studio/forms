@@ -39,6 +39,15 @@ var _switching := false
 ## Bumped on every shot; stale post-shot timers carry an old serial and
 ## are ignored so they can't cut a fresh turn short (issue #85).
 var _shot_serial := 0
+## Issue #85: stall watchdogs — if the first-team roll or the post-shot
+## handover never completes (tween killed, timer lost, node freed
+## mid-animation), the game force-recovers instead of freezing forever.
+const ROLL_WATCHDOG := 3.0
+const SWITCH_WATCHDOG := 5.0
+var _roll_wait := 0.0
+var _switch_wait := 0.0
+## Re-entry guard: turn transitions never nest or recurse.
+var _in_transition := false
 var _layer: CanvasLayer
 var _label: Label
 
@@ -48,6 +57,9 @@ func _process(delta: float) -> void:
 	if level != _level:
 		_level = level
 		_on_level_changed()
+	# Issue #85: stall watchdogs run even while switching / before the
+	# first turn, so a lost tween or timer can never freeze the game.
+	_process_watchdog(delta)
 	if _level == null or game_over or _switching:
 		return
 	# The active character died mid-turn — hand over immediately.
@@ -70,6 +82,7 @@ func notify_shot() -> void:
 		return
 	_switching = true
 	_shot_serial += 1
+	_switch_wait = 0.0
 	_update_label()
 	get_tree().create_timer(AFTER_SHOT_DELAY).timeout.connect(
 		_end_turn.bind(_shot_serial))
@@ -87,6 +100,9 @@ func _on_level_changed() -> void:
 		game_over = false
 		_switching = false
 		_shot_serial = 0
+		_roll_wait = 0.0
+		_switch_wait = 0.0
+		_in_transition = false
 		return
 	_start_round()
 
@@ -97,6 +113,7 @@ func _start_round() -> void:
 	active_team = ""
 	active_member = null
 	_build_ui()
+	_roll_wait = 0.0
 	# Visual random generator: the banner flickers between team colors,
 	# then settles on a random team — that team moves first.
 	var roll := create_tween()
@@ -114,13 +131,37 @@ func _show_roll(team: String) -> void:
 	_label.add_theme_color_override("font_color", TEAM_COLORS[team])
 
 
+func _process_watchdog(delta: float) -> void:
+	if _level == null or game_over or _in_transition:
+		return
+	if _switching:
+		# A shot handover must never outlive its delay (issue #85).
+		_switch_wait += delta
+		if _switch_wait > SWITCH_WATCHDOG:
+			_switch_wait = 0.0
+			_end_turn()
+		return
+	# While the roll animation decides the first team, keep a fallback —
+	# if the tween never settles, pick a team anyway (issue #85).
+	if active_team == "":
+		_roll_wait += delta
+		if _roll_wait > ROLL_WATCHDOG:
+			_roll_wait = 0.0
+			_finish_roll()
+
+
 func _finish_roll() -> void:
+	if _in_transition or _level == null or game_over:
+		return
+	_in_transition = true
+	_roll_wait = 0.0
 	var first: String = [TEAM_PLAYER, TEAM_ENEMY].pick_random()
 	_begin_turn(first)
+	_in_transition = false
 
 
 func _begin_turn(team: String) -> void:
-	if _level == null or game_over:
+	if _level == null or game_over or _in_transition:
 		return
 	active_team = team
 	_switching = false
@@ -148,16 +189,18 @@ func _begin_turn(team: String) -> void:
 
 
 func _end_turn(from_serial: int = -1) -> void:
-	if _level == null or game_over:
+	if _level == null or game_over or _in_transition:
 		return
 	# A stale post-shot timer must not cut a fresh turn short (issue #85).
 	if from_serial != -1 and from_serial != _shot_serial:
 		return
+	_switch_wait = 0.0
 	_switching = false
+	_in_transition = true
 	_check_win()
-	if game_over:
-		return
-	_begin_turn(TEAM_ENEMY if active_team == TEAM_PLAYER else TEAM_PLAYER)
+	if not game_over:
+		_begin_turn(TEAM_ENEMY if active_team == TEAM_PLAYER else TEAM_PLAYER)
+	_in_transition = false
 
 
 func _alive(group: String) -> Array:
