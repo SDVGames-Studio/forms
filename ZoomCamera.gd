@@ -1,6 +1,12 @@
 extends Camera2D
 ## Player camera with zoom controls (issue #43).
 ##
+## Issue #63: zoom applies to the PLAYER'S VIEW, not to one character —
+## this is the single shared camera for the whole player team. It follows
+## the currently controlled member (it is top-level, so it does not move
+## with whatever node it is parented to), and zoom persists when control
+## switches between team members.
+##
 ## Press + / - (or numpad + / -) to zoom in and out. A HUD label in the
 ## top-left corner shows the current zoom level.
 
@@ -12,6 +18,11 @@ var _label: Label
 
 
 func _ready() -> void:
+	top_level = true
+	global_position = _controlled_member().global_position if _controlled_member() != null else global_position
+	add_to_group("player_camera")
+	# Zoom is per-view: keep it identical for every camera in the group so
+	# any camera instance created as a fallback shares the same zoom state.
 	var hud := CanvasLayer.new()
 	hud.name = "ZoomHud"
 	_label = Label.new()
@@ -21,6 +32,19 @@ func _ready() -> void:
 	hud.add_child(_label)
 	add_child(hud)
 	_update_label()
+
+
+func _process(_delta: float) -> void:
+	var member := _controlled_member()
+	if member != null:
+		global_position = member.global_position
+
+
+func _controlled_member() -> Node2D:
+	for member in get_tree().get_nodes_in_group("player_team"):
+		if member.get("controlled") == true:
+			return member
+	return null
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -34,6 +58,8 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func _apply_zoom(factor: float) -> void:
 	var target := clampf(zoom.x * factor, MIN_ZOOM, MAX_ZOOM)
+	for camera in get_tree().get_nodes_in_group("player_camera"):
+		camera.zoom = Vector2(target, target)
 	zoom = Vector2(target, target)
 	_update_label()
 
