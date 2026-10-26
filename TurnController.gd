@@ -168,7 +168,12 @@ func _finish_roll() -> void:
 
 
 func _begin_turn(team: String) -> void:
-	if _level == null or game_over or _in_transition:
+	# NOTE: no _in_transition check here — _begin_turn is only ever called
+	# from inside a transition (_finish_roll / _end_turn), and rejecting the
+	# call while _in_transition is true deadlocked the FIRST turn forever:
+	# the game stayed on "PICKING FIRST TEAM..." and the watchdog repeated
+	# the same dead end every 3 s (issue #85 rework).
+	if _level == null or game_over:
 		return
 	active_team = team
 	_switching = false
