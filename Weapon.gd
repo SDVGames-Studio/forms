@@ -98,12 +98,16 @@ func _physics_process(delta: float) -> void:
 
 	# Issue #33: only the controlled team member fires on input, and only
 	# during the player team's turn (issue #65).
-	if parent != null and parent.get("controlled") == true \
-			and TurnController.active_team == TurnController.TEAM_PLAYER:
+	var controlled: bool = parent != null and parent.get("controlled") == true \
+			and TurnController.active_team == TurnController.TEAM_PLAYER
+	if controlled:
 		selected_weapon = WeaponInventory.selected_weapon
+	# Issue #101 bugfix: ONLY the controlled member may fire on input —
+	# every character has a Weapon node, so an unguarded Input check made
+	# all characters holding the same weapon fire together.
 	var can_shoot := _shots_used < _shot_limit() \
 			and _shot_delay_left == 0.0 and _cooldown_left == 0.0
-	if Input.is_action_just_pressed("shoot") and can_shoot:
+	if controlled and Input.is_action_just_pressed("shoot") and can_shoot:
 		_fire()
 
 	# Issue #68: keep the held weapon in sync with selection and facing.
