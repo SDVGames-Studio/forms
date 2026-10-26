@@ -55,7 +55,7 @@ var _hint_label: Label
 var _roll_tween: Tween
 ## Issue #87: one-line hint of what the player should do right now.
 const HINT_ROLL := "Rolling for the first team..."
-const HINT_PLAYER := "Move: A/D or arrows • Jump: Space • Aim: W/S or Up/Down • Shoot: F • Character: N/P • Weapon: 1-4"
+const HINT_PLAYER := "Move: A/D or arrows • Jump: Space • Aim: W/S or Up/Down • Shoot: F • Character: N/P • Weapon: 1-4 • Skip turn: Tab"
 const HINT_ENEMY := "Enemy turn — wait for your move..."
 const HINT_SWITCH := "Shot fired — passing the turn..."
 
@@ -81,6 +81,18 @@ func _process(delta: float) -> void:
 	_update_label()
 	if _turn_left == 0.0:
 		_end_turn()
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	# Issue #102: Tab skips the current player turn. Only while the
+	# player team is actually moving — never during the shot handover,
+	# the enemy turn, the roll or after game over.
+	if event is InputEventKey and event.pressed and not event.echo \
+			and event.keycode == KEY_TAB:
+		if _level != null and not game_over and not _switching \
+				and active_team == TEAM_PLAYER:
+			get_viewport().set_input_as_handled()
+			_end_turn()
 
 
 ## Weapon._fire reports every shot (player and NPC alike) — the shot ends
