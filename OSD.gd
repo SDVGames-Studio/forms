@@ -11,6 +11,7 @@ const FPS_LINE := "FPS: %d"
 
 var _zoom_label: Label
 var _fps_label: Label
+var _level_label: Label
 var _level_name := ""
 
 func _ready() -> void:
