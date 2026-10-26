@@ -23,3 +23,8 @@ builds/
 
 # OS artifacts
 Thumbs.db
+
+# Local godot-mcp addon and Godot-generated .uid files stay uncommitted (owner decision 2026-10-26)
+/addons/godot-mcp/
+*.uid
+
