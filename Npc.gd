@@ -13,12 +13,16 @@ extends CharacterBody2D
 
 const WeaponScript := preload("res://Weapon.gd")
 
-const SPEED := 160.0
-const GRAVITY := 1200.0
+## Issue #108: all characteristics come from the shared CharacterStats —
+## enemy figures are the SAME class of character as player figures
+## (same health, speed, jump, gravity, aim and health bar).
+const Stats := preload("res://scripts/CharacterStats.gd")
+
+const SPEED := Stats.SPEED
+const GRAVITY := Stats.GRAVITY
 const ATTACK_RANGE := 500.0
 const KEEP_DISTANCE := 140.0
 ## Issue #66: aim slew speed (rad/s) and per-weapon range bands.
-const AIM_SPEED := 4.0
 const SPEAR_RANGE_NPC := 90.0
 const SHOTGUN_RANGE_NPC := 360.0
 const ROCKET_RANGE_NPC := 620.0
@@ -26,14 +30,14 @@ const ROCKET_RANGE_NPC := 620.0
 ## Issue #35: team coordination constants.
 const FLANK_SPACING := 110.0
 const SEPARATION := 90.0
-const JUMP_VELOCITY := -560.0
+const JUMP_VELOCITY := Stats.JUMP_VELOCITY
 
 ## Issue #14: NPCs are now fightable — they have health, a health bar and
 ## die when it runs out. Layer 1|2 so player bullets (mask 1) and teammate
 ## bullets (mask 2) both hit them, while teammates (layer 4) never do.
-const MAX_HEALTH := 60
-const BAR_WIDTH := 56.0
-const BAR_HEIGHT := 7.0
+const MAX_HEALTH := Stats.MAX_HEALTH
+const BAR_WIDTH := Stats.BAR_WIDTH
+const BAR_HEIGHT := Stats.BAR_HEIGHT
 
 ## Issue #33: name shown above the health bar.
 @export var display_name := "Enemy"
@@ -60,6 +64,8 @@ var _cooldown_left := 0.0
 var _flank_slot := 0.0  # Per-instance offset so team members spread out.
 ## Issue #66: current aim (view) angle in radians, like Player.gd.
 var view_angle := 0.0
+const AIM_SPEED := Stats.VIEW_SPEED
+const VIEW_MAX := Stats.VIEW_MAX
 ## Issue #66: the weapon carried by this NPC (created in _ready).
 var _weapon: Node2D
 
@@ -221,7 +227,7 @@ func _physics_process(delta: float) -> void:
 	# where the NPC looks (positive angle raises the muzzle).
 	var vertical := (_target.global_position.y - global_position.y) * dir
 	var desired_angle := atan2(-vertical, maxf(absf(to_target.x), 1.0))
-	view_angle = move_toward(view_angle, clampf(desired_angle, -1.2, 1.2), AIM_SPEED * delta)
+	view_angle = move_toward(view_angle, clampf(desired_angle, -VIEW_MAX, VIEW_MAX), AIM_SPEED * delta)
 
 	var direction := 0.0
 	if absf(to_target.x) > 16.0:
