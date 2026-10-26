@@ -46,11 +46,13 @@ const ROLL_WATCHDOG := 3.0
 const SWITCH_WATCHDOG := 5.0
 var _roll_wait := 0.0
 var _switch_wait := 0.0
-## Re-entry guard: turn transitions never nest or recurse.
-var _in_transition := false
+## Issue #85 rework 2: seconds spent with no active team — if the roll
+## stalls for any reason, the hard recovery in _process_watchdog fires.
+var _stall_wait := 0.0
 var _layer: CanvasLayer
 var _label: Label
 var _hint_label: Label
+var _roll_tween: Tween
 ## Issue #87: one-line hint of what the player should do right now.
 const HINT_ROLL := "Rolling for the first team..."
 const HINT_PLAYER := "Move: A/D or arrows • Jump: Space • Aim: W/S or Up/Down • Shoot: F • Character: N/P • Weapon: 1-4"
@@ -109,7 +111,7 @@ func _on_level_changed() -> void:
 		_shot_serial = 0
 		_roll_wait = 0.0
 		_switch_wait = 0.0
-		_in_transition = false
+		_stall_wait = 0.0
 		return
 	_start_round()
 
@@ -117,13 +119,19 @@ func _on_level_changed() -> void:
 func _start_round() -> void:
 	game_over = false
 	_switching = false
+	# A fresh round must never inherit a wedged transition (issue #85).
+	_stall_wait = 0.0
 	active_team = ""
 	active_member = null
 	_build_ui()
 	_roll_wait = 0.0
 	# Visual random generator: the banner flickers between team colors,
 	# then settles on a random team — that team moves first.
+	# Kill any leftover roll tween before starting a new one (issue #85).
+	if _roll_tween != null and _roll_tween.is_valid():
+		_roll_tween.kill()
 	var roll := create_tween()
+	_roll_tween = roll
 	for i in ROLL_STEPS:
 		var team := TEAM_PLAYER if i % 2 == 0 else TEAM_ENEMY
 		roll.tween_callback(_show_roll.bind(team))
@@ -132,15 +140,30 @@ func _start_round() -> void:
 
 
 func _show_roll(team: String) -> void:
-	if _label == null:
+	# A stale roll tween (killed round, forced recovery) must never
+	# overwrite an already started turn (issue #85 rework 2).
+	if _label == null or active_team != "":
 		return
 	_label.text = "PICKING FIRST TEAM..."
 	_label.add_theme_color_override("font_color", TEAM_COLORS[team])
 
 
 func _process_watchdog(delta: float) -> void:
-	if _level == null or game_over or _in_transition:
+	if _level == null or game_over:
 		return
+	# HARD recovery: if no team is active and we are not passing a shot,
+	# the first-team roll has stalled — force-clear everything and start
+	# a turn. The recovery is not gated by any transition flag on purpose.
+	if active_team == "" and not _switching:
+		_stall_wait += delta
+		if _stall_wait > ROLL_WATCHDOG:
+			_stall_wait = 0.0
+			_roll_wait = 0.0
+			_switching = false
+			_finish_roll()
+			return
+	else:
+		_stall_wait = 0.0
 	if _switching:
 		# A shot handover must never outlive its delay (issue #85).
 		_switch_wait += delta
@@ -148,8 +171,7 @@ func _process_watchdog(delta: float) -> void:
 			_switch_wait = 0.0
 			_end_turn()
 		return
-	# While the roll animation decides the first team, keep a fallback —
-	# if the tween never settles, pick a team anyway (issue #85).
+	# Belt-and-braces roll fallback (kept from the first rework).
 	if active_team == "":
 		_roll_wait += delta
 		if _roll_wait > ROLL_WATCHDOG:
@@ -158,21 +180,20 @@ func _process_watchdog(delta: float) -> void:
 
 
 func _finish_roll() -> void:
-	if _in_transition or _level == null or game_over:
+	# State-based guard: once a team is active the roll is done; guards can
+	# the roll is done; the flag itself must never block recovery.
+	if active_team != "" or _level == null or game_over:
 		return
-	_in_transition = true
 	_roll_wait = 0.0
 	var first: String = [TEAM_PLAYER, TEAM_ENEMY].pick_random()
+	# Note: no transition flag is held across the call — a runtime error
+	# inside _begin_turn must never wedge the flow forever (issue #85).
 	_begin_turn(first)
-	_in_transition = false
 
 
 func _begin_turn(team: String) -> void:
-	# NOTE: no _in_transition check here — _begin_turn is only ever called
-	# from inside a transition (_finish_roll / _end_turn), and rejecting the
-	# call while _in_transition is true deadlocked the FIRST turn forever:
-	# the game stayed on "PICKING FIRST TEAM..." and the watchdog repeated
-	# the same dead end every 3 s (issue #85 rework).
+	# Guards are state-based (active_team) — no transition flag that could
+	# wedge and block the first turn forever (issue #85 reworks).
 	if _level == null or game_over:
 		return
 	active_team = team
@@ -201,18 +222,16 @@ func _begin_turn(team: String) -> void:
 
 
 func _end_turn(from_serial: int = -1) -> void:
-	if _level == null or game_over or _in_transition:
+	if _level == null or game_over or active_team == "":
 		return
 	# A stale post-shot timer must not cut a fresh turn short (issue #85).
 	if from_serial != -1 and from_serial != _shot_serial:
 		return
 	_switch_wait = 0.0
 	_switching = false
-	_in_transition = true
 	_check_win()
 	if not game_over:
 		_begin_turn(TEAM_ENEMY if active_team == TEAM_PLAYER else TEAM_PLAYER)
-	_in_transition = false
 
 
 func _alive(group: String) -> Array:
