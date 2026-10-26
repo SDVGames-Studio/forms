@@ -10,9 +10,12 @@ extends CharacterBody2D
 ## the controlled member with N (next) / P (previous). All members share the
 ## same shape and color and show a name above the health bar.
 
-const SPEED := 320.0
-const JUMP_VELOCITY := -560.0
-const GRAVITY := 1200.0
+## Issue #108: all characteristics come from the shared CharacterStats —
+## enemy figures are the SAME class of character as player figures.
+const Stats := preload("res://scripts/CharacterStats.gd")
+const SPEED := Stats.SPEED
+const JUMP_VELOCITY := Stats.JUMP_VELOCITY
+const GRAVITY := Stats.GRAVITY
 
 ## Issue #48 rework: y of the level's central line. When > 0, gravity always
 ## pulls toward the line — normal above it, reversed below it — so a figure
@@ -24,9 +27,9 @@ const GRAVITY := 1200.0
 
 signal health_changed(health: int, max_health: int)
 
-const MAX_HEALTH := 100
-const BAR_WIDTH := 64.0
-const BAR_HEIGHT := 8.0
+const MAX_HEALTH := Stats.MAX_HEALTH
+const BAR_WIDTH := Stats.BAR_WIDTH
+const BAR_HEIGHT := Stats.BAR_HEIGHT
 
 ## Issue #33: name shown above the health bar.
 @export var display_name := "Player"
@@ -40,8 +43,8 @@ var health: int = MAX_HEALTH
 ## Issue #67: character's view (aim) angle in radians, 0 = horizontal.
 ## Positive raises the view, negative lowers it. Controlled with the
 ## view_up/view_down actions (W/S and Arrow Up/Down).
-const VIEW_SPEED := 2.2
-const VIEW_MAX := 1.2
+const VIEW_SPEED := Stats.VIEW_SPEED
+const VIEW_MAX := Stats.VIEW_MAX
 var view_angle := 0.0
 
 ## Issue #67: direction the character looks/aims in — facing direction
