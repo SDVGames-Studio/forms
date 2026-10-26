@@ -30,6 +30,10 @@ func _active_index() -> int:
 
 
 func _cycle(step: int) -> void:
+	# Issue #104: once the active member has moved or aimed this turn,
+	# character switching is blocked until the turn ends.
+	if TurnController.is_switch_locked():
+		return
 	var members := _team()
 	if members.is_empty():
 		return
