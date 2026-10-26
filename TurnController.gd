@@ -49,6 +49,9 @@ var _switch_wait := 0.0
 ## Issue #85 rework 2: seconds spent with no active team — if the roll
 ## stalls for any reason, the hard recovery in _process_watchdog fires.
 var _stall_wait := 0.0
+## Issue #104: once the active team member has moved or aimed during its
+## turn, character switching (N/P) is locked until the turn ends.
+var _switch_locked := false
 var _layer: CanvasLayer
 var _label: Label
 var _hint_label: Label
@@ -93,6 +96,19 @@ func _unhandled_input(event: InputEvent) -> void:
 				and active_team == TEAM_PLAYER:
 			get_viewport().set_input_as_handled()
 			_end_turn()
+
+
+## Issue #104: the active player member reports a move or aim action —
+## from that moment character switching is locked until the turn ends.
+func notify_member_action() -> void:
+	if _level != null and not game_over and not _switching \
+			and active_team == TEAM_PLAYER:
+		_switch_locked = true
+
+
+## Issue #104: true while N/P character switching is locked for the turn.
+func is_switch_locked() -> bool:
+	return _switch_locked and active_team == TEAM_PLAYER
 
 
 ## Weapon._fire reports every shot (player and NPC alike) — the shot ends
@@ -210,6 +226,8 @@ func _begin_turn(team: String) -> void:
 		return
 	active_team = team
 	_switching = false
+	# Issue #104: a fresh turn always starts with switching unlocked.
+	_switch_locked = false
 	_turn_left = TURN_TIME
 	var group := "player_team" if team == TEAM_PLAYER else "enemy_team"
 	var members := _alive(group)

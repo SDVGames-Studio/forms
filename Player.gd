@@ -195,12 +195,17 @@ func _physics_process(delta: float) -> void:
 			velocity.y = JUMP_VELOCITY * dir
 
 		var direction := Input.get_axis("move_left", "move_right")
+		# Issue #104: any move or aim action locks character switching for
+		# the rest of the turn (N/P) — the player is committed to this member.
+		var view_axis := Input.get_axis("view_down", "view_up")
+		if direction != 0.0 or view_axis != 0.0 \
+				or (Input.is_action_just_pressed("jump") and is_on_floor()):
+			TurnController.notify_member_action()
 		if direction != 0.0:
 			velocity.x = direction * SPEED
 		else:
 			velocity.x = 0.0
 		# Issue #67: raise/lower the view with W/S / Arrow Up/Down.
-		var view_axis := Input.get_axis("view_down", "view_up")
 		view_angle = clampf(view_angle + view_axis * VIEW_SPEED * delta, -VIEW_MAX, VIEW_MAX)
 	else:
 		# Issue #40/#58: uncontrolled team member just stays put (no glide).
