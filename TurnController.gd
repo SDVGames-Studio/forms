@@ -234,6 +234,12 @@ func _begin_turn(team: String) -> void:
 	if members.is_empty():
 		_check_win()
 		return
+	# Issue #101: every member of the team starting its turn gets its
+	# full shot quota back (per-weapon limits live in Weapon.gd).
+	for member in members:
+		var weapon: Node = member.get_node_or_null("Weapon")
+		if weapon != null and weapon.has_method("reset_shots"):
+			weapon.reset_shots()
 	if team == TEAM_PLAYER:
 		# The player keeps whichever character is currently controlled…
 		for member in members:
