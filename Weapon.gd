@@ -14,6 +14,12 @@ const ProjectileScript := preload("res://Projectile.gd")
 
 const COOLDOWN := 0.3
 
+## Issue #101: shots each weapon allows during ONE turn (index = weapon:
+## shotgun 2, rocket 1, grenade 1, spear 2) and the 3-second delay after
+## every shot during which the character cannot shoot again.
+const SHOTS_PER_TURN: Array = [2, 1, 1, 2]
+const SHOT_DELAY := 3.0
+
 const PELLET_SPEED := 900.0
 const PELLET_LIFETIME := 0.35
 const PELLET_DAMAGE := 6
@@ -31,6 +37,10 @@ const SPEAR_DAMAGE := 25
 var _facing := 1.0
 var _gravity_dir := 1.0
 var _cooldown_left := 0.0
+## Issue #101: shots already made this turn by this member.
+var _shots_used := 0
+## Issue #101: seconds left before the character may shoot again.
+var _shot_delay_left := 0.0
 
 ## Issue #99: when an NPC fires a grenade, the weapon lobs it ballistically
 ## at this target (cleared after one shot). Player grenades keep the
@@ -69,6 +79,8 @@ func _ready() -> void:
 
 func _physics_process(delta: float) -> void:
 	_cooldown_left = maxf(0.0, _cooldown_left - delta)
+	# Issue #101: tick the between-shots delay.
+	_shot_delay_left = maxf(0.0, _shot_delay_left - delta)
 
 	var parent := get_parent() as CharacterBody2D
 	var new_facing := _facing
@@ -89,8 +101,10 @@ func _physics_process(delta: float) -> void:
 	if parent != null and parent.get("controlled") == true \
 			and TurnController.active_team == TurnController.TEAM_PLAYER:
 		selected_weapon = WeaponInventory.selected_weapon
-		if Input.is_action_just_pressed("shoot") and _cooldown_left == 0.0:
-			_fire()
+	var can_shoot := _shots_used < _shot_limit() \
+			and _shot_delay_left == 0.0 and _cooldown_left == 0.0
+	if Input.is_action_just_pressed("shoot") and can_shoot:
+		_fire()
 
 	# Issue #68: keep the held weapon in sync with selection and facing.
 	if selected_weapon != _held_style:
@@ -114,21 +128,38 @@ func _update_held() -> void:
 	_held.color = style["color"]
 
 
+func _shot_limit() -> int:
+	return SHOTS_PER_TURN[clampi(selected_weapon, 0, SHOTS_PER_TURN.size() - 1)]
+
+
+## Issue #101: called by TurnController at the start of every turn —
+## restores the full shot quota for this character.
+func reset_shots() -> void:
+	_shots_used = 0
+	_shot_delay_left = 0.0
+
+
 func _fire() -> void:
 	_cooldown_left = COOLDOWN
+	_shots_used += 1
+	# Issue #101: 3-second pause before the next shot of the same turn.
+	_shot_delay_left = SHOT_DELAY
 	match selected_weapon:
 		0: _fire_shotgun()
 		1: _fire_rocket()
 		2: _fire_grenade()
 		3: _thrust_spear()
-	# Issue #65: a shot ends the move — hand the turn over.
-	TurnController.notify_shot()
+	# Issue #101+#65: only the LAST shot of the turn hands the turn over;
+	# with quota remaining the character keeps acting after the pause.
+	if _shots_used >= _shot_limit():
+		TurnController.notify_shot()
 
 
 ## Issue #66: NPC entry point — the enemy AI fires through the same weapon
 ## (same cooldown, same projectiles, same shooter pass-through).
 func npc_fire() -> void:
-	if _cooldown_left > 0.0:
+	if _cooldown_left > 0.0 or _shot_delay_left > 0.0 \
+			or _shots_used >= _shot_limit():
 		return
 	_fire()
 
