@@ -32,6 +32,11 @@ var _facing := 1.0
 var _gravity_dir := 1.0
 var _cooldown_left := 0.0
 
+## Issue #99: when an NPC fires a grenade, the weapon lobs it ballistically
+## at this target (cleared after one shot). Player grenades keep the
+## hand-aimed arc.
+var npc_target: Node2D = null
+
 ## Issue #67: current aim direction of the wielder (view angle applied).
 func _aim() -> Vector2:
 	var parent := get_parent() as CharacterBody2D
@@ -156,6 +161,18 @@ func _fire_rocket() -> void:
 
 
 func _fire_grenade() -> void:
+	# Issue #99: NPC grenades are aimed ballistically at the target so the
+	# arc lands ON the target instead of falling back onto the shooter's
+	# own team (blast damage is friendly fire since issue #57).
+	if npc_target != null and is_instance_valid(npc_target):
+		var to := npc_target.global_position - global_position
+		var t := clampf(to.length() / GRENADE_SPEED, 0.5, 1.5)
+		var velocity := to / t
+		velocity.y -= 0.5 * 1200.0 * t
+		_spawn_projectile(Projectile.Type.GRENADE, velocity, GRENADE_DAMAGE,
+			GRENADE_FUSE, Vector2(14, 14), Color(0.3, 0.7, 0.3, 1), GRENADE_BLAST)
+		npc_target = null
+		return
 	var aim := _aim()
 	var velocity := (Vector2(GRENADE_SPEED, -320.0) * Vector2(_facing, 1.0)).rotated(aim.angle())
 	_spawn_projectile(Projectile.Type.GRENADE, velocity, GRENADE_DAMAGE,

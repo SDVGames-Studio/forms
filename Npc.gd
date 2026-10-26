@@ -241,7 +241,7 @@ func _physics_process(delta: float) -> void:
 
 	# Issue #66: pick the weapon by distance and take a shot when in range.
 	if distance <= ATTACK_RANGE:
-		_pick_weapon(distance)
+		_pick_weapon(distance, absf(_target.global_position.y - global_position.y))
 		_shoot()
 
 	move_and_slide()
@@ -300,17 +300,19 @@ func _nearest_opponent() -> Node2D:
 
 
 ## Issue #66: choose the weapon that fits the distance to the target.
-func _pick_weapon(distance: float) -> void:
+func _pick_weapon(distance: float, height_diff: float = 0.0) -> void:
 	if _weapon == null:
 		return
 	if distance <= SPEAR_RANGE_NPC:
 		_weapon.selected_weapon = 3  # spear
-	elif distance <= SHOTGUN_RANGE_NPC:
-		_weapon.selected_weapon = 0  # shotgun
-	elif distance <= ROCKET_RANGE_NPC:
-		_weapon.selected_weapon = 1  # rocket
+	elif distance <= SHOTGUN_RANGE_NPC and height_diff <= 60.0:
+		_weapon.selected_weapon = 0  # shotgun (flat line of sight only)
 	else:
-		_weapon.selected_weapon = 2  # grenade (lobbed, explodes on impact)
+		# Issue #99: prefer the ballistic grenade for long range or any
+		# height difference — its arc reaches targets over terrain, while a
+		# straight rocket just hits the platform underside (or the blast
+		# catches the shooter's own team below instead of the target).
+		_weapon.selected_weapon = 2  # grenade
 
 
 ## Issue #66: fire through the carried Weapon (it owns the cooldown, the
@@ -318,4 +320,41 @@ func _pick_weapon(distance: float) -> void:
 func _shoot() -> void:
 	if _weapon == null:
 		return
+	# Issue #99: hand the current target to the weapon so grenades are
+	# lobbed ballistically at it (see Weapon._fire_grenade).
+	_weapon.npc_target = _target
+	# Issue #99: never fire a straight-line weapon through a teammate — the
+	# projectile hits the teammate first (friendly fire since #57) and the
+	# enemy team wipes itself out while the players stay untouched. Switch
+	# to the ballistic grenade, which arcs over the row; at spear-close
+	# range the grenade blast would catch our own team, so hold fire there
+	# (the separation steering opens the line instead).
+	if _weapon.selected_weapon != 2 and _teammate_blocks_shot():
+		if _target != null and is_instance_valid(_target) \
+				and global_position.distance_to(_target.global_position) > 160.0:
+			_weapon.selected_weapon = 2
+		else:
+			return
 	_weapon.npc_fire()
+
+
+## Issue #99: true when a living teammate stands inside the corridor a
+## straight projectile would travel between us and the current target.
+func _teammate_blocks_shot() -> bool:
+	if _target == null or not is_instance_valid(_target):
+		return false
+	var to := _target.global_position - global_position
+	var length := to.length()
+	if length < 1.0:
+		return false
+	var dir := to / length
+	for mate in get_tree().get_nodes_in_group("enemy_team"):
+		if mate == self or not is_instance_valid(mate):
+			continue
+		var rel: Vector2 = mate.global_position - global_position
+		var along := rel.dot(dir)
+		if along <= 0.0 or along >= length:
+			continue
+		if absf(rel.cross(dir)) <= 44.0:
+			return true
+	return false
