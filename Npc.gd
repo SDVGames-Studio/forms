@@ -56,6 +56,7 @@ var _bar_fill: ColorRect
 var _visual: ColorRect
 var _dead := false
 var _target: Node2D
+var _cooldown_left := 0.0
 var _flank_slot := 0.0  # Per-instance offset so team members spread out.
 ## Issue #66: current aim (view) angle in radians, like Player.gd.
 var view_angle := 0.0
@@ -229,7 +230,7 @@ func _physics_process(delta: float) -> void:
 	for other in get_tree().get_nodes_in_group("enemy_team"):
 		if other == self:
 			continue
-		var away := global_position.x - other.global_position.x
+		var away: float = global_position.x - other.global_position.x
 		if absf(away) < SEPARATION and absf(global_position.y - other.global_position.y) < 40.0:
 			direction += signf(away) * 0.5
 	velocity.x = clampf(direction, -1.0, 1.0) * SPEED
