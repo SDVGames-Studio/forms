@@ -62,6 +62,7 @@ func _build_stick() -> void:
 	_stick_base.add_child(base_circle)
 
 	_stick_knob = Control.new()
+	_stick_knob.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_stick_knob.custom_minimum_size = Vector2(110, 110)
 	_stick_knob.set_anchors_preset(Control.PRESET_CENTER)
 	_stick_knob.offset_left = -55.0
@@ -76,6 +77,8 @@ func _make_circle(color: Color) -> Control:
 	var rect := ColorRect.new()
 	rect.set_anchors_preset(Control.PRESET_FULL_RECT)
 	rect.color = Color(0, 0, 0, 0)
+	# Visuals only: never intercept touches meant for the stick base.
+	rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	rect.draw.connect(func() -> void:
 		var radius := minf(rect.size.x, rect.size.y) * 0.5
 		rect.draw_circle(rect.size * 0.5, radius, color))
