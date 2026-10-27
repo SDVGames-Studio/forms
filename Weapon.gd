@@ -47,8 +47,11 @@ const GRENADE_MASS := 0.6
 var _facing := 1.0
 var _gravity_dir := 1.0
 var _cooldown_left := 0.0
-## Issue #101: shots already made this turn by this member.
-var _shots_used := 0
+## Issue #101: shots already made this turn by this member, per weapon
+## (issue #116: the quota is per weapon so switching after a shot keeps
+## the newly selected weapon's own quota).
+var _shots_used := [0, 0, 0, 0]
+
 ## Issue #101: seconds left before the character may shoot again.
 var _shot_delay_left := 0.0
 ## Issue #114: charge state for the rocket/grenade charged launch.
@@ -127,7 +130,7 @@ func _physics_process(delta: float) -> void:
 	# Issue #101 bugfix: ONLY the controlled member may fire on input —
 	# every character has a Weapon node, so an unguarded Input check made
 	# all characters holding the same weapon fire together.
-	var can_shoot := _shots_used < _shot_limit() \
+	var can_shoot: bool = _shots_used[clampi(selected_weapon, 0, _shots_used.size() - 1)] < _shot_limit() \
 			and _shot_delay_left == 0.0 and _cooldown_left == 0.0
 	# Issue #114: rocket (1) and grenade (2) are CHARGED — pressing F starts
 	# the charge, releasing F fires with power scaled by the hold time.
@@ -182,13 +185,14 @@ func _shot_limit() -> int:
 ## Issue #101: called by TurnController at the start of every turn —
 ## restores the full shot quota for this character.
 func reset_shots() -> void:
-	_shots_used = 0
+	for i in _shots_used.size():
+		_shots_used[i] = 0
 	_shot_delay_left = 0.0
 
 
 func _fire(power := 1.0) -> void:
 	_cooldown_left = COOLDOWN
-	_shots_used += 1
+	_shots_used[clampi(selected_weapon, 0, _shots_used.size() - 1)] += 1
 	# Issue #101: 3-second pause before the next shot of the same turn.
 	_shot_delay_left = SHOT_DELAY
 	match selected_weapon:
@@ -198,7 +202,7 @@ func _fire(power := 1.0) -> void:
 		3: _thrust_spear()
 	# Issue #101+#65: only the LAST shot of the turn hands the turn over;
 	# with quota remaining the character keeps acting after the pause.
-	if _shots_used >= _shot_limit():
+	if _shots_used[clampi(selected_weapon, 0, _shots_used.size() - 1)] >= _shot_limit():
 		TurnController.notify_shot()
 
 
@@ -206,7 +210,7 @@ func _fire(power := 1.0) -> void:
 ## (same cooldown, same projectiles, same shooter pass-through).
 func npc_fire() -> void:
 	if _cooldown_left > 0.0 or _shot_delay_left > 0.0 \
-			or _shots_used >= _shot_limit():
+			or _shots_used[clampi(selected_weapon, 0, _shots_used.size() - 1)] >= _shot_limit():
 		return
 	_fire()
 
