@@ -43,6 +43,9 @@ func setup(p_kind: int, p_velocity: Vector2, p_damage: int, p_lifetime: float,
 
 
 func _ready() -> void:
+	# Issue #119: register with TurnController so the turn handover waits
+	# until every projectile has exploded/been freed.
+	add_to_group("projectiles")
 	# Layer 4 = projectiles; hit the world, both teams, and walls.
 	collision_layer = 4
 	collision_mask = 1 | 2 | 8

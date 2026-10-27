@@ -32,6 +32,9 @@ func setup(p_type: int, p_velocity: Vector2, p_damage: int, p_lifetime: float, p
 
 
 func _ready() -> void:
+	# Issue #119: register with TurnController so the turn handover waits
+	# until every projectile is gone.
+	add_to_group("projectiles")
 	# Layers 1|2 = world + enemy team; issue #57 adds layer 8 (player team)
 	# so shots can also hit the shooter's own teammates — friendly fire.
 	collision_mask = 1 | 2 | 8
