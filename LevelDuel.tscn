@@ -1,0 +1,55 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://Npc.gd" id="1_npc"]
+
+[ext_resource type="Script" path="res://ZoomCamera.gd" id="2_zoomcam"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_ground"]
+size = Vector2(1152, 120)
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_body"]
+radius = 32
+
+[node name="LevelDuel" type="Node2D" groups=["level"]]
+
+[node name="Ground" type="StaticBody2D" parent="."]
+position = Vector2(576, 588)
+
+[node name="GroundShape" type="CollisionShape2D" parent="Ground"]
+shape = SubResource("RectangleShape2D_ground")
+
+[node name="GroundVisual" type="ColorRect" parent="Ground"]
+offset_left = -576.0
+offset_top = -60.0
+offset_right = 576.0
+offset_bottom = 60.0
+color = Color(0.22, 0.45, 0.28, 1)
+
+[node name="BlueAI" type="CharacterBody2D" parent="."]
+position = Vector2(390, 480)
+collision_layer = 8
+collision_mask = 1
+script = ExtResource("1_npc")
+display_name = "Blue AI"
+team = "player"
+team_color = Color(1, 0.84, 0.2, 1)
+
+[node name="BlueAIShape" type="CollisionShape2D" parent="BlueAI"]
+shape = SubResource("CircleShape2D_body")
+
+[node name="Camera" type="Camera2D" parent="BlueAI"]
+script = ExtResource("2_zoomcam")
+position_smoothing_enabled = true
+position_smoothing_speed = 8.0
+zoom = Vector2(0.5, 0.5)
+
+[node name="RedAI" type="CharacterBody2D" parent="."]
+position = Vector2(760, 480)
+collision_layer = 2
+collision_mask = 1
+script = ExtResource("1_npc")
+display_name = "Red AI"
+team_color = Color(0.75, 0.2, 0.45, 1)
+
+[node name="RedAIShape" type="CollisionShape2D" parent="RedAI"]
+shape = SubResource("CircleShape2D_body")

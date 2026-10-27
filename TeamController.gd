@@ -50,4 +50,7 @@ func set_active_index(index: int) -> void:
 		return
 	index = clampi(index, 0, members.size() - 1)
 	for i in members.size():
-		members[i].set_controlled(i == index)
+		# Issue #121: AI members of the player team (Npc.gd) have no
+		# input control to hand over — skip them.
+		if members[i].has_method("set_controlled"):
+			members[i].set_controlled(i == index)
