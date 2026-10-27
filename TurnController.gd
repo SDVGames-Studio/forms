@@ -39,6 +39,12 @@ var _switching := false
 ## Bumped on every shot; stale post-shot timers carry an old serial and
 ## are ignored so they can't cut a fresh turn short (issue #85).
 var _shot_serial := 0
+## Issue #119: after a shot, the handover first waits the short post-shot
+## delay, then keeps waiting until no projectile is alive — grenades with
+## a 3 s fuse must land and explode before the next turn starts.
+var _after_shot_left := 0.0
+## Issue #119: projectile nodes register in this group while alive.
+const PROJECTILE_GROUP := "projectiles"
 ## Issue #85: stall watchdogs — if the first-team roll or the post-shot
 ## handover never completes (tween killed, timer lost, node freed
 ## mid-animation), the game force-recovers instead of freezing forever.
@@ -60,7 +66,7 @@ var _roll_tween: Tween
 const HINT_ROLL := "Rolling for the first team..."
 const HINT_PLAYER := "Move: A/D or arrows • Jump: Space • Aim: W/S or Up/Down • Shoot: F • Character: N/P • Weapon: 1-4 • Skip turn: Tab"
 const HINT_ENEMY := "Enemy turn — wait for your move..."
-const HINT_SWITCH := "Shot fired — passing the turn..."
+const HINT_SWITCH := "Shot fired — waiting for the projectiles..."
 
 
 func _process(delta: float) -> void:
@@ -71,6 +77,13 @@ func _process(delta: float) -> void:
 	# Issue #85: stall watchdogs run even while switching / before the
 	# first turn, so a lost tween or timer can never freeze the game.
 	_process_watchdog(delta)
+	# Issue #119: post-shot handover — wait for the short delay AND for
+	# every projectile to explode before passing the turn.
+	if _switching and not game_over:
+		_after_shot_left = maxf(0.0, _after_shot_left - delta)
+		if _after_shot_left <= 0.0 and _live_projectiles() == 0:
+			_end_turn(_shot_serial)
+			return
 	if _level == null or game_over or _switching:
 		return
 	# The active character died mid-turn — hand over immediately.
@@ -119,9 +132,18 @@ func notify_shot() -> void:
 	_switching = true
 	_shot_serial += 1
 	_switch_wait = 0.0
+	_after_shot_left = AFTER_SHOT_DELAY
 	_update_label()
-	get_tree().create_timer(AFTER_SHOT_DELAY).timeout.connect(
-		_end_turn.bind(_shot_serial))
+
+
+## Issue #119: projectiles still flying/exploding (queue_free()d ones don't
+## count — they are already done for gameplay purposes).
+func _live_projectiles() -> int:
+	var count := 0
+	for node in get_tree().get_nodes_in_group(PROJECTILE_GROUP):
+		if is_instance_valid(node) and not node.is_queued_for_deletion():
+			count += 1
+	return count
 
 
 func _on_level_changed() -> void:
@@ -137,6 +159,7 @@ func _on_level_changed() -> void:
 		game_over = false
 		_switching = false
 		_shot_serial = 0
+		_after_shot_left = 0.0
 		_roll_wait = 0.0
 		_switch_wait = 0.0
 		_stall_wait = 0.0
