@@ -164,6 +164,10 @@ func _physics_process(delta: float) -> void:
 		var aim: Vector2 = parent.aim_dir(_facing, _gravity_dir)
 		var style: Dictionary = HELD_STYLES[clampi(selected_weapon, 0, HELD_STYLES.size() - 1)]
 		_held.position = aim * 26.0 - style["size"] / 2.0
+		# Issue #133: the spear (and every held weapon) rotates to the aim
+		# axis instead of staying parallel to the ground.
+		_held.pivot_offset = style["size"] / 2.0
+		_held.rotation = aim.angle()
 
 
 ## Issue #68: draw the currently selected weapon in front of the wielder.
