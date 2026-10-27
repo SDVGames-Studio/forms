@@ -253,8 +253,12 @@ func _begin_turn(team: String) -> void:
 	_switching = false
 	# Issue #104: a fresh turn always starts with switching unlocked.
 	_switch_locked = false
-	# Issue #131: a fresh turn re-enables weapon selection.
-	WeaponInventory.locked = false
+	# Issue #131 rework: the lock must survive the enemy turn — only the
+	# start of a fresh PLAYER turn re-enables weapon selection. Unlocking
+	# on the enemy turn (the old behavior) let the weapon be changed right
+	# after the first shot, as soon as the handover finished.
+	if team == TEAM_PLAYER:
+		WeaponInventory.locked = false
 	_turn_left = TURN_TIME
 	var group := "player_team" if team == TEAM_PLAYER else "enemy_team"
 	var members := _alive(group)
