@@ -66,6 +66,31 @@ func _ready() -> void:
 		printerr("FAIL: target behind the wielder was hit")
 		failures += 1
 
+	# Issue #133 rework: the held spear must ROTATE to the aim axis, not
+	# stay parallel to the ground. Give the holder an aim_dir with a view
+	# angle of 45° and check the held weapon's rotation follows it.
+	var aim_holder := CharacterBody2D.new()
+	var aim_script := GDScript.new()
+	aim_script.source_code = "extends CharacterBody2D\nvar view_angle := 0.7854\nfunc aim_dir(f: float, d: float) -> Vector2:\n\treturn Vector2(cos(view_angle) * f, -sin(view_angle) * d)\n"
+	aim_script.reload()
+	aim_holder.set_script(aim_script)
+	add_child(aim_holder)
+	var spear := Node2D.new()
+	spear.set_script(load("res://Weapon.gd"))
+	aim_holder.add_child(spear)
+	spear.set("_facing", 1.0)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var held: ColorRect = spear.get("_held")
+	if held == null:
+		printerr("FAIL: held spear instance missing")
+		failures += 1
+	else:
+		var expected: float = (aim_holder.call("aim_dir", 1.0, 1.0) as Vector2).angle()
+		if absf(held.rotation - expected) > 0.01:
+			printerr("FAIL: held spear rotation %.2f != aim angle %.2f (stays parallel to ground)" % [held.rotation, expected])
+			failures += 1
+
 	if failures == 0:
 		print("ISSUE133 TEST PASS")
 		get_tree().quit(0)
