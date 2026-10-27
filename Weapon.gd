@@ -160,7 +160,7 @@ func _physics_process(delta: float) -> void:
 	if selected_weapon != _held_style:
 		_update_held()
 	# Issue #67: keep the held weapon aligned with the character's view.
-	if _held != null and parent != null:
+	if _held != null and parent != null and parent.has_method("aim_dir"):
 		var aim: Vector2 = parent.aim_dir(_facing, _gravity_dir)
 		var style: Dictionary = HELD_STYLES[clampi(selected_weapon, 0, HELD_STYLES.size() - 1)]
 		_held.position = aim * 26.0 - style["size"] / 2.0
@@ -291,16 +291,22 @@ func _thrust_spear() -> void:
 	targets.append_array(get_tree().get_nodes_in_group("player_team"))
 	targets.append_array(get_tree().get_nodes_in_group("enemy_team"))
 	var best: Node2D = null
-	var best_distance := SPEAR_RANGE
+	var best_forward := SPEAR_RANGE
+	# Issue #133: the spear strikes strictly ALONG ITS AXIS — a target only
+	# counts when it sits on the aim ray (small lateral offset), not anywhere
+	# inside a wide cone in front.
+	var dir := _aim().normalized()
+	var lateral_tolerance := 12.0
 	for node in targets:
 		var body := node as Node2D
 		if body == null or body == parent or not body.has_method("take_damage"):
 			continue
 		var offset := body.global_position - global_position
-		var distance := offset.length()
-		if distance <= best_distance and offset.normalized().dot(_aim()) > 0.5:
+		var forward := offset.dot(dir)
+		var lateral := absf(offset.dot(Vector2(-dir.y, dir.x)))
+		if forward > 0.0 and forward <= best_forward and lateral <= lateral_tolerance:
 			best = body
-			best_distance = distance
+			best_forward = forward
 	if best:
 		best.take_damage(SPEAR_DAMAGE)
 	# Visual thrust: a short-lived rectangle in front of the wielder.
