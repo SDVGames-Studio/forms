@@ -12,6 +12,10 @@ extends CanvasLayer
 ## with digit keys 1-4 or a left mouse click on a slot. Slots ignore
 ## keyboard focus so arrow keys never touch the inventory.
 
+## Issue #129: on touchscreen devices the inventory becomes the CENTERED
+## version: the panel is anchored to the center of the screen and the
+## slots/icons grow (~2x), so the grid is comfortably finger-sized.
+
 var selected_weapon := 0
 
 var _slots: Array = []
@@ -19,6 +23,7 @@ var _slots: Array = []
 var _panel: PanelContainer
 var _toggle_button: Button
 var _mobile_open := false
+var _mobile_layout_applied := false
 
 const WEAPONS := ["Shotgun", "Rocket", "Grenade", "Spear"]
 
@@ -60,6 +65,9 @@ func _ready() -> void:
 	_toggle_button.visible = false
 	add_child(_toggle_button)
 
+	if DisplayServer.is_touchscreen_available():
+		_apply_mobile_layout()
+
 	# Issue #64: table (grid) instead of a vertical list, no title.
 	var grid := GridContainer.new()
 	grid.columns = 2
@@ -82,6 +90,28 @@ func _ready() -> void:
 
 
 ## Issue #64: a simple geometrical shape drawn instead of a text name.
+## Issue #129: bigger, centered layout for the mobile version.
+func _apply_mobile_layout() -> void:
+	if _mobile_layout_applied:
+		return
+	_mobile_layout_applied = true
+	_panel.set_anchors_preset(Control.PRESET_CENTER)
+	_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_panel.grow_vertical = Control.GROW_DIRECTION_BOTH
+	_panel.offset_left = 0.0
+	_panel.offset_right = 0.0
+	_panel.offset_top = 0.0
+	_panel.offset_bottom = 0.0
+	var grid: GridContainer = _panel.get_child(0)
+	grid.add_theme_constant_override("h_separation", 20)
+	grid.add_theme_constant_override("v_separation", 20)
+	for i in _slots.size():
+		_slots[i].custom_minimum_size = Vector2(120, 88)
+		var icon: ShapeIcon = _slots[i].get_child(0)
+		icon.icon_scale = 2.0
+		icon.queue_redraw()
+
+
 func _make_icon(index: int) -> Control:
 	var icon := ShapeIcon.new()
 	icon.icon = ICONS[index]
@@ -136,12 +166,13 @@ func _update_highlight() -> void:
 ## Issue #64: minimal icon canvas — draws one shape centered in the slot.
 class ShapeIcon extends Control:
 	var icon: Dictionary
+	var icon_scale := 1.0
 
 	func _draw() -> void:
 		var c := size / 2.0
 		var col: Color = icon.get("color", Color.WHITE)
 		if icon.get("shape", "rect") == "circle":
-			draw_circle(c, icon.get("radius", 8.0), col)
+			draw_circle(c, icon.get("radius", 8.0) * icon_scale, col)
 		else:
-			var s: Vector2 = icon.get("size", Vector2(20, 6))
+			var s: Vector2 = icon.get("size", Vector2(20, 6)) * icon_scale
 			draw_rect(Rect2(c - s / 2.0, s), col)
