@@ -130,6 +130,8 @@ func notify_shot() -> void:
 	if _level == null or game_over or _switching or active_team == "":
 		return
 	_switching = true
+	# Issue #131: freeze weapon selection after the first shot.
+	WeaponInventory.locked = true
 	_shot_serial += 1
 	_switch_wait = 0.0
 	_after_shot_left = AFTER_SHOT_DELAY
@@ -251,6 +253,8 @@ func _begin_turn(team: String) -> void:
 	_switching = false
 	# Issue #104: a fresh turn always starts with switching unlocked.
 	_switch_locked = false
+	# Issue #131: a fresh turn re-enables weapon selection.
+	WeaponInventory.locked = false
 	_turn_left = TURN_TIME
 	var group := "player_team" if team == TEAM_PLAYER else "enemy_team"
 	var members := _alive(group)

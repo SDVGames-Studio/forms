@@ -18,6 +18,10 @@ extends CanvasLayer
 
 var selected_weapon := 0
 
+## Issue #131: true after the first shot of a turn — weapon selection is
+## frozen until the next turn begins (TurnController unlocks it).
+var locked := false
+
 var _slots: Array = []
 
 var _panel: PanelContainer
@@ -154,6 +158,10 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func set_selected(index: int) -> void:
+	# Issue #131: no weapon changes after the first shot of the turn.
+	if locked:
+		_update_highlight()
+		return
 	selected_weapon = clampi(index, 0, WEAPONS.size() - 1)
 	_update_highlight()
 
