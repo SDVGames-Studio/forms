@@ -32,7 +32,8 @@ const ROCKET_LIFETIME := 3.0
 const GRENADE_SPEED := 550.0
 const GRENADE_DAMAGE := 40
 const GRENADE_BLAST := 100.0
-const GRENADE_FUSE := 1.5
+## Issue #117: the grenade fuse is 3 seconds.
+const GRENADE_FUSE := 3.0
 const SPEAR_RANGE := 70.0
 const SPEAR_DAMAGE := 25
 ## Issue #114: charged shots. Holding F charges a rocket/grenade launch —
