@@ -94,12 +94,15 @@ func _process(_delta: float) -> void:
 	if _panel == null:
 		return
 	var in_level := _is_in_level()
+	# Issue #125: the layer must stay visible on mobile, otherwise the
+	# toggle button itself disappears — only the PANEL is toggled.
 	_toggle_button.visible = in_level and DisplayServer.is_touchscreen_available()
 	if not in_level:
 		visible = false
+		_panel.visible = false
 		return
 	if DisplayServer.is_touchscreen_available():
-		visible = _mobile_open
+		visible = true
 		_panel.visible = _mobile_open
 	else:
 		visible = true
