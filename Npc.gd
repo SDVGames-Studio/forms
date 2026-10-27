@@ -46,6 +46,11 @@ const BAR_HEIGHT := Stats.BAR_HEIGHT
 ## health bar fill and hit flash all derive from it.
 @export var team_color := Color(0.75, 0.2, 0.45, 1)
 
+## Issue #121: which side this AI fights for. "enemy" (default) behaves
+## exactly as before; "player" places the figure in the player team, so a
+## level can stage a computer-vs-computer duel the user only spectates.
+@export var team: String = "enemy"
+
 ## Issue #48: 1.0 = normal downward gravity, -1.0 = reversed (the figure
 ## stands upside-down on the underside of a ceiling/line).
 @export var gravity_dir := 1.0
@@ -93,8 +98,9 @@ func _ready() -> void:
 	collision_mask = 1 | 2 | 8
 	if gravity_dir < 0.0:
 		up_direction = Vector2.DOWN
-	add_to_group("enemy")
-	add_to_group("enemy_team")
+	if team == "enemy":
+		add_to_group("enemy")
+	add_to_group("enemy_team" if team == "enemy" else "player_team")
 	_apply_team_color()
 	# Stable per-instance flank slot (index within the enemy team).
 	var members := get_tree().get_nodes_in_group("enemy_team")
@@ -201,9 +207,9 @@ func _physics_process(delta: float) -> void:
 	if not is_on_floor():
 		velocity.y += GRAVITY * dir * delta
 
-	# Issue #65: only the active character of the team on turn may act.
-	if TurnController.game_over or TurnController.active_team != TurnController.TEAM_ENEMY \
-			or TurnController.active_member != self:
+	# Issue #65/#121: only the active character of the team on turn may
+	# act — regardless of which team that is, so AI vs AI duels work.
+	if TurnController.game_over or TurnController.active_member != self:
 		velocity.x = 0.0
 		move_and_slide()
 		return
@@ -286,10 +292,13 @@ func _nearest_opponent() -> Node2D:
 	var best: Node2D = null
 	var nearest_distance := INF
 	var best_health := INF
-	for group in ["player", "team"]:
+	for group in ["player", "team", "player_team", "enemy_team"]:
 		for node in get_tree().get_nodes_in_group(group):
 			var candidate := node as Node2D
 			if candidate == null:
+				continue
+			# Issue #121: never target a figure from our own side.
+			if _same_side(candidate):
 				continue
 			var d := global_position.distance_to(candidate.global_position)
 			# Track the plain nearest figure as the fallback target.
@@ -303,6 +312,15 @@ func _nearest_opponent() -> Node2D:
 				best_health = float(candidate.get("health"))
 				best = candidate
 	return best
+
+
+## Issue #121: true when the figure fights for the same team as we do.
+func _same_side(other: Node2D) -> bool:
+	if other == self:
+		return true
+	if is_in_group("player_team"):
+		return other.is_in_group("player_team")
+	return other.is_in_group("enemy_team")
 
 
 ## Issue #66: choose the weapon that fits the distance to the target.
@@ -354,7 +372,8 @@ func _teammate_blocks_shot() -> bool:
 	if length < 1.0:
 		return false
 	var dir := to / length
-	for mate in get_tree().get_nodes_in_group("enemy_team"):
+	for mate in get_tree().get_nodes_in_group(
+			"player_team" if is_in_group("player_team") else "enemy_team"):
 		if mate == self or not is_instance_valid(mate):
 			continue
 		var rel: Vector2 = mate.global_position - global_position
