@@ -1,4 +1,4 @@
-[gd_scene load_steps=9 format=3 uid="uid://ceagfc4lub4ch"]
+[gd_scene load_steps=10 format=3 uid="uid://ceagfc4lub4ch"]
 
 [ext_resource type="Script" uid="uid://q200uqb4ywjn" path="res://Player.gd" id="1_bexhn"]
 
@@ -7,6 +7,7 @@
 
 [ext_resource type="Script" path="res://Npc.gd" id="4_npc"]
 [ext_resource type="Script" path="res://ZoomCamera.gd" id="5_zoomcam"]
+[ext_resource type="Script" path="res://scripts/LevelConfig.gd" id="9_lvlcfg"]
 
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_shape"]
@@ -19,6 +20,7 @@ radius = 32
 size = Vector2(48, 128)
 
 [node name="Level" type="Node2D" groups=["level"]]
+script = ExtResource("9_lvlcfg")
 
 [node name="Ground" type="StaticBody2D" parent="."]
 position = Vector2(576, 588)
