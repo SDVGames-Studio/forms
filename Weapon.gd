@@ -11,6 +11,8 @@ extends Node2D
 ## Visuals are plain rectangles built in code — no extra assets.
 
 const ProjectileScript := preload("res://Projectile.gd")
+## Issue #114: rockets and grenades spawn as real rigid bodies.
+const ProjectileBodyScript := preload("res://ProjectileBody.gd")
 
 const COOLDOWN := 0.3
 
@@ -33,6 +35,13 @@ const GRENADE_BLAST := 100.0
 const GRENADE_FUSE := 1.5
 const SPEAR_RANGE := 70.0
 const SPEAR_DAMAGE := 25
+## Issue #114: charged shots. Holding F charges a rocket/grenade launch —
+## the longer the hold, the faster it flies (from MIN_SHOT_POWER up to the
+## full base speed after MAX_CHARGE_TIME seconds).
+const MIN_SHOT_POWER := 0.4
+const MAX_CHARGE_TIME := 1.5
+const ROCKET_MASS := 1.0
+const GRENADE_MASS := 0.6
 
 var _facing := 1.0
 var _gravity_dir := 1.0
@@ -41,6 +50,10 @@ var _cooldown_left := 0.0
 var _shots_used := 0
 ## Issue #101: seconds left before the character may shoot again.
 var _shot_delay_left := 0.0
+## Issue #114: charge state for the rocket/grenade charged launch.
+var _charging := false
+var _charge_time := 0.0
+var _charge_bar: ColorRect
 
 ## Issue #99: when an NPC fires a grenade, the weapon lobs it ballistically
 ## at this target (cleared after one shot). Player grenades keep the
@@ -74,6 +87,14 @@ func _ready() -> void:
 	_held = ColorRect.new()
 	_held.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_held)
+	# Issue #114: charge meter shown above the wielder while holding F.
+	_charge_bar = ColorRect.new()
+	_charge_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_charge_bar.visible = false
+	_charge_bar.color = Color(1.0, 0.6, 0.1, 0.9)
+	_charge_bar.offset_top = -56.0
+	_charge_bar.offset_bottom = -52.0
+	add_child(_charge_bar)
 	_update_held()
 
 
@@ -107,8 +128,29 @@ func _physics_process(delta: float) -> void:
 	# all characters holding the same weapon fire together.
 	var can_shoot := _shots_used < _shot_limit() \
 			and _shot_delay_left == 0.0 and _cooldown_left == 0.0
-	if controlled and Input.is_action_just_pressed("shoot") and can_shoot:
-		_fire()
+	# Issue #114: rocket (1) and grenade (2) are CHARGED — pressing F starts
+	# the charge, releasing F fires with power scaled by the hold time.
+	# Shotgun and spear keep their instant press-fire behavior.
+	var charged := selected_weapon == 1 or selected_weapon == 2
+	if controlled and can_shoot and not _charging \
+			and Input.is_action_just_pressed("shoot"):
+		if charged:
+			_charging = true
+			_charge_time = 0.0
+		else:
+			_fire()
+	if controlled and _charging:
+		if Input.is_action_just_released("shoot") or not can_shoot:
+			_charging = false
+			_fire(clampf(_charge_time / MAX_CHARGE_TIME, 0.0, 1.0))
+		else:
+			_charge_time = minf(_charge_time + delta, MAX_CHARGE_TIME)
+			_charge_bar.visible = true
+			var charge_width := 40.0 + 30.0 * (_charge_time / MAX_CHARGE_TIME)
+			_charge_bar.offset_left = -charge_width / 2.0
+			_charge_bar.offset_right = charge_width / 2.0
+	if not _charging and _charge_bar.visible:
+		_charge_bar.visible = false
 
 	# Issue #68: keep the held weapon in sync with selection and facing.
 	if selected_weapon != _held_style:
@@ -143,15 +185,15 @@ func reset_shots() -> void:
 	_shot_delay_left = 0.0
 
 
-func _fire() -> void:
+func _fire(power := 1.0) -> void:
 	_cooldown_left = COOLDOWN
 	_shots_used += 1
 	# Issue #101: 3-second pause before the next shot of the same turn.
 	_shot_delay_left = SHOT_DELAY
 	match selected_weapon:
 		0: _fire_shotgun()
-		1: _fire_rocket()
-		2: _fire_grenade()
+		1: _fire_rocket(power)
+		2: _fire_grenade(power)
 		3: _thrust_spear()
 	# Issue #101+#65: only the LAST shot of the turn hands the turn over;
 	# with quota remaining the character keeps acting after the pause.
@@ -189,13 +231,16 @@ func _fire_shotgun() -> void:
 			PELLET_LIFETIME, Vector2(10, 4), Color(0.95, 0.85, 0.3, 1))
 
 
-func _fire_rocket() -> void:
-	_spawn_projectile(Projectile.Type.ROCKET,
-		_aim() * ROCKET_SPEED, ROCKET_DAMAGE, ROCKET_LIFETIME,
-		Vector2(22, 8), Color(0.9, 0.35, 0.15, 1), ROCKET_BLAST)
+func _fire_rocket(power := 1.0) -> void:
+	# Issue #114: the rocket is a rigid body — its speed scales with the
+	# shot power (how long F was held).
+	var speed := ROCKET_SPEED * lerpf(MIN_SHOT_POWER, 1.0, power)
+	_spawn_body(ProjectileBody.Kind.ROCKET,
+		_aim() * speed, ROCKET_DAMAGE, ROCKET_LIFETIME,
+		Vector2(22, 8), Color(0.9, 0.35, 0.15, 1), ROCKET_BLAST, ROCKET_MASS)
 
 
-func _fire_grenade() -> void:
+func _fire_grenade(power := 1.0) -> void:
 	# Issue #99: NPC grenades are aimed ballistically at the target so the
 	# arc lands ON the target instead of falling back onto the shooter's
 	# own team (blast damage is friendly fire since issue #57).
@@ -204,14 +249,33 @@ func _fire_grenade() -> void:
 		var t := clampf(to.length() / GRENADE_SPEED, 0.5, 1.5)
 		var velocity := to / t
 		velocity.y -= 0.5 * 1200.0 * t
-		_spawn_projectile(Projectile.Type.GRENADE, velocity, GRENADE_DAMAGE,
-			GRENADE_FUSE, Vector2(14, 14), Color(0.3, 0.7, 0.3, 1), GRENADE_BLAST)
+		_spawn_body(ProjectileBody.Kind.GRENADE, velocity, GRENADE_DAMAGE,
+			GRENADE_FUSE, Vector2(14, 14), Color(0.3, 0.7, 0.3, 1),
+			GRENADE_BLAST, GRENADE_MASS)
 		npc_target = null
 		return
+	# Issue #114: player grenades are charged too — power scales the launch
+	# speed, the grenade itself is a bouncing rigid body under gravity.
+	var speed := GRENADE_SPEED * lerpf(MIN_SHOT_POWER, 1.0, power)
 	var aim := _aim()
-	var velocity := (Vector2(GRENADE_SPEED, -320.0) * Vector2(_facing, 1.0)).rotated(aim.angle())
-	_spawn_projectile(Projectile.Type.GRENADE, velocity, GRENADE_DAMAGE,
-		GRENADE_FUSE, Vector2(14, 14), Color(0.3, 0.7, 0.3, 1), GRENADE_BLAST)
+	var velocity := (Vector2(speed, -320.0 * lerpf(MIN_SHOT_POWER, 1.0, power)) \
+			* Vector2(_facing, 1.0)).rotated(aim.angle())
+	_spawn_body(ProjectileBody.Kind.GRENADE, velocity, GRENADE_DAMAGE,
+		GRENADE_FUSE, Vector2(14, 14), Color(0.3, 0.7, 0.3, 1),
+		GRENADE_BLAST, GRENADE_MASS)
+
+
+## Issue #114: spawn a physics-driven explosive projectile (rigid body).
+func _spawn_body(kind: int, velocity: Vector2, damage: int, lifetime: float,
+		size: Vector2, color: Color, blast_radius: float, mass: float) -> RigidBody2D:
+	var body := RigidBody2D.new()
+	body.set_script(ProjectileBodyScript)
+	body.setup(kind, velocity, damage, lifetime, size, color, blast_radius, mass)
+	# Issue #57: remember the wielder so shots pass through them.
+	body.shooter = get_parent()
+	body.global_position = global_position + _aim() * 36.0
+	get_parent().get_parent().add_child(body)
+	return body
 
 
 func _thrust_spear() -> void:
