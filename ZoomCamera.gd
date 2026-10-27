@@ -9,10 +9,20 @@ extends Camera2D
 ##
 ## Press + / - (or numpad + / -) to zoom in and out. The zoom level shows
 ## in the top-left OSD (issue #76, shared with FPS and the level name).
+##
+## Issue #126: in spectator mode (no controlled member — e.g. the AI vs AI
+## duel) the camera does not follow anyone, so it can be panned freely:
+## hold the left mouse button and drag on PC, or drag a finger across the
+## screen on touch devices. Input events consumed by UI (virtual stick,
+## buttons) never reach _unhandled_input, so panning never fights them.
 
 const ZOOM_STEP := 1.25
 const MIN_ZOOM := 0.25
 const MAX_ZOOM := 3.0
+
+
+var _dragging := false
+var _drag_last := Vector2.ZERO
 
 
 func _ready() -> void:
@@ -29,6 +39,10 @@ func _process(_delta: float) -> void:
 		global_position = member.global_position
 
 
+func _is_spectator() -> bool:
+	return _controlled_member() == null
+
+
 func _controlled_member() -> Node2D:
 	for member in get_tree().get_nodes_in_group("player_team"):
 		if member.get("controlled") == true:
@@ -43,6 +57,29 @@ func _unhandled_input(event: InputEvent) -> void:
 				_apply_zoom(ZOOM_STEP)
 			KEY_MINUS, KEY_KP_SUBTRACT:
 				_apply_zoom(1.0 / ZOOM_STEP)
+		return
+	if not _is_spectator():
+		return
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
+		_dragging = event.pressed
+		if _dragging:
+			_drag_last = event.position
+			get_viewport().set_input_as_handled()
+	elif event is InputEventScreenTouch:
+		# Screen-drag panning (issue #126); touches on the virtual stick or
+		# buttons are consumed as GUI input and never arrive here.
+		_dragging = event.pressed
+		if _dragging:
+			_drag_last = event.position
+	elif event is InputEventScreenDrag and _dragging:
+		_pan_by(event.relative)
+	elif event is InputEventMouseMotion and _dragging and Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
+		_pan_by(event.relative)
+
+
+func _pan_by(screen_delta: Vector2) -> void:
+	# Screen pixels -> world units at the current zoom.
+	global_position -= screen_delta / zoom.x
 
 
 func _apply_zoom(factor: float) -> void:
