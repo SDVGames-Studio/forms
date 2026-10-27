@@ -66,10 +66,17 @@ var _visual: ColorRect
 var _dead := false
 var _target: Node2D
 var _cooldown_left := 0.0
+## Issue #137: AI difficulty — 0 = easy, 1 = normal, 2 = hard. Scales
+## aim slew speed and the pause between shots (set by the level
+## configuration menu via GameConfig).
+@export_range(0, 2) var difficulty := 1
 var _flank_slot := 0.0  # Per-instance offset so team members spread out.
 ## Issue #66: current aim (view) angle in radians, like Player.gd.
 var view_angle := 0.0
 const AIM_SPEED := Stats.VIEW_SPEED
+## Issue #137: per-difficulty aim slew and between-shot pause.
+const AIM_SPEED_MULT := [0.5, 1.0, 1.5]
+const FIRE_PAUSE := [2.0, 0.9, 0.0]
 const VIEW_MAX := Stats.VIEW_MAX
 ## Issue #66: the weapon carried by this NPC (created in _ready).
 var _weapon: Node2D
@@ -233,7 +240,7 @@ func _physics_process(delta: float) -> void:
 	# where the NPC looks (positive angle raises the muzzle).
 	var vertical := (_target.global_position.y - global_position.y) * dir
 	var desired_angle := atan2(-vertical, maxf(absf(to_target.x), 1.0))
-	view_angle = move_toward(view_angle, clampf(desired_angle, -VIEW_MAX, VIEW_MAX), AIM_SPEED * delta)
+	view_angle = move_toward(view_angle, clampf(desired_angle, -VIEW_MAX, VIEW_MAX), AIM_SPEED * AIM_SPEED_MULT[difficulty] * delta)
 
 	var direction := 0.0
 	if absf(to_target.x) > 16.0:
@@ -252,9 +259,10 @@ func _physics_process(delta: float) -> void:
 		velocity.y = JUMP_VELOCITY * dir
 
 	# Issue #66: pick the weapon by distance and take a shot when in range.
-	if distance <= ATTACK_RANGE:
+	if distance <= ATTACK_RANGE and _cooldown_left == 0.0:
 		_pick_weapon(distance, absf(_target.global_position.y - global_position.y))
 		_shoot()
+		_cooldown_left = FIRE_PAUSE[difficulty]
 
 	move_and_slide()
 	_climb_on_characters(dir)

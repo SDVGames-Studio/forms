@@ -2,7 +2,8 @@ extends Control
 ## Levels menu for Forms (issue #32).
 ##
 ## Shown when the player presses "New game" in the main menu. Level buttons
-## start the respective level; Back returns to the main menu.
+## start the level configuration menu (issue #137); Back returns to the
+## main menu.
 
 @onready var _level1_button: Button = %Level1Button
 @onready var _level2_button: Button = %Level2Button
@@ -21,15 +22,18 @@ func _ready() -> void:
 
 
 func _on_level1_pressed() -> void:
-	get_tree().change_scene_to_file("res://Level.tscn")
+	GameConfig.level_path = "res://Level.tscn"
+	get_tree().change_scene_to_file("res://LevelConfigMenu.tscn")
 
 
 func _on_level2_pressed() -> void:
-	get_tree().change_scene_to_file("res://Level2.tscn")
+	GameConfig.level_path = "res://Level2.tscn"
+	get_tree().change_scene_to_file("res://LevelConfigMenu.tscn")
 
 
 func _on_level3_pressed() -> void:
-	get_tree().change_scene_to_file("res://Level3.tscn")
+	GameConfig.level_path = "res://Level3.tscn"
+	get_tree().change_scene_to_file("res://LevelConfigMenu.tscn")
 
 
 func _on_back_pressed() -> void:

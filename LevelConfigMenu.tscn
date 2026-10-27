@@ -1,0 +1,107 @@
+[gd_scene load_steps=2 format=3 uid="uid://lvlocfgmenu137"]
+
+[ext_resource type="Script" path="res://LevelConfigMenu.gd" id="1_lvcfg"]
+
+[node name="LevelConfigMenu" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_lvcfg")
+
+[node name="Background" type="ColorRect" parent="."]
+layout_mode = 0
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color(0.09, 0.05, 0.16, 1)
+
+[node name="Menu" type="CenterContainer" parent="."]
+layout_mode = 0
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="Rows" type="VBoxContainer" parent="Menu"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="Title" type="Label" parent="Menu/Rows"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.84, 0.2, 1)
+theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.45)
+theme_override_colors/font_outline_color = Color(0.16, 0.05, 0.1, 1)
+theme_override_constants/shadow_offset_x = 0
+theme_override_constants/shadow_offset_y = 8
+theme_override_constants/outline_size = 14
+theme_override_font_sizes/font_size = 48
+text = "LEVEL SETUP"
+horizontal_alignment = 1
+
+[node name="TeamSizeRow" type="HBoxContainer" parent="Menu/Rows"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="TeamSizeLabel" type="Label" parent="Menu/Rows/TeamSizeRow"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 28
+text = "Your team size"
+
+[node name="TeamSizeSpinBox" type="SpinBox" parent="Menu/Rows/TeamSizeRow"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 28
+min_value = 1.0
+max_value = 3.0
+value = 3.0
+
+[node name="EnemyCountRow" type="HBoxContainer" parent="Menu/Rows"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="EnemyCountLabel" type="Label" parent="Menu/Rows/EnemyCountRow"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 28
+text = "Enemy count"
+
+[node name="EnemyCountSpinBox" type="SpinBox" parent="Menu/Rows/EnemyCountRow"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 28
+min_value = 1.0
+max_value = 3.0
+value = 2.0
+
+[node name="DifficultyRow" type="HBoxContainer" parent="Menu/Rows"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="DifficultyLabel" type="Label" parent="Menu/Rows/DifficultyRow"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 28
+text = "AI difficulty"
+
+[node name="DifficultyOptionButton" type="OptionButton" parent="Menu/Rows/DifficultyRow"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 28
+item_count = 3
+selected = 1
+popup/item_0/text = "Easy"
+popup/item_1/text = "Normal"
+popup/item_1/id = 1
+popup/item_2/text = "Hard"
+popup/item_2/id = 2
+
+[node name="StartButton" type="Button" parent="Menu/Rows"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 32
+text = "START"
+
+[node name="BackButton" type="Button" parent="Menu/Rows"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 32
+text = "Back"
