@@ -211,15 +211,14 @@ func reset_shots() -> void:
 
 
 func _fire(power := 1.0) -> void:
-	# Issue #131: the FIRST shot of the turn locks weapon selection at once.
-	# Previously the lock was only applied on the turn handover (last shot),
-	# so with a quota left (e.g. the shotgun's 2 shots) the weapon could
-	# still be changed — and the new weapon carried its own fresh quota.
+	# Issue #131, reworked in #143: the FIRST shot of the turn locks the
+	# weapon selection — for THIS character only (the constraint is per
+	# character, not per player).
 	var shots_before := 0
 	for used in _shots_used:
 		shots_before += used
 	if shots_before == 0:
-		WeaponInventory.locked = true
+		WeaponInventory.lock_for(parent)
 	_cooldown_left = COOLDOWN
 	_shots_used[clampi(selected_weapon, 0, _shots_used.size() - 1)] += 1
 	# Issue #101: 3-second pause before the next shot of the same turn.

@@ -18,9 +18,30 @@ extends CanvasLayer
 
 var selected_weapon := 0
 
-## Issue #131: true after the first shot of a turn — weapon selection is
-## frozen until the next turn begins (TurnController unlocks it).
-var locked := false
+## Issue #131 (reworked in #143): after the first shot of a turn the
+## weapon selection is frozen — but the one-weapon-per-turn constraint is
+## a CHARACTER's constraint, not the player's. The lock is tracked per
+## character node: a member that already fired keeps its weapon locked
+## until the next player turn, while another controlled member may pick
+## any weapon freely. TurnController unlocks everyone at the start of a
+## fresh player turn.
+var _locked_characters: Dictionary = {}
+
+
+## Issue #143: mark a character as locked to its weapon for the turn.
+func lock_for(character: Node) -> void:
+	if character != null:
+		_locked_characters[character] = true
+
+
+## Issue #143: true while this character's weapon choice is frozen.
+func is_locked_for(character: Node) -> bool:
+	return character != null and _locked_characters.has(character)
+
+
+## Issue #143: start of a fresh player turn — every character unlocked.
+func unlock_all() -> void:
+	_locked_characters.clear()
 
 var _slots: Array = []
 
@@ -158,8 +179,11 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func set_selected(index: int) -> void:
-	# Issue #131: no weapon changes after the first shot of the turn.
-	if locked:
+	# Issue #131, reworked in #143: no weapon changes after the first shot
+	# of the turn — but only for the character that actually fired. The
+	# check uses the currently controlled member, so switching characters
+	# restores free selection for the member that has not fired yet.
+	if is_locked_for(TurnController.active_member):
 		_update_highlight()
 		return
 	selected_weapon = clampi(index, 0, WEAPONS.size() - 1)
