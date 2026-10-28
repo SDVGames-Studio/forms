@@ -77,6 +77,13 @@ const AIM_SPEED := Stats.VIEW_SPEED
 ## Issue #137: per-difficulty aim slew and between-shot pause.
 const AIM_SPEED_MULT := [0.5, 1.0, 1.5]
 const FIRE_PAUSE := [2.0, 0.9, 0.0]
+## Issue #120: grenade blasts are lethal at point-blank — never lob one
+## that would land inside our own blast radius. Below this distance the
+## NPC holds grenade fire (the spear closes the gap instead).
+const GRENADE_MIN_RANGE := 130.0
+## Issue #120: below this health fraction the AI kites — backs away from
+## the target instead of walking deeper into danger, while still shooting.
+const KITE_HEALTH_FRACTION := 0.3
 const VIEW_MAX := Stats.VIEW_MAX
 ## Issue #66: the weapon carried by this NPC (created in _ready).
 var _weapon: Node2D
@@ -252,6 +259,10 @@ func _physics_process(delta: float) -> void:
 		var away: float = global_position.x - other.global_position.x
 		if absf(away) < SEPARATION and absf(global_position.y - other.global_position.y) < 40.0:
 			direction += signf(away) * 0.5
+	# Issue #120: kite at low health — back away from the target instead of
+	# pressing into it, while still shooting from the safety of range.
+	if _wants_retreat(distance):
+		direction = -signf(to_target.x)
 	velocity.x = clampf(direction, -1.0, 1.0) * SPEED
 
 	# Jump when blocked or when the target is clearly above us.
@@ -266,6 +277,14 @@ func _physics_process(delta: float) -> void:
 
 	move_and_slide()
 	_climb_on_characters(dir)
+
+
+## Issue #120: true when this NPC is badly hurt and the target is close
+## enough that pressing the attack is riskier than falling back.
+func _wants_retreat(distance: float) -> bool:
+	if health > int(float(MAX_HEALTH) * KITE_HEALTH_FRACTION):
+		return false
+	return distance < KEEP_DISTANCE + 60.0
 
 
 ## Issue #39 rework: when moving into another character, climb on top of it
@@ -367,7 +386,21 @@ func _shoot() -> void:
 			_weapon.selected_weapon = 2
 		else:
 			return
+	# Issue #120: never lob a grenade that would land inside our own blast
+	# radius — hold fire at point-blank range instead (and switch to the
+	# spear so the next in-range tick closes the gap rather than re-throwing).
+	if _weapon.selected_weapon == 2 and _grenade_unsafe():
+		_weapon.selected_weapon = 3
+		return
 	_weapon.npc_fire()
+
+
+## Issue #120: true when the grenade would land within our own blast
+## radius — point-blank lobs damage us more than the target.
+func _grenade_unsafe() -> bool:
+	if _target == null or not is_instance_valid(_target):
+		return true
+	return global_position.distance_to(_target.global_position) < GRENADE_MIN_RANGE
 
 
 ## Issue #99: true when a living teammate stands inside the corridor a
