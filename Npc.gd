@@ -240,7 +240,9 @@ func _physics_process(delta: float) -> void:
 	# Issue #66: slew the view angle toward the target so the weapon aims
 	# where the NPC looks (positive angle raises the muzzle).
 	var vertical := (_target.global_position.y - global_position.y) * dir
-	var desired_angle := atan2(-vertical, maxf(absf(to_target.x), 1.0))
+	# Issue #147: slew the aim onto the ACTUAL target (not the flank goal)
+	# so the hold-fire gate below can actually converge.
+	var desired_angle := atan2(-vertical, maxf(absf(_target.global_position.x - global_position.x), 1.0))
 	view_angle = move_toward(view_angle, clampf(desired_angle, -VIEW_MAX, VIEW_MAX), AIM_SPEED * AIM_SPEED_MULT[difficulty] * delta)
 
 	var direction := 0.0
@@ -264,12 +266,36 @@ func _physics_process(delta: float) -> void:
 		velocity.y = JUMP_VELOCITY * dir
 
 	# Issue #66: pick the weapon by distance and take a shot when in range.
-	if distance <= ATTACK_RANGE and _cooldown_left == 0.0:
+	# Issue #147: hold fire until we actually face the target and the view
+	# angle has slewed onto it — no more blind flat shots while the aim is
+	# still turning (cooldown stays at 0, so the shot fires as soon as the
+	# aim lines up).
+	if distance <= ATTACK_RANGE and _cooldown_left == 0.0 and _aim_ready():
 		_pick_weapon(distance, absf(_target.global_position.y - global_position.y))
 		_shoot()
 		_cooldown_left = FIRE_PAUSE[difficulty]
 
 	move_and_slide()
+
+
+## Issue #147: true when the shot direction matches the target — the NPC
+## is turned toward it and the view angle is within tolerance of the
+## direct aim angle at the target.
+const AIM_TOLERANCE := 0.12  # rad
+
+func _aim_ready() -> bool:
+	if _target == null or not is_instance_valid(_target):
+		return false
+	var to_target := _target.global_position - global_position
+	# Facing: never fire away from the target.
+	var facing: float = _weapon._facing if _weapon != null else 1.0
+	if signf(to_target.x) != 0.0 and signf(facing) != signf(to_target.x):
+		return false
+	# Aim: the slewed view angle must be on the direct line to the target.
+	var dir := 1.0 if (center_line_y <= 0.0 or global_position.y < center_line_y) else -1.0
+	var desired := atan2(-(to_target.y * dir), maxf(absf(to_target.x), 1.0))
+	return absf(view_angle - clampf(desired, -VIEW_MAX, VIEW_MAX)) <= AIM_TOLERANCE
+
 
 
 ## Issue #120: true when this NPC is badly hurt and the target is close
