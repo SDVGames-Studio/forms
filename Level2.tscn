@@ -13,8 +13,9 @@
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_ground"]
 size = Vector2(2304, 120)
 
-[sub_resource type="CircleShape2D" id="CircleShape2D_shape"]
-radius = 32
+[sub_resource type="CapsuleShape2D" id="CircleShape2D_shape"]
+radius = 24
+height = 64
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_platform"]
 size = Vector2(260, 40)
@@ -22,7 +23,9 @@ size = Vector2(260, 40)
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_finish"]
 size = Vector2(48, 128)
 
-[sub_resource type="CircleShape2D" id="CircleShape2D_npc"]
+[sub_resource type="CapsuleShape2D" id="CircleShape2D_npc"]
+radius = 24
+height = 64
 
 [node name="Level2" type="Node2D" groups=["level"]]
 script = ExtResource("9_lvlcfg")

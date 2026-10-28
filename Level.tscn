@@ -13,8 +13,9 @@
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_shape"]
 size = Vector2(1152, 120)
 
-[sub_resource type="CircleShape2D" id="CircleShape2D_shape"]
-radius = 32
+[sub_resource type="CapsuleShape2D" id="CircleShape2D_shape"]
+radius = 24
+height = 64
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_finish"]
 size = Vector2(48, 128)

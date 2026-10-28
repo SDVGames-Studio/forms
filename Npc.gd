@@ -121,9 +121,13 @@ func _ready() -> void:
 	var members := get_tree().get_nodes_in_group("enemy_team")
 	_flank_slot = float(members.find(self)) - (float(members.size() - 1) / 2.0)
 	var shape := CollisionShape2D.new()
-	var circle := CircleShape2D.new()
-	circle.radius = 32.0
-	shape.shape = circle
+	# Issue #154: capsule instead of a circle — a round figure wedges into
+	# the notch between the ground and another figure/wall and gets stuck;
+	# the flat capsule sides slide along obstacles instead.
+	var capsule := CapsuleShape2D.new()
+	capsule.radius = 24.0
+	capsule.height = 64.0
+	shape.shape = capsule
 	add_child(shape)
 
 	_visual = ColorRect.new()
