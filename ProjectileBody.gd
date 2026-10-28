@@ -101,4 +101,43 @@ func _explode() -> void:
 		if body and body.has_method("take_damage") \
 				and body.global_position.distance_to(global_position) <= blast_radius:
 			body.take_damage(damage)
+	_spawn_blast_visual()
 	queue_free()
+
+
+## Issue #150: brief expanding ring showing the blast radius at the
+## moment of explosion. Drawn in code — no assets.
+func _spawn_blast_visual() -> void:
+	if blast_radius <= 0.0:
+		return
+	var ring := BlastRing.new()
+	ring.radius = blast_radius
+	ring.position = global_position
+	ring.z_index = 50
+	get_parent().add_child(ring)
+
+
+class BlastRing:
+	extends Node2D
+
+	const LIFETIME := 0.4
+
+	var radius := 100.0
+	var _age := 0.0
+
+	func _process(delta: float) -> void:
+		_age += delta
+		if _age >= LIFETIME:
+			queue_free()
+			return
+		queue_redraw()
+
+	func _draw() -> void:
+		var t := _age / LIFETIME
+		var alpha := 1.0 - t
+		var r := radius * (0.6 + 0.4 * t)
+		# Filled flash fading out fast.
+		draw_circle(Vector2.ZERO, r, Color(1.0, 0.6, 0.2, 0.35 * alpha))
+		# Bright expanding outline.
+		draw_arc(Vector2.ZERO, r, 0.0, TAU, 48,
+				Color(1.0, 0.8, 0.3, alpha), 3.0, true)
