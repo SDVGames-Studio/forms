@@ -69,7 +69,8 @@ func _ready() -> void:
 	if not controlled:
 		call_deferred("_claim_control_if_none")
 	# Issue #39 rework: characters collide with each other but never push —
-	# walking into another figure steps up on top of it (see _physics_process).
+	# a walking figure is simply BLOCKED by another figure (issue #144:
+	# one character must not move or displace another during its move).
 	collision_layer = 8
 	collision_mask = 1 | 2 | 8
 	_apply_team_color()
@@ -175,14 +176,7 @@ func _update_bar() -> void:
 	_bar_fill.color = Color(0.75 - 0.5 * ratio, 0.25 + 0.5 * ratio, 0.3, 1)
 
 
-var _climb_tween: Tween
-
-
 func _physics_process(delta: float) -> void:
-	# Issue #39 rework: while a climb animation plays, hold position.
-	if _climb_tween != null and _climb_tween.is_valid():
-		velocity = Vector2.ZERO
-		return
 	# Issue #48 rework: pick the gravity side from the position relative to
 	# the central line and orient the floor accordingly (upside-down below).
 	var dir := 1.0
@@ -215,30 +209,4 @@ func _physics_process(delta: float) -> void:
 		velocity.x = 0.0
 
 	move_and_slide()
-	_climb_on_characters(dir)
 
-
-## Issue #39 rework: when walking into another character, climb on top of it
-## instead of being blocked — figures can step onto each other's heads.
-func _climb_on_characters(dir: float) -> void:
-	for i in get_slide_collision_count():
-		var col := get_slide_collision(i)
-		var other := col.get_collider() as CharacterBody2D
-		if other == null or other == self:
-			continue
-		if not (other.is_in_group("player_team") or other.is_in_group("enemy_team")):
-			continue
-		# Only a frontal hit (normal pointing back at us) while grounded
-		# and actually moving toward the other figure.
-		if absf(col.get_normal().x) < 0.7 or not is_on_floor():
-			continue
-		if absf(velocity.x) > 1.0 and signf(col.get_normal().x) != -signf(velocity.x):
-			continue
-		# Both figures are 64 px circles — stack the centers 64 px apart,
-		# offset along the current gravity direction (supports level 3).
-		# Smooth climb: animate up over a fraction of a second instead of
-		# snapping instantly.
-		velocity = Vector2.ZERO
-		_climb_tween = create_tween().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
-		_climb_tween.tween_property(self, "global_position", other.global_position - Vector2(0.0, 64.0) * dir, 0.2)
-		return

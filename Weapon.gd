@@ -218,7 +218,8 @@ func _fire(power := 1.0) -> void:
 	for used in _shots_used:
 		shots_before += used
 	if shots_before == 0:
-		WeaponInventory.lock_for(parent)
+		# Fix (#144 run): `parent` was out of scope here — use get_parent().
+		WeaponInventory.lock_for(get_parent())
 	_cooldown_left = COOLDOWN
 	_shots_used[clampi(selected_weapon, 0, _shots_used.size() - 1)] += 1
 	# Issue #101: 3-second pause before the next shot of the same turn.
