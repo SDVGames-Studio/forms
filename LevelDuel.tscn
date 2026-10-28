@@ -7,8 +7,9 @@
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_ground"]
 size = Vector2(1152, 120)
 
-[sub_resource type="CircleShape2D" id="CircleShape2D_body"]
-radius = 32
+[sub_resource type="CapsuleShape2D" id="CircleShape2D_body"]
+radius = 24
+height = 64
 
 [node name="LevelDuel" type="Node2D" groups=["level"]]
 
