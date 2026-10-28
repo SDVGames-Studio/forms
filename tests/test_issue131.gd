@@ -1,6 +1,7 @@
 extends Node
-## Regression check for issue #131: weapon selection is locked after the
-## first shot of a turn and unlocked again at the start of the next turn.
+## Regression check for issue #131 (reworked per-character in #143):
+## weapon selection is locked after the first shot of a turn and unlocked
+## again at the start of the next turn.
 ##
 ## Run headless: godot --headless res://tests/test_issue131.tscn
 ## Exit code 0 = pass.
@@ -10,8 +11,12 @@ func _ready() -> void:
 	var inv := WeaponInventory
 	var failures := 0
 
-	# Fresh state.
-	inv.locked = false
+	var character := Node2D.new()
+	add_child(character)
+	TurnController.active_member = character
+
+	# Fresh state: everyone unlocked, selection works.
+	inv.unlock_all()
 	inv.selected_weapon = 0
 
 	# Unlocked: selection works.
@@ -20,8 +25,8 @@ func _ready() -> void:
 		printerr("FAIL: selection change ignored while unlocked")
 		failures += 1
 
-	# After the first shot (TurnController.notify_shot locks the inventory).
-	inv.locked = true
+	# After the first shot (Weapon._fire locks THIS character).
+	inv.lock_for(character)
 	inv.set_selected(0)
 	if inv.selected_weapon != 2:
 		printerr("FAIL: selection changed while locked")
@@ -30,13 +35,14 @@ func _ready() -> void:
 		printerr("FAIL: highlight desynced after locked selection attempt")
 		failures += 1
 
-	# New turn: TurnController._begin_turn path unlocks via locked=false.
-	inv.locked = false
+	# New turn: TurnController._begin_turn path unlocks via unlock_all().
+	inv.unlock_all()
 	inv.set_selected(0)
 	if inv.selected_weapon != 0:
 		printerr("FAIL: selection still frozen after unlock")
 		failures += 1
 
+	TurnController.active_member = null
 	if failures == 0:
 		print("ISSUE131 TEST PASS")
 		get_tree().quit(0)
