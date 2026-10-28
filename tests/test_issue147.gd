@@ -43,6 +43,9 @@ func _ready() -> void:
 	shooter.add_to_group("player_team")
 	target.remove_from_group("enemy_team")
 	target.add_to_group("enemy_team")
+	# Normally _physics_process picks the target each frame; point at it
+	# directly so the gate can be probed without physics.
+	shooter._target = target
 
 	# Assign the acquired target explicitly: _aim_ready() judges against
 	# shooter._target, which is only populated by in-game targeting frames.
