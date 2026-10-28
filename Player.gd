@@ -73,6 +73,10 @@ func _ready() -> void:
 	# one character must not move or displace another during its move).
 	collision_layer = 8
 	collision_mask = 1 | 2 | 8
+	# Issue #155: a character must never be carried by another character —
+	# only terrain (layer 1) acts as a platform, so a walking figure cannot
+	# drag a rider standing on it (characters still block each other).
+	platform_floor_layers = 1
 	_apply_team_color()
 	_build_health_bar()
 	set_controlled(controlled)

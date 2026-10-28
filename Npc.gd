@@ -111,6 +111,9 @@ func _ready() -> void:
 	# displace another during its move).
 	collision_layer = 2
 	collision_mask = 1 | 2 | 8
+	# Issue #155: characters are never platforms for each other (see
+	# Player.gd) — a walking figure cannot carry an enemy standing on it.
+	platform_floor_layers = 1
 	if gravity_dir < 0.0:
 		up_direction = Vector2.DOWN
 	if team == "enemy":
