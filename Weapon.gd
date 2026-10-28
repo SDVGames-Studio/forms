@@ -58,6 +58,10 @@ var _shot_delay_left := 0.0
 var _charging := false
 var _charge_time := 0.0
 var _charge_bar: ColorRect
+## Issue #133 (rework): the melee spear uses the HELD spear itself — no
+## separate projectile rectangle is spawned. _thrust_t animates a quick
+## forward lunge along the aim axis followed by a slow return to the hand.
+var _thrust_t := -1.0
 
 ## Issue #99: when an NPC fires a grenade, the weapon lobs it ballistically
 ## at this target (cleared after one shot). Player grenades keep the
@@ -168,6 +172,18 @@ func _physics_process(delta: float) -> void:
 		# axis instead of staying parallel to the ground.
 		_held.pivot_offset = style["size"] / 2.0
 		_held.rotation = aim.angle()
+		# Issue #133 (rework): thrust offset along the aim axis — fast out,
+		# slow back. 0.12 s lunge to SPEAR_RANGE, then 0.5 s return.
+		var thrust := 0.0
+		if _thrust_t >= 0.0:
+			_thrust_t += delta
+			if _thrust_t <= 0.12:
+				thrust = SPEAR_RANGE * (_thrust_t / 0.12)
+			elif _thrust_t <= 0.62:
+				thrust = SPEAR_RANGE * (1.0 - (_thrust_t - 0.12) / 0.5)
+			else:
+				_thrust_t = -1.0
+		_held.position += aim * thrust
 
 
 ## Issue #68: draw the currently selected weapon in front of the wielder.
@@ -322,7 +338,6 @@ func _thrust_spear() -> void:
 			best_forward = forward
 	if best:
 		best.take_damage(SPEAR_DAMAGE)
-	# Visual thrust: a short-lived rectangle in front of the wielder.
-	_spawn_projectile(Projectile.Type.PELLET,
-		_aim() * (SPEAR_RANGE / 0.1), 0, 0.1,
-		Vector2(SPEAR_RANGE, 6), Color(0.8, 0.8, 0.9, 0.8))
+	# Issue #133 (rework): no extra spear projectile is spawned — the held
+	# spear itself lunges along the aim axis and slowly moves back.
+	_thrust_t = 0.0
