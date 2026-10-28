@@ -125,13 +125,25 @@ func set_controlled(value: bool) -> void:
 
 
 ## Issue #6: apply damage and update the health bar.
+## Issue #151: health 0 means DEAD — flagged immediately so win checks
+## stop counting this figure before its death animation frees the node.
+var _dead := false
+
+
 func take_damage(amount: int) -> void:
+	if _dead:
+		return
 	health = clampi(health - amount, 0, MAX_HEALTH)
+	if health == 0:
+		_dead = true
 	health_changed.emit(health, MAX_HEALTH)
 	_update_bar()
 
 
 func heal(amount: int) -> void:
+	# Issue #151: dead characters cannot be healed back.
+	if _dead:
+		return
 	health = clampi(health + amount, 0, MAX_HEALTH)
 	health_changed.emit(health, MAX_HEALTH)
 	_update_bar()

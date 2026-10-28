@@ -321,9 +321,15 @@ func _check_win() -> void:
 	active_team = ""
 	active_member = null
 	if _label != null:
-		var winner := TEAM_ENEMY if players == 0 else TEAM_PLAYER
-		_label.text = "%s WINS!" % TEAM_NAMES[winner]
-		_label.add_theme_color_override("font_color", TEAM_COLORS[winner])
+		# Issue #151: mutual destruction is an explicit DRAW, not a phantom
+		# winner for whichever team happens to be checked first.
+		if players == 0 and enemies == 0:
+			_label.text = "DRAW!"
+			_label.add_theme_color_override("font_color", Color(0.8, 0.8, 0.8, 1.0))
+		else:
+			var winner := TEAM_ENEMY if players == 0 else TEAM_PLAYER
+			_label.text = "%s WINS!" % TEAM_NAMES[winner]
+			_label.add_theme_color_override("font_color", TEAM_COLORS[winner])
 	if _hint_label != null:
 		_hint_label.text = ""
 
