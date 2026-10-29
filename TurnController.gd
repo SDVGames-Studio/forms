@@ -16,8 +16,8 @@ const ROLL_STEP_TIME := 0.12
 const TEAM_PLAYER := "player"
 const TEAM_ENEMY := "enemy"
 const TEAM_NAMES := {
-	TEAM_PLAYER: "PLAYER TEAM",
-	TEAM_ENEMY: "ENEMY TEAM",
+	TEAM_PLAYER: "YELLOW TEAM",
+	TEAM_ENEMY: "PINK TEAM",
 }
 ## Body colors match the scene-authored team tints (issue #60).
 const TEAM_COLORS := {
@@ -370,7 +370,9 @@ func _update_label() -> void:
 				_hint_label.text = HINT_ROLL
 		return
 	var team_name: String = TEAM_NAMES[active_team]
-	_label.text = "%s — %d s" % [team_name, ceili(_turn_left)]
+	# Issue #165: the banner names the team by its exact color and is
+	# painted in that team color.
+	_label.text = "%s TURN — %d s" % [team_name, ceili(_turn_left)]
 	_label.add_theme_color_override("font_color", TEAM_COLORS[active_team])
 	_update_hint()
 
