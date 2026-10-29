@@ -1,20 +1,13 @@
 extends Node
 ## Issue #33: switches which member of the player's team is controlled.
 ##
-## N ("switch_next") picks the next team member, P ("switch_prev") the
-## previous one. The team is every live node in the "player_team" group;
-## switching moves input control (and the camera) to the new member.
+## Issue #170 rework: direct N/P switching is GONE — switching is now the
+## Switch TOOL in the ToolInventory (once per turn). This autoload keeps
+## only the control hand-over logic (used by the Switch tool).
 
 func _ready() -> void:
 	# Give control to the first team member once the scene is up.
 	call_deferred("set_active_index", 0)
-
-
-func _unhandled_input(event: InputEvent) -> void:
-	if event.is_action_pressed("switch_next"):
-		_cycle(1)
-	elif event.is_action_pressed("switch_prev"):
-		_cycle(-1)
 
 
 func _team() -> Array:
@@ -29,19 +22,15 @@ func _active_index() -> int:
 	return -1
 
 
-func _cycle(step: int) -> void:
-	# Issue #104: once the active member has moved or aimed this turn,
-	# character switching is blocked until the turn ends.
-	if TurnController.is_switch_locked():
-		return
+## Issue #170: the Switch tool hands control to the NEXT team member.
+func switch_next() -> void:
 	var members := _team()
 	if members.is_empty():
 		return
 	var index := _active_index()
 	if index == -1:
 		index = 0
-	index = (index + step + members.size()) % members.size()
-	set_active_index(index)
+	set_active_index((index + 1) % members.size())
 
 
 func set_active_index(index: int) -> void:

@@ -79,7 +79,7 @@ var _hint_label: Label
 var _roll_tween: Tween
 ## Issue #87: one-line hint of what the player should do right now.
 const HINT_ROLL := "Rolling for the first team..."
-const HINT_PLAYER := "Move: A/D or arrows • Jump: Space • Aim: W/S or Up/Down • Shoot: F • Character: N/P • Weapon: 1-4 • Skip turn: Tab"
+const HINT_PLAYER := "Move: A/D or arrows • Jump: Space • Aim: W/S or Up/Down • Shoot: F • Tool: 5-7 • Weapon: 1-4 • Skip turn: Tab"
 const HINT_ENEMY := "Enemy turn — wait for your move..."
 const HINT_SWITCH := "Shot fired — waiting for the projectiles..."
 
@@ -274,6 +274,12 @@ func _begin_turn(team: String) -> void:
 	# weapon selection (for every character).
 	if team == TEAM_PLAYER:
 		WeaponInventory.unlock_all()
+		# Issue #170: a fresh player turn refills the tool quota and ends
+		# every shield from the previous turn ("until its next turn begins").
+		ToolInventory.reset_turn()
+		for member in _alive("player_team"):
+			if member.has_method("set_shielded"):
+				member.set_shielded(false)
 	_turn_left = TURN_TIME
 	var group := "player_team" if team == TEAM_PLAYER else "enemy_team"
 	var members := _alive(group)
