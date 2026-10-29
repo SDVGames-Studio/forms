@@ -38,6 +38,9 @@ const BAR_HEIGHT := Stats.BAR_HEIGHT
 ## scene-authored body visuals are tinted with it in _ready.
 @export var team_color := Color(1, 0.84, 0.2, 1)
 
+## Issue #169: figure body shape: square, circle, triangle, star or ellipse.
+@export var team_shape := "square"
+
 var health: int = MAX_HEALTH
 
 ## Issue #67: character's view (aim) angle in radians, 0 = horizontal.
@@ -78,8 +81,21 @@ func _ready() -> void:
 	# drag a rider standing on it (characters still block each other).
 	platform_floor_layers = 1
 	_apply_team_color()
+	_apply_team_shape()
 	_build_health_bar()
 	set_controlled(controlled)
+
+
+## Issue #169: apply color, shape and name customisation after the fact
+## (called by GameConfig.apply once the level trimmed the team).
+func apply_team_setup() -> void:
+	display_name = GameConfig.member_names[mini(
+		get_tree().get_nodes_in_group("player_team").find(self),
+		GameConfig.member_names.size() - 1)]
+	team_color = GameConfig.team_color
+	team_shape = GameConfig.team_shape
+	_apply_team_color()
+	_apply_team_shape()
 
 
 ## Issue #60: tint every ColorRect visual authored in the scene (captured
@@ -89,6 +105,29 @@ func _apply_team_color() -> void:
 		var rect := child as ColorRect
 		if rect != null:
 			rect.color = team_color
+
+
+## Issue #169: non-square body shapes replace the square ColorRect visual
+## with a ShapeVisual drawing the picked polygon.
+func _apply_team_shape() -> void:
+	if team_shape == "square":
+		return
+	for child in get_children():
+		var rect := child as ColorRect
+		if rect != null:
+			rect.visible = false
+			var visual_name := String(rect.name) + "Shape"
+			if get_node_or_null(NodePath(visual_name)) != null:
+				continue
+			var visual: Control = load("res://scripts/ShapeVisual.gd").new()
+			visual.name = String(rect.name) + "Shape"
+			for anchor in ["anchor_left", "anchor_top", "anchor_right", "anchor_bottom"]:
+				visual.set(anchor, rect.get(anchor))
+			visual.position = rect.position
+			visual.size = rect.size
+			visual.set_shape(team_shape)
+			visual.set_shape_color(team_color)
+			add_child(visual)
 
 
 ## Issue #33: if no team member ended up controlled (fresh scene), the
