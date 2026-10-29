@@ -43,6 +43,12 @@ const BAR_HEIGHT := Stats.BAR_HEIGHT
 
 var health: int = MAX_HEALTH
 
+## Issue #170: energy shield — while true the figure takes no damage.
+## Set by the Shield tool; TurnController clears it at the start of the
+## team's next turn ("defends until its next turn begins").
+var shielded := false
+var _shield_rect: ColorRect
+
 ## Issue #67: character's view (aim) angle in radians, 0 = horizontal.
 ## Positive raises the view, negative lowers it. Controlled with the
 ## view_up/view_down actions (W/S and Arrow Up/Down).
@@ -103,7 +109,7 @@ func apply_team_setup() -> void:
 func _apply_team_color() -> void:
 	for child in get_children():
 		var rect := child as ColorRect
-		if rect != null:
+		if rect != null and rect.name != "Shield":
 			rect.color = team_color
 
 
@@ -176,6 +182,9 @@ var _dead := false
 func take_damage(amount: int) -> void:
 	if _dead:
 		return
+	# Issue #170: the energy shield blocks all damage until next turn.
+	if shielded:
+		return
 	health = clampi(health - amount, 0, MAX_HEALTH)
 	if health == 0:
 		_dead = true
@@ -190,6 +199,23 @@ func heal(amount: int) -> void:
 	health = clampi(health + amount, 0, MAX_HEALTH)
 	health_changed.emit(health, MAX_HEALTH)
 	_update_bar()
+
+
+## Issue #170: toggle the energy shield (and its visual bubble).
+func set_shielded(value: bool) -> void:
+	shielded = value
+	if shielded and _shield_rect == null:
+		_shield_rect = ColorRect.new()
+		_shield_rect.name = "Shield"
+		_shield_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_shield_rect.offset_left = -BAR_WIDTH / 2.0 - 4.0
+		_shield_rect.offset_top = -BAR_HEIGHT - 40.0
+		_shield_rect.offset_right = BAR_WIDTH / 2.0 + 4.0
+		_shield_rect.offset_bottom = BAR_HEIGHT + 16.0
+		_shield_rect.color = Color(0.25, 0.4, 0.95, 0.35)
+		add_child(_shield_rect)
+	if _shield_rect != null:
+		_shield_rect.visible = shielded
 
 
 # Small bar above the player, built in code like the other visuals.
