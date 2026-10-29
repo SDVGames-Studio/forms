@@ -5,7 +5,7 @@ extends Node
 ##   - a player character that reaches 0 HP is dead (_dead flag) and no
 ##     longer counts toward its team even before the death animation frees
 ##     the node (previously players never died at all);
-##   - wiping the player team ends the game with "ENEMY TEAM WINS!";
+##   - wiping the player team ends the game with "PINK TEAM WINS!";
 ##   - mutual destruction ends in an explicit "DRAW!" instead of a
 ##     phantom winner;
 ##   - living members of both teams keep the game running.
@@ -41,8 +41,8 @@ func _ready() -> void:
 		failures.append("living enemy must count as alive")
 	tc._check_win()
 	if not tc.game_over or tc._label == null \
-			or tc._label.text != "ENEMY TEAM WINS!":
-		failures.append("wiped player team must end with ENEMY TEAM WINS!")
+			or tc._label.text != "PINK TEAM WINS!":
+		failures.append("wiped player team must end with PINK TEAM WINS!")
 
 	# Mutual destruction -> DRAW, not a phantom winner.
 	tc.game_over = false
