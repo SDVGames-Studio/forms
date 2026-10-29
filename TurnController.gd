@@ -20,10 +20,25 @@ const TEAM_NAMES := {
 	TEAM_ENEMY: "PINK TEAM",
 }
 ## Body colors match the scene-authored team tints (issue #60).
+## FALLBACK ONLY — see _team_color(): the banner must use the
+## scene-authored team_color of the actual figures (issue #167).
 const TEAM_COLORS := {
 	TEAM_PLAYER: Color(1.0, 0.84, 0.2, 1.0),
 	TEAM_ENEMY: Color(0.75, 0.2, 0.45, 1.0),
 }
+## Issue #167: palette used to NAME a team from its scene-authored
+## team_color — a level may tint its teams green/blue/red/…, and the
+## banner must say that color, never a hard-coded one.
+const COLOR_NAMES := [
+	["YELLOW", Color(1.0, 0.84, 0.2)],
+	["PINK", Color(0.75, 0.2, 0.45)],
+	["GREEN", Color(0.22, 0.7, 0.3)],
+	["BLUE", Color(0.2, 0.5, 0.95)],
+	["RED", Color(0.85, 0.2, 0.2)],
+	["PURPLE", Color(0.6, 0.25, 0.65)],
+	["ORANGE", Color(0.9, 0.5, 0.15)],
+	["CYAN", Color(0.2, 0.7, 0.95)],
+]
 
 ## Team whose turn it is ("" between turns / outside levels).
 var active_team := ""
@@ -199,7 +214,7 @@ func _show_roll(team: String) -> void:
 	if _label == null or active_team != "":
 		return
 	_label.text = "PICKING FIRST TEAM..."
-	_label.add_theme_color_override("font_color", TEAM_COLORS[team])
+	_label.add_theme_color_override("font_color", _team_color(team))
 
 
 func _process_watchdog(delta: float) -> void:
@@ -312,6 +327,34 @@ func _alive(group: String) -> Array:
 	return result
 
 
+## Issue #167: the DISPLAYED team color is the scene-authored team_color
+## of the team's first alive figure; the hard-coded constant is only a
+## fallback when nobody is alive (or a figure has no team_color).
+func _team_color(team: String) -> Color:
+	var group := "player_team" if team == TEAM_PLAYER else "enemy_team"
+	for member in _alive(group):
+		var c = member.get("team_color")
+		if c is Color:
+			return c
+	return TEAM_COLORS[team]
+
+
+## Issue #167: the banner must name the team by the color its figures are
+## actually painted with, not by a hard-coded level-independent name —
+## a green team must never be announced as "PINK TEAM".
+func _team_name(team: String) -> String:
+	var c := _team_color(team)
+	var best: String = TEAM_NAMES[team]
+	var best_d := INF
+	for entry in COLOR_NAMES:
+		var pc: Color = entry[1]
+		var d: float = pow(c.r - pc.r, 2.0) + pow(c.g - pc.g, 2.0) + pow(c.b - pc.b, 2.0)
+		if d < best_d:
+			best_d = d
+			best = "%s TEAM" % entry[0]
+	return best
+
+
 func _check_win() -> void:
 	var players := _alive("player_team").size()
 	var enemies := _alive("enemy_team").size()
@@ -328,8 +371,8 @@ func _check_win() -> void:
 			_label.add_theme_color_override("font_color", Color(0.8, 0.8, 0.8, 1.0))
 		else:
 			var winner := TEAM_ENEMY if players == 0 else TEAM_PLAYER
-			_label.text = "%s WINS!" % TEAM_NAMES[winner]
-			_label.add_theme_color_override("font_color", TEAM_COLORS[winner])
+			_label.text = "%s WINS!" % _team_name(winner)
+			_label.add_theme_color_override("font_color", _team_color(winner))
 	if _hint_label != null:
 		_hint_label.text = ""
 
@@ -369,11 +412,11 @@ func _update_label() -> void:
 			if _hint_label != null:
 				_hint_label.text = HINT_ROLL
 		return
-	var team_name: String = TEAM_NAMES[active_team]
-	# Issue #165: the banner names the team by its exact color and is
-	# painted in that team color.
+	var team_name: String = _team_name(active_team)
+	# Issue #165/#167: the banner names the team by its actual scene-
+	# authored color and is painted in that team color.
 	_label.text = "%s TURN — %d s" % [team_name, ceili(_turn_left)]
-	_label.add_theme_color_override("font_color", TEAM_COLORS[active_team])
+	_label.add_theme_color_override("font_color", _team_color(active_team))
 	_update_hint()
 
 
