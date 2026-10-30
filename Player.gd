@@ -109,7 +109,7 @@ func apply_team_setup() -> void:
 func _apply_team_color() -> void:
 	for child in get_children():
 		var rect := child as ColorRect
-		if rect != null and rect.name != "Shield":
+		if rect != null and rect.name != "Shield" and rect.name != "HealthBarBackground":
 			rect.color = team_color
 
 
@@ -120,7 +120,9 @@ func _apply_team_shape() -> void:
 		return
 	for child in get_children():
 		var rect := child as ColorRect
-		if rect != null:
+		# Issue #178: the health bar background must stay a bar — converting
+		# it drew a second body shape over each figure.
+		if rect != null and rect.name != "HealthBarBackground":
 			rect.visible = false
 			var visual_name := String(rect.name) + "Shape"
 			if get_node_or_null(NodePath(visual_name)) != null:
@@ -231,6 +233,8 @@ func _build_health_bar() -> void:
 	add_child(name_label)
 
 	var background := ColorRect.new()
+	# Issue #178: named so the team shape/color passes skip it.
+	background.name = "HealthBarBackground"
 	background.offset_left = -BAR_WIDTH / 2.0
 	background.offset_top = -44.0
 	background.offset_right = BAR_WIDTH / 2.0
