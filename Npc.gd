@@ -224,7 +224,14 @@ func _physics_process(delta: float) -> void:
 
 	# Issue #65/#121: only the active character of the team on turn may
 	# act — regardless of which team that is, so AI vs AI duels work.
-	if TurnController.game_over or TurnController.active_member != self:
+	# Issue #183: the team check is explicit — an NPC must never act while
+	# the OPPONENT's turn is active, even if a stale/lost active_member
+	# still points at it (that desync let the computer move and shoot
+	# during the player's move).
+	var my_team: String = TurnController.TEAM_PLAYER \
+			if is_in_group("player_team") else TurnController.TEAM_ENEMY
+	if TurnController.game_over or TurnController.active_team != my_team \
+			or TurnController.active_member != self:
 		velocity.x = 0.0
 		move_and_slide()
 		return
