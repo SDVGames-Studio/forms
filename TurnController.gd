@@ -8,6 +8,8 @@ extends Node
 ## ends the turn (after a short follow-up delay), as does the timer or the
 ## active character dying. The game runs until only one team is alive.
 
+## Issue #192: default fallback; the configured value lives in
+## GameConfig.turn_time (level configuration menu).
 const TURN_TIME := 30.0
 const AFTER_SHOT_DELAY := 1.5
 const ROLL_STEPS := 10
@@ -361,7 +363,7 @@ func _begin_turn(team: String) -> void:
 		for member in members:
 			if member.has_method("set_shielded"):
 				member.set_shielded(false)
-	_turn_left = TURN_TIME
+	_turn_left = _turn_duration()
 	# Issue #187: drop the previous turn's active member before picking.
 	# Without this, an enemy NPC left in active_member from the enemy turn
 	# makes the "no member is controlled" fallback below never fire, so a
@@ -424,6 +426,12 @@ func _alive(group: String) -> Array:
 ## Issue #167: the DISPLAYED team color is the scene-authored team_color
 ## of the team's first alive figure; the hard-coded constant is only a
 ## fallback when nobody is alive (or a figure has no team_color).
+## Issue #192: turn time comes from the level configuration (GameConfig);
+## fall back to the built-in default when it is unset or invalid.
+func _turn_duration() -> float:
+	var t: float = GameConfig.turn_time
+	return TURN_TIME if t <= 0.0 else t
+
 func _team_color(team: String) -> Color:
 	for member in _alive("player_team") + _alive("enemy_team"):
 		if team_id_of(member) == team:

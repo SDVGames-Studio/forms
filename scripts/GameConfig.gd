@@ -19,6 +19,10 @@ static var enemy_count := 2
 ## AI difficulty: 0 = easy, 1 = normal, 2 = hard.
 static var difficulty := 1
 
+## Issue #192: per-turn time limit in seconds, set in the level
+## configuration menu and read by TurnController when a turn starts.
+static var turn_time := 30.0
+
 ## Issue #169: player team customisation, edited in the team menu and
 ## persisted to user://team.cfg.
 
