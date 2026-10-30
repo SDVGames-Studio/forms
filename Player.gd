@@ -188,11 +188,42 @@ func take_damage(amount: int) -> void:
 	if shielded:
 		return
 	health = clampi(health - amount, 0, MAX_HEALTH)
+	_hit_flash()
 	if health == 0:
 		_dead = true
 		_die()
 	health_changed.emit(health, MAX_HEALTH)
 	_update_bar()
+
+
+## Issue #186: player-team characters flash on damage exactly like NPCs
+## (Npc.take_damage) — blast visuals must not differ between teams.
+func _hit_flash() -> void:
+	var visual: Node = null
+	for child in get_children():
+		var rect := child as ColorRect
+		if rect != null and rect.name != "Shield" \
+				and rect.name != "HealthBarBackground" and rect.visible:
+			visual = rect
+			break
+		var shape := child as Node
+		if shape != null and shape.name.ends_with("Shape") and shape.visible:
+			visual = shape
+			break
+	if visual == null:
+		return
+	if visual is ColorRect:
+		visual.color = Color(1.0, 0.6, 0.7, 1)
+		get_tree().create_timer(0.1).timeout.connect(
+			func() -> void:
+				if is_instance_valid(visual):
+					visual.color = team_color)
+	else:
+		visual.set_shape_color(Color(1.0, 0.6, 0.7, 1))
+		get_tree().create_timer(0.1).timeout.connect(
+			func() -> void:
+				if is_instance_valid(visual):
+					visual.set_shape_color(team_color))
 
 
 ## Issue #181: a player-team member that reaches 0 HP must DISAPPEAR like
