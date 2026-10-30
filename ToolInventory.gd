@@ -91,7 +91,7 @@ func use_tool(tool: int) -> bool:
 		return false
 	if not _is_in_level():
 		return false
-	if TurnController.active_team != TurnController.TEAM_PLAYER or _switching_or_over():
+	if not TurnController.is_player_team(TurnController.active_team) or _switching_or_over():
 		_update_highlight()
 		return false
 	var member: Node = TurnController.active_member

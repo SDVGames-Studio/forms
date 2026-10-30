@@ -228,8 +228,7 @@ func _physics_process(delta: float) -> void:
 	# the OPPONENT's turn is active, even if a stale/lost active_member
 	# still points at it (that desync let the computer move and shoot
 	# during the player's move).
-	var my_team: String = TurnController.TEAM_PLAYER \
-			if is_in_group("player_team") else TurnController.TEAM_ENEMY
+	var my_team: String = TurnController.team_id_of(self)
 	if TurnController.game_over or TurnController.active_team != my_team \
 			or TurnController.active_member != self:
 		velocity.x = 0.0

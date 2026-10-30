@@ -49,6 +49,16 @@ var game_over := false
 
 var _level: Node = null
 var _turn_left := 0.0
+## Issue #191: multi-team turn order. A team id is "player" for the player
+## team; when the level has exactly ONE AI team it keeps the legacy id
+## "enemy", otherwise each AI team color gets its own "enemy:<color>" id.
+## _turn_order is a shuffled set of ALL team ids: the first N turns (N =
+## number of teams) visit every team once in random order, then the same
+## order repeats cyclically — uniform, like Worms.
+var _teams: Array[String] = []
+var _color_to_id := {}
+var _turn_order: Array[String] = []
+var _turn_index := 0
 ## True while the post-shot delay runs — input is frozen.
 var _switching := false
 ## Bumped on every shot; stale post-shot timers carry an old serial and
@@ -181,8 +191,71 @@ func _on_level_changed() -> void:
 		_roll_wait = 0.0
 		_switch_wait = 0.0
 		_stall_wait = 0.0
+		_teams = []
+		_color_to_id = {}
+		_turn_order = []
 		return
 	_start_round()
+
+
+## Issue #191: the id of the team a figure belongs to.
+func team_id_of(member: Node) -> String:
+	if member.is_in_group("player_team"):
+		return TEAM_PLAYER
+	var c = member.get("team_color")
+	return _color_to_id.get(c, TEAM_ENEMY)
+
+
+## Issue #191: true when the id names the player-controlled team.
+func is_player_team(id: String) -> bool:
+	return id == TEAM_PLAYER
+
+
+## Issue #191: collect distinct team ids from the figures present and
+## build the shuffled turn order (first N turns = random set of all N
+## teams, then that exact order repeats).
+func _scan_teams() -> void:
+	_teams = []
+	_color_to_id = {}
+	var enemy_colors: Array[Color] = []
+	var seen := {}
+	for member in _alive("enemy_team"):
+		var c = member.get("team_color")
+		if c is Color and not seen.has(c):
+			seen[c] = true
+			enemy_colors.append(c)
+	var single := enemy_colors.size() == 1
+	for c in enemy_colors:
+		var id := TEAM_ENEMY if single else "enemy:%s" % c.to_html()
+		_color_to_id[c] = id
+		_teams.append(id)
+	_teams.append(TEAM_PLAYER)
+	_turn_order = _teams.duplicate()
+	_turn_order.shuffle()
+	_turn_index = 0
+
+
+## Issue #191: alive figures of one team id (from both groups).
+func _alive_of(id: String) -> Array:
+	var result: Array = []
+	for member in _alive("player_team") + _alive("enemy_team"):
+		if team_id_of(member) == id:
+			result.append(member)
+	return result
+
+
+## Issue #191: next team in the repeating order that still has figures.
+func _next_alive_team() -> String:
+	if _turn_order.is_empty():
+		return TEAM_ENEMY if active_team == TEAM_PLAYER else TEAM_PLAYER
+	var n := _turn_order.size()
+	for step in range(1, n + 1):
+		var index := (_turn_index + step) % n
+		var id: String = _turn_order[index]
+		if not _alive_of(id).is_empty():
+			_turn_index = index
+			return id
+	return ""
 
 
 func _start_round() -> void:
@@ -194,6 +267,8 @@ func _start_round() -> void:
 	active_member = null
 	_build_ui()
 	_roll_wait = 0.0
+	# Issue #191: discover all teams and shuffle the turn order.
+	_scan_teams()
 	# Visual random generator: the banner flickers between team colors,
 	# then settles on a random team — that team moves first.
 	# Kill any leftover roll tween before starting a new one (issue #85).
@@ -201,8 +276,11 @@ func _start_round() -> void:
 		_roll_tween.kill()
 	var roll := create_tween()
 	_roll_tween = roll
+	var fallback: Array[String] = _teams
+	if fallback.is_empty():
+		fallback = [TEAM_PLAYER, TEAM_ENEMY]
 	for i in ROLL_STEPS:
-		var team := TEAM_PLAYER if i % 2 == 0 else TEAM_ENEMY
+		var team: String = fallback[i % fallback.size()]
 		roll.tween_callback(_show_roll.bind(team))
 		roll.tween_interval(ROLL_STEP_TIME)
 	roll.tween_callback(_finish_roll)
@@ -254,7 +332,9 @@ func _finish_roll() -> void:
 	if active_team != "" or _level == null or game_over:
 		return
 	_roll_wait = 0.0
-	var first: String = [TEAM_PLAYER, TEAM_ENEMY].pick_random()
+	_turn_index = 0
+	var first: String = _turn_order[0] if not _turn_order.is_empty() \
+			else [TEAM_PLAYER, TEAM_ENEMY].pick_random()
 	# Note: no transition flag is held across the call — a runtime error
 	# inside _begin_turn must never wedge the flow forever (issue #85).
 	_begin_turn(first)
@@ -269,15 +349,16 @@ func _begin_turn(team: String) -> void:
 	_switching = false
 	# Issue #104: a fresh turn always starts with switching unlocked.
 	_switch_locked = false
+	var members := _alive_of(team)
 	# Issue #131 rework, per-character since #143: the lock must survive
 	# the enemy turn — only the start of a fresh PLAYER turn re-enables
 	# weapon selection (for every character).
-	if team == TEAM_PLAYER:
+	if is_player_team(team):
 		WeaponInventory.unlock_all()
 		# Issue #170: a fresh player turn refills the tool quota and ends
 		# every shield from the previous turn ("until its next turn begins").
 		ToolInventory.reset_turn()
-		for member in _alive("player_team"):
+		for member in members:
 			if member.has_method("set_shielded"):
 				member.set_shielded(false)
 	_turn_left = TURN_TIME
@@ -287,8 +368,6 @@ func _begin_turn(team: String) -> void:
 	# player turn can start with NOBODY controlled (e.g. right after the
 	# controlled character died) — the player can neither act nor switch.
 	active_member = null
-	var group := "player_team" if team == TEAM_PLAYER else "enemy_team"
-	var members := _alive(group)
 	if members.is_empty():
 		_check_win()
 		return
@@ -325,7 +404,10 @@ func _end_turn(from_serial: int = -1) -> void:
 	_switching = false
 	_check_win()
 	if not game_over:
-		_begin_turn(TEAM_ENEMY if active_team == TEAM_PLAYER else TEAM_PLAYER)
+		# Issue #191: advance along the repeating multi-team order.
+		var next := _next_alive_team()
+		if next != "":
+			_begin_turn(next)
 
 
 func _alive(group: String) -> Array:
@@ -343,12 +425,12 @@ func _alive(group: String) -> Array:
 ## of the team's first alive figure; the hard-coded constant is only a
 ## fallback when nobody is alive (or a figure has no team_color).
 func _team_color(team: String) -> Color:
-	var group := "player_team" if team == TEAM_PLAYER else "enemy_team"
-	for member in _alive(group):
-		var c = member.get("team_color")
-		if c is Color:
-			return c
-	return TEAM_COLORS[team]
+	for member in _alive("player_team") + _alive("enemy_team"):
+		if team_id_of(member) == team:
+			var c = member.get("team_color")
+			if c is Color:
+				return c
+	return TEAM_COLORS.get(team, TEAM_COLORS[TEAM_ENEMY])
 
 
 ## Issue #167: the banner must name the team by the color its figures are
@@ -368,9 +450,12 @@ func _team_name(team: String) -> String:
 
 
 func _check_win() -> void:
-	var players := _alive("player_team").size()
-	var enemies := _alive("enemy_team").size()
-	if players > 0 and enemies > 0:
+	# Issue #191: the game ends when at most one TEAM (by id) is alive.
+	var alive_teams: Array[String] = []
+	for id in _teams:
+		if not _alive_of(id).is_empty():
+			alive_teams.append(id)
+	if alive_teams.size() > 1:
 		return
 	game_over = true
 	active_team = ""
@@ -378,11 +463,11 @@ func _check_win() -> void:
 	if _label != null:
 		# Issue #151: mutual destruction is an explicit DRAW, not a phantom
 		# winner for whichever team happens to be checked first.
-		if players == 0 and enemies == 0:
+		if alive_teams.is_empty():
 			_label.text = "DRAW!"
 			_label.add_theme_color_override("font_color", Color(0.8, 0.8, 0.8, 1.0))
 		else:
-			var winner := TEAM_ENEMY if players == 0 else TEAM_PLAYER
+			var winner: String = alive_teams[0]
 			_label.text = "%s WINS!" % _team_name(winner)
 			_label.add_theme_color_override("font_color", _team_color(winner))
 	if _hint_label != null:

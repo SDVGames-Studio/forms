@@ -60,7 +60,7 @@ func set_active_index(index: int) -> void:
 	# the whole turn flow (hp watchdog, weapon lock, tools, the NPC gate)
 	# keys off active_member, so after a Switch it must point at the newly
 	# controlled member, not at the previous one.
-	if TurnController.active_team == TurnController.TEAM_PLAYER:
+	if TurnController.is_player_team(TurnController.active_team):
 		var member: Node = members[index]
 		if member != null and is_instance_valid(member) \
 				and member.get("controlled") == true:
