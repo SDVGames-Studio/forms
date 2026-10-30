@@ -281,6 +281,12 @@ func _begin_turn(team: String) -> void:
 			if member.has_method("set_shielded"):
 				member.set_shielded(false)
 	_turn_left = TURN_TIME
+	# Issue #187: drop the previous turn's active member before picking.
+	# Without this, an enemy NPC left in active_member from the enemy turn
+	# makes the "no member is controlled" fallback below never fire, so a
+	# player turn can start with NOBODY controlled (e.g. right after the
+	# controlled character died) — the player can neither act nor switch.
+	active_member = null
 	var group := "player_team" if team == TEAM_PLAYER else "enemy_team"
 	var members := _alive(group)
 	if members.is_empty():
