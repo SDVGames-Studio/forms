@@ -43,3 +43,12 @@ func set_active_index(index: int) -> void:
 		# input control to hand over — skip them.
 		if members[i].has_method("set_controlled"):
 			members[i].set_controlled(i == index)
+	# Issue #183: keep TurnController.active_member in sync with control —
+	# the whole turn flow (hp watchdog, weapon lock, tools, the NPC gate)
+	# keys off active_member, so after a Switch it must point at the newly
+	# controlled member, not at the previous one.
+	if TurnController.active_team == TurnController.TEAM_PLAYER:
+		var member: Node = members[index]
+		if member != null and is_instance_valid(member) \
+				and member.get("controlled") == true:
+			TurnController.active_member = member
