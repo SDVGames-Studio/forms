@@ -190,8 +190,19 @@ func take_damage(amount: int) -> void:
 	health = clampi(health - amount, 0, MAX_HEALTH)
 	if health == 0:
 		_dead = true
+		_die()
 	health_changed.emit(health, MAX_HEALTH)
 	_update_bar()
+
+
+## Issue #181: a player-team member that reaches 0 HP must DISAPPEAR like
+## an NPC does (Npc._die) — shrink out, then free the node, so the corpse
+## never stays on the field and win checks / turn flow see it as gone.
+func _die() -> void:
+	set_physics_process(false)
+	var tween := create_tween()
+	tween.tween_property(self, "scale", Vector2.ZERO, 0.25)
+	tween.tween_callback(queue_free)
 
 
 func heal(amount: int) -> void:
