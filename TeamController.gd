@@ -17,6 +17,11 @@ func _team() -> Array:
 func _active_index() -> int:
 	var members := _team()
 	for i in members.size():
+		# Issue #187: a dead (0 HP, not yet freed) member must never count
+		# as the active one — switching would index dead characters too.
+		var hp = members[i].get("health")
+		if (hp is int) and hp <= 0:
+			continue
 		if members[i].get("controlled") == true:
 			return i
 	return -1
@@ -38,6 +43,14 @@ func set_active_index(index: int) -> void:
 	if members.is_empty():
 		return
 	index = clampi(index, 0, members.size() - 1)
+	# Issue #187: control may only land on a LIVING member — a dead one
+	# (0 HP, death tween still running) can neither act nor host the view.
+	if (members[index].get("health") is int) and members[index].get("health") <= 0:
+		for i in members.size():
+			var hp = members[i].get("health")
+			if (hp is int) and hp > 0:
+				index = i
+				break
 	for i in members.size():
 		# Issue #121: AI members of the player team (Npc.gd) have no
 		# input control to hand over — skip them.

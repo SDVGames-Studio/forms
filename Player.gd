@@ -200,6 +200,26 @@ func take_damage(amount: int) -> void:
 ## never stays on the field and win checks / turn flow see it as gone.
 func _die() -> void:
 	set_physics_process(false)
+	# Issue #187: a dying CONTROLLED member must not keep control — the
+	# camera would follow the shrinking corpse and, until the node is
+	# freed, switch/input logic would still see it as the active character.
+	# Hand control and the view to the first living teammate immediately.
+	if controlled:
+		controlled = false
+		var successor: Node = null
+		for member in get_tree().get_nodes_in_group("player_team"):
+			if is_instance_valid(member) and member != self \
+					and member.has_method("set_controlled") \
+					and (member.get("health") is int) and member.get("health") > 0:
+				successor = member
+				break
+		# Issue #187: if this body hosts the shared team camera, move it out
+		# of the dying node so the player's view survives the corpse.
+		if _camera != null and _camera.get_parent() == self:
+			_camera.reparent(get_parent())
+			_camera.enabled = successor != null
+		if successor != null:
+			successor.set_controlled(true)
 	var tween := create_tween()
 	tween.tween_property(self, "scale", Vector2.ZERO, 0.25)
 	tween.tween_callback(queue_free)
