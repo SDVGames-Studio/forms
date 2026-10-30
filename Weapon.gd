@@ -128,7 +128,7 @@ func _physics_process(delta: float) -> void:
 	# Issue #33: only the controlled team member fires on input, and only
 	# during the player team's turn (issue #65).
 	var controlled: bool = parent != null and parent.get("controlled") == true \
-			and TurnController.active_team == TurnController.TEAM_PLAYER
+			and TurnController.is_player_team(TurnController.active_team)
 	if controlled:
 		selected_weapon = WeaponInventory.selected_weapon
 	# Issue #101 bugfix: ONLY the controlled member may fire on input —
