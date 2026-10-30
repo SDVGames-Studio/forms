@@ -114,18 +114,22 @@ alignment = 1
 layout_mode = 2
 custom_minimum_size = Vector2(0, 16)
 
-[node name="SaveButton" type="Button" parent="Menu/Rows"]
+[node name="ButtonRow" type="HBoxContainer" parent="Menu/Rows"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(300, 60)
 layout_mode = 2
 size_flags_horizontal = 4
+theme_override_constants/separation = 16
+
+[node name="SaveButton" type="Button" parent="Menu/Rows/ButtonRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(210, 60)
+layout_mode = 2
 theme_override_font_sizes/font_size = 32
 text = "Save"
 
-[node name="BackButton" type="Button" parent="Menu/Rows"]
+[node name="BackButton" type="Button" parent="Menu/Rows/ButtonRow"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(300, 60)
+custom_minimum_size = Vector2(210, 60)
 layout_mode = 2
-size_flags_horizontal = 4
 theme_override_font_sizes/font_size = 32
 text = "Back"

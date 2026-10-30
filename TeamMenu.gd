@@ -1,7 +1,7 @@
 extends Control
 ## Team customisation menu (issue #169).
 ##
-## Opened from the main menu. Lets the player customise and SAVE their
+## Opened from the settings menu (issue #175). Lets the player customise and SAVE their
 ## team: members' shape, team color, number of members and members' names.
 ## Settings persist to user://team.cfg (via GameConfig) and are applied to
 ## the player's figures in every level.
@@ -101,4 +101,4 @@ func _on_save_pressed() -> void:
 
 
 func _on_back_pressed() -> void:
-	get_tree().change_scene_to_file("res://Main.tscn")
+	get_tree().change_scene_to_file("res://SettingsMenu.tscn")
