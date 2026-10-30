@@ -38,7 +38,7 @@ func _ready() -> void:
 		var visual: ColorRect = null
 		var shape_visual: Control = null
 		for child in member.get_children():
-			if child is ColorRect:
+			if child is ColorRect and child.name != "HealthBarBackground":
 				visual = child
 			elif child is Control and child.has_method("set_shape"):
 				shape_visual = child
