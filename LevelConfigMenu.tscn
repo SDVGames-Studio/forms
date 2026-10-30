@@ -94,6 +94,24 @@ popup/item_1/id = 1
 popup/item_2/text = "Hard"
 popup/item_2/id = 2
 
+[node name="TurnTimeRow" type="HBoxContainer" parent="Menu/Rows"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="TurnTimeLabel" type="Label" parent="Menu/Rows/TurnTimeRow"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 28
+text = "Turn time (s)"
+
+[node name="TurnTimeSpinBox" type="SpinBox" parent="Menu/Rows/TurnTimeRow"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 28
+min_value = 5.0
+max_value = 120.0
+step = 5.0
+value = 30.0
+
 [node name="StartButton" type="Button" parent="Menu/Rows"]
 unique_name_in_owner = true
 layout_mode = 2
