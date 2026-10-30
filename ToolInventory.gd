@@ -126,6 +126,13 @@ func _switching_or_over() -> bool:
 	return TurnController.game_over or TurnController.get("_switching") == true
 
 
+func _process(_delta: float) -> void:
+	# Issue #174: the tools panel is in-game HUD — keep it hidden outside
+	# level scenes (same gating as the WeaponInventory panel).
+	if _panel != null:
+		_panel.visible = _is_in_level()
+
+
 func _is_in_level() -> bool:
 	return get_tree().get_first_node_in_group("level") != null
 
