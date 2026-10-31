@@ -48,11 +48,14 @@ static var member_names: Array[String] = ["Player 1", "Player 2", "Player 3"]
 
 const _SAVE_PATH := "user://team.cfg"
 
-## Issue #208: the whole set of teams shown in the team menu. teams[0]
-## is the PLAYER team (its color, shape and names are applied to the
-## player figures in every level); teams[1] ("Enemies") feeds the
-## computer team's AI parameters. Persisted in the same team.cfg under
-## the "teams" section; the single-team keys above stay in sync with it.
+## Issue #208: the whole set of teams shown in the team menu — an ORDERED
+## set with neutral names (owner rework: there is no "Player Team"/
+## "Enemies" concept; in the game the player may choose ANY team and the
+## computer plays any of the left ones). Persisted in the same team.cfg
+## under the "teams" section; the single-team keys above stay in sync with
+## it. Until in-game team choice lands, the levels still apply teams[0] to
+## the player figures and teams[1]'s AI parameters to the computer team
+## (slot-order compatibility, not a user-facing designation).
 static var teams: Array = []
 
 ## Issue #208: the levels place at most three figures per team (hero +
@@ -62,22 +65,25 @@ const MAX_TEAMS := 8
 
 
 ## Issue #208: the default set of teams = the teams that are in the
-## levels: the player team (current customisation) and the computer
-## (NPC) team with its authored pink color.
+## levels, with NEUTRAL names (owner rework: no player/enemies concept
+## in the team configuration).
 static func default_teams() -> Array:
-	var player_names: Array[String] = []
+	var first_names: Array[String] = []
 	for member_name in member_names:
-		player_names.append(member_name)
+		first_names.append(member_name)
+	var second_names: Array[String] = []
+	for i in range(1, MAX_TEAM_MEMBERS + 1):
+		second_names.append("Member %d" % i)
 	return [
 		{
-			"label": "Player Team", "color": team_color,
-			"shape": team_shape, "names": player_names,
+			"label": "Team 1", "color": team_color,
+			"shape": team_shape, "names": first_names,
 			"skill": ai_skill, "friendly_fire": ai_friendly_fire,
 		},
 		{
-			"label": "Enemies", "color": Color(0.75, 0.2, 0.45, 1),
+			"label": "Team 2", "color": Color(0.75, 0.2, 0.45, 1),
 			"shape": "square",
-			"names": ["Enemy 1", "Enemy 2", "Enemy 3"],
+			"names": second_names,
 			"skill": ai_skill, "friendly_fire": ai_friendly_fire,
 		},
 	]
@@ -109,9 +115,11 @@ static func save_teams() -> void:
 	cfg.save(_SAVE_PATH)
 
 
-## Keep the single-team fields the levels apply in sync with the set:
-## teams[0] drives the player figures, teams[1] (if present) drives the
-## computer team's AI behavior.
+## Keep the single-team fields the levels apply in sync with the set.
+## Compatibility with the current levels (they host two teams): teams[0]
+## drives the figures the player controls, teams[1] (if present) drives
+## the computer team's AI behavior — slot order only, no user-facing
+## player/enemies designation (owner rework, issue #208).
 static func _sync_from_teams() -> void:
 	if teams.is_empty():
 		return

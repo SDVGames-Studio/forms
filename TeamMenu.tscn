@@ -43,12 +43,12 @@ horizontal_alignment = 1
 layout_mode = 2
 theme_override_constants/separation = 12
 
-[node name="TeamListBox" type="HBoxContainer" parent="Column/TeamListRow"]
+[node name="TeamSelect" type="OptionButton" parent="Column/TeamListRow"]
 unique_name_in_owner = true
+custom_minimum_size = Vector2(320, 44)
 layout_mode = 2
 size_flags_horizontal = 3
-alignment = 1
-theme_override_constants/separation = 12
+theme_override_font_sizes/font_size = 22
 
 [node name="AddTeamButton" type="Button" parent="Column/TeamListRow"]
 unique_name_in_owner = true
@@ -72,7 +72,7 @@ unique_name_in_owner = true
 layout_mode = 2
 theme_override_colors/font_color = Color(0.8, 0.8, 0.9, 1)
 theme_override_font_sizes/font_size = 24
-text = "Editing: Player Team"
+text = "Editing: Team 1"
 
 [node name="ShapeLabel" type="Label" parent="Column/Scroll/Rows"]
 layout_mode = 2
