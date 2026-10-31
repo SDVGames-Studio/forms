@@ -135,7 +135,8 @@ func _physics_process(delta: float) -> void:
 	# every character has a Weapon node, so an unguarded Input check made
 	# all characters holding the same weapon fire together.
 	var can_shoot: bool = _shots_used[clampi(selected_weapon, 0, _shots_used.size() - 1)] < _shot_limit() \
-			and _shot_delay_left == 0.0 and _cooldown_left == 0.0
+			and _shot_delay_left == 0.0 and _cooldown_left == 0.0 \
+			and not ToolInventory.has_used_tool(get_parent())
 	# Issue #114: rocket (1) and grenade (2) are CHARGED — pressing F starts
 	# the charge, releasing F fires with power scaled by the hold time.
 	# Shotgun and spear keep their instant press-fire behavior.
@@ -211,6 +212,10 @@ func reset_shots() -> void:
 
 
 func _fire(power := 1.0) -> void:
+	# Issue #207: a character that used a tool this turn can't also fire —
+	# tool OR weapon per character per turn, never both.
+	if ToolInventory.has_used_tool(get_parent()):
+		return
 	# Issue #131, reworked in #143: the FIRST shot of the turn locks the
 	# weapon selection — for THIS character only (the constraint is per
 	# character, not per player).
