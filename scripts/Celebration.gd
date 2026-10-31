@@ -76,12 +76,17 @@ func _add_confetti() -> void:
 	confetti.scale_amount_max = 9.0
 
 	# Squares of confetti in the game's palette.
+	# CPUParticles2D.color_initial_ramp is typed Gradient in Godot 4.x;
+	# assigning a GradientTexture1D is a parse error under typed GDScript.
 	var gradient := Gradient.new()
+	var offsets := PackedFloat32Array()
+	var colors := PackedColorArray()
 	for i in CONFETTI_COLORS.size():
-		gradient.set_color(float(i) / float(CONFETTI_COLORS.size() - 1), CONFETTI_COLORS[i])
-	var tex := GradientTexture1D.new()
-	tex.gradient = gradient
-	confetti.color_initial_ramp = tex
+		offsets.append(float(i) / float(CONFETTI_COLORS.size() - 1))
+		colors.append(CONFETTI_COLORS[i])
+	gradient.offsets = offsets
+	gradient.colors = colors
+	confetti.color_initial_ramp = gradient
 
 	add_child(confetti)
 
