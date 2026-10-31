@@ -22,6 +22,7 @@ const CONFETTI_COLORS: Array[Color] = [
 func _ready() -> void:
 	layer = 100
 	_add_banner()
+	await get_tree().process_frame
 	_add_confetti()
 	await get_tree().create_timer(duration).timeout
 	_finish()
@@ -43,6 +44,7 @@ func _add_banner() -> void:
 	center.add_child(label)
 
 	# Pop-in: start small and scale up with a little overshoot.
+	await get_tree().process_frame
 	label.pivot_offset = label.size / 2.0
 	label.scale = Vector2(0.1, 0.1)
 	var tween := create_tween()
@@ -77,7 +79,9 @@ func _add_confetti() -> void:
 	var gradient := Gradient.new()
 	for i in CONFETTI_COLORS.size():
 		gradient.set_color(float(i) / float(CONFETTI_COLORS.size() - 1), CONFETTI_COLORS[i])
-	confetti.color_initial_ramp = gradient
+	var tex := GradientTexture1D.new()
+	tex.gradient = gradient
+	confetti.color_initial_ramp = tex
 
 	add_child(confetti)
 
