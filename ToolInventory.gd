@@ -44,6 +44,13 @@ func is_switch_locked_by_move() -> bool:
 	return TurnController.is_switch_locked()
 
 
+## Issue #207: true when this character already spent a tool this turn —
+## it may not fire a weapon either (tool OR weapon per character per
+## turn, never both).
+func has_used_tool(character: Node) -> bool:
+	return character != null and not _used.get(character, []).is_empty()
+
+
 ## Use a tool with the currently controlled member. Returns true on success.
 func use_tool(tool: int) -> bool:
 	if not _is_in_level():
@@ -53,6 +60,11 @@ func use_tool(tool: int) -> bool:
 		return false
 	var member: Node = TurnController.active_member
 	if member == null or not is_instance_valid(member):
+		return false
+	# Issue #207: this character already FIRED this turn — its tools are
+	# locked for the rest of the turn (tool or weapon, never both).
+	if WeaponInventory.is_locked_for(member):
+		refresh_slots()
 		return false
 	if not _can_use(member, tool):
 		refresh_slots()
@@ -95,7 +107,12 @@ func can_use_now(tool: int) -> bool:
 	if not TurnController.is_player_team(TurnController.active_team) or _switching_or_over():
 		return false
 	var member: Node = TurnController.active_member
-	return member != null and is_instance_valid(member) and _can_use(member, tool)
+	if member == null or not is_instance_valid(member):
+		return false
+	# Issue #207: a character that fired this turn cannot use tools.
+	if WeaponInventory.is_locked_for(member):
+		return false
+	return _can_use(member, tool)
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -109,6 +126,13 @@ func _unhandled_input(event: InputEvent) -> void:
 			and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 		var member: Node = TurnController.active_member
 		if member != null and is_instance_valid(member) and member is Node2D:
+			# Issue #207: no teleporting away after firing — a character that
+			# used its weapon this turn can't use a tool too. Disarm instead.
+			if WeaponInventory.is_locked_for(member):
+				armed_tool = -1
+				refresh_slots()
+				get_viewport().set_input_as_handled()
+				return
 			var world: Vector2 = get_viewport().get_canvas_transform().affine_inverse() * event.position
 			member.global_position = world
 			member.velocity = Vector2.ZERO

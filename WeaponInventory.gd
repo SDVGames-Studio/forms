@@ -37,6 +37,9 @@ var _locked_characters: Dictionary = {}
 func lock_for(character: Node) -> void:
 	if character != null:
 		_locked_characters[character] = true
+		# Issue #207: the tool slots must gray out right after the first
+		# shot of this character (its tools are locked for the turn).
+		refresh_tools()
 
 
 ## Issue #143: true while this character's weapon choice is frozen.
@@ -219,11 +222,13 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func set_selected(index: int) -> void:
-	# Issue #131, reworked in #143: no weapon changes after the first shot
-	# of the turn — but only for the character that actually fired. The
-	# check uses the currently controlled member, so switching characters
-	# restores free selection for the member that has not fired yet.
-	if is_locked_for(TurnController.active_member):
+	# Issue #131, reworked in #143 + #207: no weapon changes after the
+	# first shot of the turn — nor after a tool use (tool or weapon, never
+	# both) — but only for the character that actually fired / used the
+	# tool. The check uses the currently controlled member, so switching
+	# characters restores free selection for the member that has not.
+	if is_locked_for(TurnController.active_member) \
+			or ToolInventory.has_used_tool(TurnController.active_member):
 		_update_highlight()
 		return
 	selected_weapon = clampi(index, 0, WEAPONS.size() - 1)
@@ -246,6 +251,12 @@ func refresh_tools() -> void:
 	var tools: Node = get_node_or_null("/root/ToolInventory")
 	if tools == null:
 		return
+	# Issue #207: the WEAPON slots gray out while the active member already
+	# used a tool this turn (it can no longer fire) — the mirror of the
+	# tool graying below for a character that already fired.
+	var weapons_blocked: bool = tools.has_used_tool(TurnController.active_member)
+	for i in _slots.size():
+		_slots[i].modulate = Color(1, 1, 1, 0.35) if weapons_blocked else Color.WHITE
 	for i in _tool_slots.size():
 		var slot: Button = _tool_slots[i]
 		slot.button_pressed = tools.armed_tool == i
