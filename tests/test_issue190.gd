@@ -7,7 +7,9 @@ extends Node
 ##   - blasts outside the chunk leave it intact;
 ##   - LevelTerrain.gravity_vector points toward the nearest indestructible
 ##     surface and ignores destructible ground;
-##   - IndestructibleGround registers itself as a gravity source.
+##   - IndestructibleGround registers itself as a gravity source;
+##   - every level has a screen-covering one-color background (CanvasLayer
+##     with a full-rect ColorRect), per the rework follow-up.
 
 func _ready() -> void:
 	await get_tree().process_frame
@@ -63,6 +65,36 @@ func _ready() -> void:
 			chunks += 1
 	if chunks == 0:
 		failures.append("blast must leave remainder destructible chunks")
+
+	# --- One-color background: screen-covering, camera-independent (rework).
+	var level_paths := [
+		"res://Level.tscn",
+		"res://Level2.tscn",
+		"res://Level3.tscn",
+		"res://Level4.tscn",
+		"res://LevelDuel.tscn",
+	]
+	for level_path in level_paths:
+		var level: Node = (load(level_path) as PackedScene).instantiate()
+		var layer := level.get_node_or_null("BackgroundLayer") as CanvasLayer
+		if layer == null:
+			failures.append("%s must have a BackgroundLayer CanvasLayer" % level_path)
+		elif layer.layer >= 0:
+			failures.append("%s BackgroundLayer must render below the world" % level_path)
+		var bg := level.get_node_or_null("BackgroundLayer/Background") as ColorRect
+		if bg == null:
+			failures.append("%s must have a Background ColorRect" % level_path)
+		else:
+			var full_rect: bool = bg.anchor_right == 1.0 and bg.anchor_bottom == 1.0 \
+				and bg.offset_left == 0.0 and bg.offset_top == 0.0 \
+				and bg.offset_right == 0.0 and bg.offset_bottom == 0.0
+			if not full_rect:
+				failures.append("%s background must be full-rect (cover the screen)" % level_path)
+			if bg.mouse_filter != Control.MOUSE_FILTER_IGNORE:
+				failures.append("%s background must ignore mouse input" % level_path)
+			if bg.color.a != 1.0:
+				failures.append("%s background must be an opaque one-color fill" % level_path)
+		level.free()
 
 	if failures.is_empty():
 		print("ISSUE190 OK: level design rework")
