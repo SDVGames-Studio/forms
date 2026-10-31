@@ -326,17 +326,24 @@ func _update_bar() -> void:
 func _physics_process(delta: float) -> void:
 	# Issue #48 rework: pick the gravity side from the position relative to
 	# the central line and orient the floor accordingly (upside-down below).
-	var dir := 1.0
-	if center_line_y > 0.0:
-		dir = 1.0 if global_position.y < center_line_y else -1.0
-		up_direction = Vector2.UP if dir > 0.0 else Vector2.DOWN
+	# Issue #190: gravity comes from the nearest indestructible terrain
+	# surface when the level authors gravity sources; otherwise the legacy
+	# central-line rule (global down) applies. Destructible ground never
+	# bends gravity.
+	var grav := Vector2.DOWN
+	if LevelTerrain.has_sources(self):
+		grav = LevelTerrain.gravity_vector(self)
+	elif center_line_y > 0.0:
+		grav = Vector2.DOWN \
+				if global_position.y < center_line_y else Vector2.UP
+	up_direction = -grav
 
 	if not is_on_floor():
-		velocity.y += GRAVITY * dir * delta
+		velocity += grav * GRAVITY * delta
 
 	if controlled and TurnController.is_player_team(TurnController.active_team):
 		if Input.is_action_just_pressed("jump") and is_on_floor():
-			velocity.y = JUMP_VELOCITY * dir
+			velocity = -grav * JUMP_VELOCITY
 
 		var direction := Input.get_axis("move_left", "move_right")
 		# Issue #104: any move or aim action locks character switching for

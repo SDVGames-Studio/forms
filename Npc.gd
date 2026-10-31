@@ -219,13 +219,23 @@ func _physics_process(delta: float) -> void:
 		return
 	_cooldown_left = maxf(0.0, _cooldown_left - delta)
 	var dir := 1.0
-	if center_line_y > 0.0:
-		dir = 1.0 if global_position.y < center_line_y else -1.0
-		up_direction = Vector2.UP if dir > 0.0 else Vector2.DOWN
-	elif gravity_dir < 0.0:
-		dir = -1.0
+	# Issue #190: gravity toward the nearest indestructible surface when the
+	# level authors gravity sources; legacy central-line / global-down rules
+	# otherwise. Destructible ground never causes gravity.
+	var grav := Vector2.DOWN
+	if LevelTerrain.has_sources(self):
+		grav = LevelTerrain.gravity_vector(self)
+		dir = 1.0 if grav.y >= 0.0 else -1.0
+	else:
+		if center_line_y > 0.0:
+			dir = 1.0 if global_position.y < center_line_y else -1.0
+			up_direction = Vector2.UP if dir > 0.0 else Vector2.DOWN
+		elif gravity_dir < 0.0:
+			dir = -1.0
+		grav = Vector2.DOWN if dir > 0.0 else Vector2.UP
+	up_direction = -grav
 	if not is_on_floor():
-		velocity.y += GRAVITY * dir * delta
+		velocity += grav * GRAVITY * delta
 
 	# Issue #65/#121: only the active character of the team on turn may
 	# act — regardless of which team that is, so AI vs AI duels work.
@@ -281,7 +291,7 @@ func _physics_process(delta: float) -> void:
 
 	# Jump when blocked or when the target is clearly above us.
 	if is_on_floor() and (is_on_wall() or (_target.global_position.y - global_position.y) * gravity_dir < -80.0):
-		velocity.y = JUMP_VELOCITY * dir
+		velocity = -grav * JUMP_VELOCITY
 
 	# Issue #66: pick the weapon by distance and take a shot when in range.
 	# Issue #147: hold fire until we actually face the target and the view

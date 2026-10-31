@@ -85,6 +85,9 @@ func _on_body_entered(body: Node2D) -> void:
 
 
 func _explode() -> void:
+	# Issue #190: explosions carve destructible terrain in the blast radius.
+	for ground in get_tree().get_nodes_in_group("destructible_ground"):
+		ground.apply_blast(global_position, blast_radius)
 	# Area damage to everything with health inside the blast radius.
 	var targets: Array = []
 	targets.append_array(get_tree().get_nodes_in_group("player_team"))
