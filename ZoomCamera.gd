@@ -15,6 +15,13 @@ extends Camera2D
 ## hold the left mouse button and drag on PC, or drag a finger across the
 ## screen on touch devices. Input events consumed by UI (virtual stick,
 ## buttons) never reach _unhandled_input, so panning never fights them.
+##
+## Issue #212: spectating is available ALWAYS, not only in spectator mode.
+## During normal play dragging pans the view away from the controlled
+## figure and the pan persists after the drag is released (follow resumes
+## with the offset). Switching the controlled member (N / P / Switch tool /
+## new turn) re-centers the camera on it. An armed teleport (issue #170)
+## keeps its click: the destination press never starts a camera drag.
 
 const ZOOM_STEP := 1.25
 const MIN_ZOOM := 0.25
@@ -23,6 +30,10 @@ const MAX_ZOOM := 3.0
 
 var _dragging := false
 var _drag_last := Vector2.ZERO
+## Issue #212: pan offset relative to the controlled member. Follow applies
+## it so the panned view persists hands-free; a new member resets it.
+var _pan_offset := Vector2.ZERO
+var _followed_member: Node2D = null
 
 
 func _ready() -> void:
@@ -35,8 +46,14 @@ func _ready() -> void:
 
 func _process(_delta: float) -> void:
 	var member := _controlled_member()
-	if member != null:
-		global_position = member.global_position
+	if member == null:
+		return
+	if member != _followed_member:
+		# Issue #212: control switched to another member — re-center.
+		_followed_member = member
+		_pan_offset = Vector2.ZERO
+	if not _dragging:
+		global_position = member.global_position + _pan_offset
 
 
 func _is_spectator() -> bool:
@@ -58,8 +75,12 @@ func _unhandled_input(event: InputEvent) -> void:
 			KEY_MINUS, KEY_KP_SUBTRACT:
 				_apply_zoom(1.0 / ZOOM_STEP)
 		return
-	if not _is_spectator():
-		return
+	# Issue #170: while a teleport is armed the next left click picks the
+	# destination — it must reach ToolInventory, not start a camera drag.
+	if ToolInventory.armed_tool == ToolInventory.TOOL_TELEPORT:
+		if (event is InputEventMouseButton and event.pressed) \
+				or (event is InputEventScreenTouch and event.pressed):
+			return
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
 		_dragging = event.pressed
 		if _dragging:
@@ -79,7 +100,9 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func _pan_by(screen_delta: Vector2) -> void:
 	# Screen pixels -> world units at the current zoom.
-	global_position -= screen_delta / zoom.x
+	var world_delta := screen_delta / zoom.x
+	global_position -= world_delta
+	_pan_offset -= world_delta
 
 
 func _apply_zoom(factor: float) -> void:
