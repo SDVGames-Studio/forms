@@ -1,8 +1,9 @@
 extends Control
 ## Team menu, reworked for issue #208: editor for the whole SET of teams.
 ##
-## - The list of teams sits at the top, right below the header; clicking a
-##   team edits it, "+ Add team" appends a new team to the set.
+## - The teams sit in a DROP-DOWN at the top, right below the header (owner
+##   rework: there could be a lot of them); picking a team in the drop-down
+##   edits it, "+ Add team" appends a new team to the set.
 ## - The editing column is scrollable, so nothing is lost on small screens.
 ## - The members are shown in a visual window exactly as they look in the
 ##   game (shape figure + team color + name). The leftmost member is the
@@ -11,12 +12,15 @@ extends Control
 ##   clicking a member's name edits it in place.
 ## - The shape picker is graphical: one little figure per shape.
 ## - "Save" persists the whole set to user://team.cfg (GameConfig.teams).
-##   The first team ("Player Team") stays the player's figures in every
-##   level; the "Enemies" team feeds the computer opponents' AI skill and
-##   friendly-fire (issue #180 behavior, kept unchanged in-game).
 ##
-## The default set of teams mirrors the teams that are in the levels: the
-## player team plus the computer (NPC) team.
+## Owner rework (issue #208): there is NO "Player Team"/"Enemies" concept —
+## the teams are just an ordered set with neutral names; in the game the
+## player may choose ANY team and the computer plays any of the left ones.
+## Until that in-game choice lands, the levels keep applying teams[0] to
+## the player figures and teams[1]'s AI parameters to the computer (issue
+## #180 behavior, unchanged).
+##
+## The default set of teams mirrors the teams that are in the levels.
 
 const SHAPES: Array[String] = ["square", "circle", "triangle", "star", "ellipse"]
 
@@ -28,7 +32,7 @@ const TEAM_PALETTE: Array[Color] = [
 	Color(0.95, 0.6, 0.2), Color(0.65, 0.4, 0.95),
 ]
 
-@onready var _team_list_box: HBoxContainer = %TeamListBox
+@onready var _team_select: OptionButton = %TeamSelect
 @onready var _add_team_button: Button = %AddTeamButton
 @onready var _editing_label: Label = %EditingLabel
 @onready var _shape_picker: HBoxContainer = %ShapePicker
@@ -52,6 +56,7 @@ func _ready() -> void:
 	GameConfig.load_team()
 	GameConfig.load_teams()
 	_add_team_button.pressed.connect(_on_add_team_pressed)
+	_team_select.item_selected.connect(_on_team_selected)
 	_color.color_changed.connect(_on_color_changed)
 	_skill.value_changed.connect(
 		func(value: float) -> void: _team()["skill"] = int(value))
@@ -90,19 +95,12 @@ func _sync_controls() -> void:
 # ------------------------------------------------------------------ teams --
 
 func _rebuild_team_list() -> void:
-	_clear_children(_team_list_box)
+	# Owner rework (#208): a drop-down — the set can hold a lot of teams.
+	_team_select.clear()
 	for i in GameConfig.teams.size():
 		var team: Dictionary = GameConfig.teams[i]
-		var button := Button.new()
-		button.toggle_mode = true
-		button.button_pressed = i == _selected
-		button.icon = _swatch(team["color"])
-		button.text = str(team["label"])
-		button.tooltip_text = "Edit this team"
-		button.add_theme_font_size_override("font_size", 22)
-		var index := i
-		button.pressed.connect(func() -> void: _on_team_selected(index))
-		_team_list_box.add_child(button)
+		_team_select.add_icon_item(_swatch(team["color"]), str(team["label"]), i)
+	_team_select.select(_selected)
 
 
 func _on_team_selected(index: int) -> void:

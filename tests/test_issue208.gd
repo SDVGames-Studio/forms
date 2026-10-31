@@ -2,9 +2,11 @@ extends Node
 ## Regression check for issue #208: Teams menu rework.
 ##
 ## Asserts the menu delivers the reworked flow end to end:
-##   - the default set of teams = the teams that are in the levels
-##     (Player Team + Enemies), listed at the top below the header;
-##   - the editing column is scrollable (ScrollContainer present);
+##   - the default set of teams = the teams that are in the levels, with
+##     NEUTRAL names (owner rework: no "Player Team"/"Enemies" concept
+##     in the configuration), listed in a DROP-DOWN below the header;
+##   - picking a team in the drop-down edits it; the editor column is
+##     scrollable (ScrollContainer present);
 ##   - "+ Add team" appends a team to the set and selects it;
 ##   - the members window shows every member as a clickable figure with
 ##     an editable name, plus a + button right of the rightmost member;
@@ -13,8 +15,9 @@ extends Node
 ##   - the shape picker is graphical: one button per shape, the team's
 ##     shape stays the pressed one;
 ##   - "Save" persists the whole set to user://team.cfg and keeps the
-##     single-team fields the levels apply in sync (teams[0] = player,
-##     teams[1] = the computer team's AI parameters).
+##     single-team fields the levels apply in sync (slot order only:
+##     teams[0] = the figures the player controls, teams[1] = the
+##     computer team's AI parameters until in-game choice lands).
 ##
 ## Run headless: godot --headless res://tests/test_issue208.tscn
 ## Exit code 0 = pass.
@@ -31,22 +34,36 @@ func _ready() -> void:
 	add_child(menu)
 	await get_tree().process_frame
 
-	# --- Default set of teams = the teams that are in the levels.
+	# --- Default set of teams = the teams that are in the levels, NEUTRAL.
 	if GameConfig.teams.size() != 2:
 		failures.append("default set must list the 2 level teams, got %d" % GameConfig.teams.size())
 	else:
-		if GameConfig.teams[0]["label"] != "Player Team":
-			failures.append("teams[0] must be the player team, got %s" % GameConfig.teams[0]["label"])
-		if GameConfig.teams[1]["label"] != "Enemies":
-			failures.append("teams[1] must be the level computer team, got %s" % GameConfig.teams[1]["label"])
+		if GameConfig.teams[0]["label"] != "Team 1":
+			failures.append("teams[0] must have a neutral label, got %s" % GameConfig.teams[0]["label"])
+		if GameConfig.teams[1]["label"] != "Team 2":
+			failures.append("teams[1] must have a neutral label, got %s" % GameConfig.teams[1]["label"])
 
-	# --- Team list sits below the header; the editor is scrollable.
-	var list_box: HBoxContainer = menu.get_node("%TeamListBox")
-	if list_box == null or list_box.get_child_count() != 2:
-		failures.append("team list must show one button per team")
+	# --- Teams sit in a drop-down below the header; the editor is scrollable.
+	var team_select: OptionButton = menu.get_node("%TeamSelect")
+	if team_select == null or team_select.item_count != 2:
+		failures.append("team drop-down must list one item per team")
+	elif team_select.selected != 0:
+		failures.append("drop-down must start on the first team, got %d" % team_select.selected)
+	elif team_select.get_item_text(1) != "Team 2":
+		failures.append("drop-down items must be the team labels, got %s" % team_select.get_item_text(1))
 	var scroll: ScrollContainer = menu.get_node("Column/Scroll")
 	if scroll == null:
 		failures.append("editing column must be inside a ScrollContainer")
+
+	# --- Picking a team in the drop-down switches the edited team.
+	team_select.select(1)
+	team_select.item_selected.emit(1)
+	await get_tree().process_frame
+	if menu.get_node("%EditingLabel").text != "Editing: Team 2":
+		failures.append("drop-down pick must edit that team, got %s" % menu.get_node("%EditingLabel").text)
+	team_select.select(0)
+	team_select.item_selected.emit(0)
+	await get_tree().process_frame
 
 	# --- Graphical shape picker: one button per shape, current one pressed.
 	var picker: HBoxContainer = menu.get_node("%ShapePicker")
@@ -110,8 +127,8 @@ func _ready() -> void:
 	await get_tree().process_frame
 	if GameConfig.teams.size() != 3:
 		failures.append("+ Add team must append a team, got %d" % GameConfig.teams.size())
-	if list_box.get_child_count() != 3:
-		failures.append("team list must show the new team")
+	if team_select.item_count != 3 or team_select.selected != 2:
+		failures.append("drop-down must show and select the new team")
 	if menu.get_node("%EditingLabel").text != "Editing: Team 3":
 		failures.append("new team must be selected for editing, got %s" % menu.get_node("%EditingLabel").text)
 
@@ -130,7 +147,7 @@ func _ready() -> void:
 		if GameConfig.team_shape != "triangle" or GameConfig.team_color != Color(0, 1, 1):
 			failures.append("Save must sync the player team fields levels apply")
 		if GameConfig.ai_skill != 9:
-			failures.append("Save must take AI skill from the Enemies team, got %d" % GameConfig.ai_skill)
+			failures.append("Save must take AI skill from the second team, got %d" % GameConfig.ai_skill)
 		# Reload round-trip: the set comes back exactly as saved.
 		GameConfig.teams = []
 		GameConfig.load_teams()
