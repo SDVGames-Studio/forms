@@ -32,7 +32,7 @@ theme_override_colors/font_color = Color(1, 0.84, 0.2, 1)
 theme_override_colors/font_outline_color = Color(0.16, 0.05, 0.1, 1)
 theme_override_constants/outline_size = 10
 theme_override_font_sizes/font_size = 56
-text = "MY TEAM"
+text = "TEAMS"
 horizontal_alignment = 1
 
 [node name="ShapeRow" type="HBoxContainer" parent="Menu/Rows"]
@@ -103,6 +103,53 @@ layout_mode = 2
 theme_override_font_sizes/font_size = 28
 text = "Player 3"
 max_length = 16
+
+[node name="PresetRow" type="HBoxContainer" parent="Menu/Rows"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="PresetLabel" type="Label" parent="Menu/Rows/PresetRow"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 28
+text = "Default team:"
+
+[node name="PresetOptionButton" type="OptionButton" parent="Menu/Rows/PresetRow"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 28
+
+[node name="SkillRow" type="HBoxContainer" parent="Menu/Rows"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="SkillLabel" type="Label" parent="Menu/Rows/SkillRow"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 28
+text = "AI skill:"
+
+[node name="SkillSlider" type="HSlider" parent="Menu/Rows/SkillRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(300, 44)
+layout_mode = 2
+size_flags_vertical = 4
+max_value = 10.0
+value = 5.0
+
+[node name="FriendlyFireRow" type="HBoxContainer" parent="Menu/Rows"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="FriendlyFireLabel" type="Label" parent="Menu/Rows/FriendlyFireRow"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 28
+text = "Friendly fire:"
+
+[node name="FriendlyFireSlider" type="HSlider" parent="Menu/Rows/FriendlyFireRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(300, 44)
+layout_mode = 2
+size_flags_vertical = 4
+max_value = 10.0
 
 [node name="PreviewRow" type="HBoxContainer" parent="Menu/Rows"]
 unique_name_in_owner = true

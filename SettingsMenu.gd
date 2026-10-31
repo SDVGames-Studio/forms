@@ -2,7 +2,9 @@ extends Control
 ## Settings menu (issue #175).
 ##
 ## Hosts the settings entries; the team customisation ("My team") moved here
-## from the main menu. Back returns to the main menu.
+## from the main menu. Issue #180: the entry is renamed to "Teams" — the
+## team menu configures the player's team AND the computer team's AI
+## behavior. Back returns to the main menu.
 
 @onready var _team_button: Button = %TeamButton
 @onready var _back_button: Button = %BackButton

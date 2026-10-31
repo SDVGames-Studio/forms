@@ -1,7 +1,8 @@
 extends Node
 ## Regression check for issue #137: the level configuration menu settings
 ## are applied to a level — extra teammates and enemies beyond the chosen
-## sizes are removed and the chosen difficulty reaches the NPCs.
+## sizes are removed and the team-configured AI skill reaches the NPCs
+## (issue #180 moved difficulty into the team configuration as skill).
 ##
 ## Run headless: godot --headless res://tests/test_issue137.tscn
 ## Exit code 0 = pass.
@@ -21,7 +22,7 @@ func _ready() -> void:
 
 	GameConfig.team_size = 2
 	GameConfig.enemy_count = 1
-	GameConfig.difficulty = 2
+	GameConfig.ai_skill = 10
 	GameConfig.apply(level)
 	await get_tree().process_frame
 	await get_tree().process_frame
@@ -46,7 +47,7 @@ func _ready() -> void:
 			push_error("FAIL: %s must be removed for enemy count 1" % extra)
 	if int(level.get_node("Npc").get("difficulty")) != 2:
 		failures += 1
-		push_error("FAIL: chosen difficulty must reach the NPC")
+		push_error("FAIL: AI skill 10 must map to hard difficulty on the NPC")
 
 	if failures == 0:
 		print("PASS: issue #137 level configuration applied")
