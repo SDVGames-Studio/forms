@@ -7,13 +7,21 @@ extends RigidBody2D
 ## instead of kinematically moved areas. The shotgun keeps its old logic
 ## (Projectile.gd, issue #49): its rework comes later.
 ##  ROCKET  — mass 1.0, no gravity, explodes on any contact
-##  GRENADE — mass 0.6, full gravity, bounces off surfaces, explodes on fuse
+##  GRENADE — mass 0.6, LEVEL gravity (issue #216: terrain sources or the
+##             center-line rule, exactly like the figures), bounces off
+##             surfaces, explodes on fuse
 ## Visuals are plain rectangles built in code — no assets.
 
 enum Kind { ROCKET, GRENADE }
 
-const GRAVITY_SCALE := {Kind.ROCKET: 0.0, Kind.GRENADE: 1.0}
 const BOUNCE := {Kind.ROCKET: 0.0, Kind.GRENADE: 0.45}
+## Issue #216: grenade acceleration matches the figures (Stats.GRAVITY).
+const Stats := preload("res://scripts/CharacterStats.gd")
+const GRAVITY := Stats.GRAVITY
+## Issue #216: gravity context captured from the wielder — the center line
+## height and the static gravity direction of levels without terrain sources.
+var _center_line_y := 0.0
+var _shoot_gravity_dir := 1.0
 
 var kind: int = Kind.ROCKET
 ## Launch velocity applied once the body enters the tree.
@@ -50,7 +58,13 @@ func _ready() -> void:
 	collision_layer = 4
 	collision_mask = 1 | 2 | 8
 	mass = _mass
-	gravity_scale = GRAVITY_SCALE[kind]
+	# Issue #216: engine gravity is always OFF for projectiles — the grenade
+	# gets the LEVEL's gravity in _integrate_forces instead (the rocket stays
+	# gravity-free and flies straight).
+	gravity_scale = 0.0
+	if shooter != null:
+		_center_line_y = float(shooter.get("center_line_y") or 0.0)
+		_shoot_gravity_dir = float(shooter.get("gravity_dir") or 1.0)
 	var mat := PhysicsMaterial.new()
 	mat.bounce = BOUNCE[kind]
 	physics_material_override = mat
@@ -74,6 +88,23 @@ func _ready() -> void:
 	add_child(visual)
 
 	get_tree().create_timer(lifetime).timeout.connect(_on_fuse)
+
+
+func _integrate_forces(state: PhysicsDirectBodyState2D) -> void:
+	# Issue #216: the grenade obeys the level's gravity — terrain sources
+	# first, then the center-line rule, then the static direction — the same
+	# ladder the figures use (Player.gd / Npc.gd).
+	if kind == Kind.GRENADE:
+		state.linear_velocity += _level_gravity() * GRAVITY * state.step
+
+
+## Unit gravity direction at the grenade's position (issue #216).
+func _level_gravity() -> Vector2:
+	if LevelTerrain.has_sources(self):
+		return LevelTerrain.gravity_vector(self)
+	if _center_line_y > 0.0:
+		return Vector2.DOWN if global_position.y < _center_line_y else Vector2.UP
+	return Vector2.UP if _shoot_gravity_dir < 0.0 else Vector2.DOWN
 
 
 func _on_body_entered(body: Node2D) -> void:
