@@ -51,7 +51,7 @@ theme_override_colors/font_hover_color = Color(1, 0.84, 0.2, 1)
 theme_override_colors/font_outline_color = Color(0.1, 0.06, 0.14, 1)
 theme_override_constants/outline_size = 6
 theme_override_font_sizes/font_size = 32
-text = "My team"
+text = "Teams"
 
 [node name="BackButton" type="Button" parent="Menu/Rows"]
 unique_name_in_owner = true

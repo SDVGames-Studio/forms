@@ -3,15 +3,44 @@ extends Control
 ##
 ## Opened from the settings menu (issue #175). Lets the player customise and SAVE their
 ## team: members' shape, team color, number of members and members' names.
-## Settings persist to user://team.cfg (via GameConfig) and are applied to
+## Issue #180: the menu is now the TEAM configuration — it also edits the
+## AI behavior parameters (skill, friendly-fire) that a computer team
+## plays with, and offers three ready default teams. Settings persist to
+## user://team.cfg (via GameConfig) and are applied to
 ## the player's figures in every level.
 
 const SHAPES: Array[String] = ["square", "circle", "triangle", "star", "ellipse"]
+
+## Issue #180: three default teams — low / mid / max skill, distinct
+## colors, shapes and member names.
+const PRESETS: Array[Dictionary] = [
+	{
+		"label": "Rookies (skill 0)",
+		"skill": 0, "friendly_fire": 0,
+		"color": Color(0.35, 0.6, 1.0), "shape": "circle",
+		"names": ["Rex", "Roe", "Ray"],
+	},
+	{
+		"label": "Soldiers (skill 5)",
+		"skill": 5, "friendly_fire": 0,
+		"color": Color(0.3, 0.8, 0.4), "shape": "square",
+		"names": ["Sam", "Sue", "Sid"],
+	},
+	{
+		"label": "Veterans (skill 10)",
+		"skill": 10, "friendly_fire": 10,
+		"color": Color(0.9, 0.3, 0.3), "shape": "triangle",
+		"names": ["Vic", "Vera", "Vlad"],
+	},
+]
 
 @onready var _shape: OptionButton = %ShapeOptionButton
 @onready var _color: ColorPickerButton = %TeamColorPicker
 @onready var _size: SpinBox = %TeamSizeSpinBox
 @onready var _names: Array[LineEdit] = [%Name1Edit, %Name2Edit, %Name3Edit]
+@onready var _skill: HSlider = %SkillSlider
+@onready var _friendly_fire: HSlider = %FriendlyFireSlider
+@onready var _preset: OptionButton = %PresetOptionButton
 @onready var _preview_row: HBoxContainer = %PreviewRow
 @onready var _save_button: Button = %SaveButton
 @onready var _back_button: Button = %BackButton
@@ -27,6 +56,9 @@ func _ready() -> void:
 		GameConfig.team_color = color
 		_refresh_preview())
 	_size.value_changed.connect(_on_size_changed)
+	_skill.value_changed.connect(func(value: float) -> void: GameConfig.ai_skill = int(value))
+	_friendly_fire.value_changed.connect(func(value: float) -> void: GameConfig.ai_friendly_fire = int(value))
+	_preset.item_selected.connect(_on_preset_selected)
 	_save_button.pressed.connect(_on_save_pressed)
 	_back_button.pressed.connect(_on_back_pressed)
 	# Load the saved customisation before filling in the controls.
@@ -37,10 +69,36 @@ func _ready() -> void:
 	for i in _names.size():
 		_names[i].text = GameConfig.member_names[i]
 		_names[i].text_changed.connect(func(_text: String) -> void: _refresh_preview())
+	# Issue #180: AI behavior parameters of this team.
+	for preset in PRESETS:
+		_preset.add_item(preset["label"])
+	_skill.set_value_no_signal(GameConfig.ai_skill)
+	_friendly_fire.set_value_no_signal(GameConfig.ai_friendly_fire)
 	_update_name_edits()
 	_refresh_preview()
 	_shape.grab_focus()
 	_shape.grab_focus()
+
+
+
+## Issue #180: fill every control from a default team (preset).
+func _on_preset_selected(index: int) -> void:
+	var preset := PRESETS[index]
+	GameConfig.ai_skill = int(preset["skill"])
+	GameConfig.ai_friendly_fire = int(preset["friendly_fire"])
+	GameConfig.team_color = preset["color"]
+	GameConfig.team_shape = preset["shape"]
+	for i in preset["names"].size():
+		GameConfig.member_names[i] = preset["names"][i]
+	_shape.select(maxi(SHAPES.find(GameConfig.team_shape), 0))
+	_color.color = GameConfig.team_color
+	_skill.set_value_no_signal(GameConfig.ai_skill)
+	_friendly_fire.set_value_no_signal(GameConfig.ai_friendly_fire)
+	for i in _names.size():
+		_names[i].text = GameConfig.member_names[i]
+	_size.set_value_no_signal(3)
+	_update_name_edits()
+	_refresh_preview()
 
 
 ## Number of members with a non-empty name (names beyond it stay default).

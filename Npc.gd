@@ -70,6 +70,11 @@ var _cooldown_left := 0.0
 ## aim slew speed and the pause between shots (set by the level
 ## configuration menu via GameConfig).
 @export_range(0, 2) var difficulty := 1
+
+## Issue #180: AI friendly-fire, from the TEAM configuration — 0 = always
+## avoid hitting teammates, 10 = does not care at all (in between the
+## avoidance checks are applied probabilistically per shot).
+@export_range(0, 10) var ai_friendly_fire := 0
 var _flank_slot := 0.0  # Per-instance offset so team members spread out.
 ## Issue #66: current aim (view) angle in radians, like Player.gd.
 var view_angle := 0.0
@@ -382,13 +387,17 @@ func _shoot() -> void:
 	# Issue #99: hand the current target to the weapon so grenades are
 	# lobbed ballistically at it (see Weapon._fire_grenade).
 	_weapon.npc_target = _target
+	# Issue #180: the friendly-fire parameter gates the avoidance checks —
+	# care = 10 - friendly_fire; the checks are skipped with probability
+	# friendly_fire / 10 per shot (always run at 0, never at 10).
+	var cares := randf() * 10.0 >= ai_friendly_fire
 	# Issue #99: never fire a straight-line weapon through a teammate — the
 	# projectile hits the teammate first (friendly fire since #57) and the
 	# enemy team wipes itself out while the players stay untouched. Switch
 	# to the ballistic grenade, which arcs over the row; at spear-close
 	# range the grenade blast would catch our own team, so hold fire there
 	# (the separation steering opens the line instead).
-	if _weapon.selected_weapon != 2 and _teammate_blocks_shot():
+	if cares and _weapon.selected_weapon != 2 and _teammate_blocks_shot():
 		if _target != null and is_instance_valid(_target) \
 				and global_position.distance_to(_target.global_position) > 160.0:
 			_weapon.selected_weapon = 2
@@ -397,7 +406,7 @@ func _shoot() -> void:
 	# Issue #120: never lob a grenade that would land inside our own blast
 	# radius — hold fire at point-blank range instead (and switch to the
 	# spear so the next in-range tick closes the gap rather than re-throwing).
-	if _weapon.selected_weapon == 2 and _grenade_unsafe():
+	if cares and _weapon.selected_weapon == 2 and _grenade_unsafe():
 		_weapon.selected_weapon = 3
 		return
 	_weapon.npc_fire()
