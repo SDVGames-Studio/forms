@@ -291,7 +291,8 @@ func _physics_process(delta: float) -> void:
 
 	# Jump when blocked or when the target is clearly above us.
 	if is_on_floor() and (is_on_wall() or (_target.global_position.y - global_position.y) * gravity_dir < -80.0):
-		velocity = -grav * JUMP_VELOCITY
+		# Issue #202: jump must point AWAY from the floor (see Player.gd).
+		velocity = grav * JUMP_VELOCITY
 
 	# Issue #66: pick the weapon by distance and take a shot when in range.
 	# Issue #147: hold fire until we actually face the target and the view

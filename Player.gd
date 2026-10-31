@@ -343,7 +343,11 @@ func _physics_process(delta: float) -> void:
 
 	if controlled and TurnController.is_player_team(TurnController.active_team):
 		if Input.is_action_just_pressed("jump") and is_on_floor():
-			velocity = -grav * JUMP_VELOCITY
+			# Issue #202: JUMP_VELOCITY is negative, so grav * JUMP_VELOCITY
+			# points AWAY from the floor (up for grav = DOWN). The old
+			# inverted form pushed the figure INTO the floor and jump never
+			# lifted the character.
+			velocity = grav * JUMP_VELOCITY
 
 		var direction := Input.get_axis("move_left", "move_right")
 		# Issue #104: any move or aim action locks character switching for
