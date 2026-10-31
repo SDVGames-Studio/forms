@@ -16,6 +16,11 @@ extends CanvasLayer
 ## version: the panel is anchored to the center of the screen and the
 ## slots/icons grow (~2x), so the grid is comfortably finger-sized.
 
+## Issue #179: tools joined the weapons in THIS panel — one unified
+## inventory grid: weapons on keys 1-4, tools on keys 5-7. The tool
+## LOGIC stays in the ToolInventory autoload; this script only renders
+## the shared slots.
+
 var selected_weapon := 0
 
 ## Issue #131 (reworked in #143): after the first shot of a turn the
@@ -44,6 +49,7 @@ func unlock_all() -> void:
 	_locked_characters.clear()
 
 var _slots: Array = []
+var _tool_slots: Array = []
 
 var _panel: PanelContainer
 var _toggle_button: Button
@@ -51,6 +57,15 @@ var _mobile_open := false
 var _mobile_layout_applied := false
 
 const WEAPONS := ["Shotgun", "Rocket", "Grenade", "Spear"]
+
+## Issue #179: per-tool icon shapes (mirrors the old ToolInventory
+## panel): switch = yellow bar pair, teleport = cyan ring, shield =
+## blue vertical bar.
+const TOOL_ICONS: Array = [
+	{"shape": "rect", "size": Vector2(30, 6), "color": Color(0.9, 0.9, 0.4, 1)},
+	{"shape": "ring", "radius": 9.0, "color": Color(0.2, 0.7, 0.95, 1)},
+	{"shape": "rect", "size": Vector2(16, 22), "color": Color(0.25, 0.4, 0.95, 1)},
+]
 
 ## Issue #64: icon shapes per weapon, mirroring the held-weapon visuals
 ## in Weapon.gd (shotgun: wide yellow bar, rocket: orange bar, grenade:
@@ -107,11 +122,23 @@ func _ready() -> void:
 		# Issue #64: arrow keys must never reach the inventory.
 		slot.focus_mode = Control.FOCUS_NONE
 		slot.pressed.connect(set_selected.bind(i))
-		slot.add_child(_make_icon(i))
+		slot.add_child(_make_icon(ICONS[i]))
 		_slots.append(slot)
 		grid.add_child(slot)
 
+## Issue #179: tool slots in the SAME grid, right after the weapons.
+	for i in TOOL_ICONS.size():
+		var slot := Button.new()
+		slot.toggle_mode = true
+		slot.custom_minimum_size = Vector2(60, 44)
+		slot.focus_mode = Control.FOCUS_NONE
+		slot.pressed.connect(_on_tool_slot_pressed.bind(i))
+		slot.add_child(_make_icon(TOOL_ICONS[i]))
+		_tool_slots.append(slot)
+		grid.add_child(slot)
+
 	_update_highlight()
+	refresh_tools()
 
 
 ## Issue #64: a simple geometrical shape drawn instead of a text name.
@@ -135,11 +162,24 @@ func _apply_mobile_layout() -> void:
 		var icon: ShapeIcon = _slots[i].get_child(0)
 		icon.icon_scale = 2.0
 		icon.queue_redraw()
+	for i in _tool_slots.size():
+		_tool_slots[i].custom_minimum_size = Vector2(120, 88)
+		var ticon: ShapeIcon = _tool_slots[i].get_child(0)
+		ticon.icon_scale = 2.0
+		ticon.queue_redraw()
 
 
-func _make_icon(index: int) -> Control:
+## Issue #179: tool slot click routes through the ToolInventory logic.
+func _on_tool_slot_pressed(tool: int) -> void:
+	var tools: Node = get_node_or_null("/root/ToolInventory")
+	if tools != null:
+		tools.use_tool(tool)
+	refresh_tools()
+
+
+func _make_icon(icon_def: Dictionary) -> Control:
 	var icon := ShapeIcon.new()
-	icon.icon = ICONS[index]
+	icon.icon = icon_def
 	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	icon.set_anchors_preset(Control.PRESET_FULL_RECT)
 	return icon
@@ -188,11 +228,31 @@ func set_selected(index: int) -> void:
 		return
 	selected_weapon = clampi(index, 0, WEAPONS.size() - 1)
 	_update_highlight()
+	refresh_tools()
 
 
 func _update_highlight() -> void:
 	for i in _slots.size():
 		_slots[i].button_pressed = i == selected_weapon
+
+
+## Issue #179: keep the shared tool slots in sync (armed highlight and
+## once-per-turn graying). Called by ToolInventory on every state change.
+func refresh_tools() -> void:
+	if _panel == null or _tool_slots.is_empty():
+		return
+	# Autoload startup order: the ToolInventory singleton may not exist
+	# yet while this panel builds its slots — skip until it does.
+	var tools: Node = get_node_or_null("/root/ToolInventory")
+	if tools == null:
+		return
+	for i in _tool_slots.size():
+		var slot: Button = _tool_slots[i]
+		slot.button_pressed = tools.armed_tool == i
+		if tools.can_use_now(i):
+			slot.modulate = Color.WHITE
+		else:
+			slot.modulate = Color(1, 1, 1, 0.35)
 
 
 ## Issue #64: minimal icon canvas — draws one shape centered in the slot.
@@ -203,8 +263,12 @@ class ShapeIcon extends Control:
 	func _draw() -> void:
 		var c := size / 2.0
 		var col: Color = icon.get("color", Color.WHITE)
-		if icon.get("shape", "rect") == "circle":
+		var shape: String = icon.get("shape", "rect")
+		if shape == "circle":
 			draw_circle(c, icon.get("radius", 8.0) * icon_scale, col)
+		elif shape == "ring":
+			# Issue #179: outlined circle (teleport tool icon).
+			draw_arc(c, icon.get("radius", 8.0) * icon_scale, 0.0, TAU, 32, col, 4.0, true)
 		else:
 			var s: Vector2 = icon.get("size", Vector2(20, 6)) * icon_scale
 			draw_rect(Rect2(c - s / 2.0, s), col)
