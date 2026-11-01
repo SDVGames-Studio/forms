@@ -6,9 +6,10 @@ extends CharacterBody2D
 ##
 ## Issue #33: the player controls their WHOLE team — every team member uses
 ## this script. Exactly one member is `controlled` (driven by input); the
-## rest just stay in place (issue #40). TeamController (autoload) switches
-## the controlled member with N (next) / P (previous). All members share the
-## same shape and color and show a name above the health bar.
+## rest just stay in place (issue #40). TeamController (autoload) hands
+## control between members — via the Switch tool (issue #170) or its N/P
+## key shortcuts (issue #215). All members share the same shape and color
+## and show a name above the health bar.
 
 ## Issue #108: all characteristics come from the shared CharacterStats —
 ## enemy figures are the SAME class of character as player figures.
