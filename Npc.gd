@@ -46,6 +46,12 @@ const BAR_HEIGHT := Stats.BAR_HEIGHT
 ## health bar fill and hit flash all derive from it.
 @export var team_color := Color(0.75, 0.2, 0.45, 1)
 
+## Issue #226: figure body shape of this NPC's team (square, circle,
+## triangle, star or ellipse — same vocabulary as Player.team_shape).
+## Square keeps the plain ColorRect body; other shapes draw a
+## ShapeVisual body (see _apply_team_shape).
+@export var team_shape := "square"
+
 ## Issue #121: which side this AI fights for. "enemy" (default) behaves
 ## exactly as before; "player" places the figure in the player team, so a
 ## level can stage a computer-vs-computer duel the user only spectates.
@@ -63,6 +69,9 @@ const BAR_HEIGHT := Stats.BAR_HEIGHT
 var health: int = MAX_HEALTH
 var _bar_fill: ColorRect
 var _visual: ColorRect
+## Issue #226: ShapeVisual body drawn instead of the ColorRect body when
+## the team shape is not a square.
+var _shape_visual: Control
 var _dead := false
 var _target: Node2D
 var _cooldown_left := 0.0
@@ -137,6 +146,39 @@ func _apply_team_color() -> void:
 			rect.color = team_color
 
 
+## Issue #226: apply the team's body shape after the fact (called by
+## GameConfig.apply once the level staged the teams).
+func set_team_shape(value: String) -> void:
+	team_shape = value
+	_apply_team_shape()
+
+
+## Issue #226: non-square team shapes replace the plain ColorRect body
+## with a ShapeVisual drawing the team polygon (mirrors Player.gd).
+func _apply_team_shape() -> void:
+	if team_shape == "square" or _visual == null:
+		return
+	if _shape_visual == null:
+		_visual.visible = false
+		_shape_visual = load("res://scripts/ShapeVisual.gd").new()
+		_shape_visual.name = "VisualShape"
+		_shape_visual.offset_left = -32.0
+		_shape_visual.offset_top = -32.0
+		_shape_visual.offset_right = 32.0
+		_shape_visual.offset_bottom = 32.0
+		add_child(_shape_visual)
+	_shape_visual.set_shape(team_shape)
+	_shape_visual.set_shape_color(team_color)
+
+
+## Issue #226: tint whichever body visual is active (hit flash).
+func _set_body_color(value: Color) -> void:
+	if _shape_visual != null:
+		_shape_visual.set_shape_color(value)
+	else:
+		_visual.color = value
+
+
 func _ready() -> void:
 	# Issue #39 rework: characters collide with each other (world + both
 	# character layers) but never push — a walking figure is simply BLOCKED
@@ -173,6 +215,7 @@ func _ready() -> void:
 	_visual.offset_bottom = 32.0
 	_visual.color = team_color
 	add_child(_visual)
+	_apply_team_shape()
 
 	_build_health_bar()
 	# Issue #66: give this NPC the standard weapon so it can use the full
@@ -248,9 +291,9 @@ func take_damage(amount: int) -> void:
 	health = clampi(health - amount, 0, MAX_HEALTH)
 	_update_bar()
 	# Hit flash.
-	_visual.color = Color(1.0, 0.6, 0.7, 1)
+	_set_body_color(Color(1.0, 0.6, 0.7, 1))
 	get_tree().create_timer(0.1).timeout.connect(
-		func() -> void: _visual.color = team_color)
+		func() -> void: _set_body_color(team_color))
 	if health == 0:
 		_die()
 
