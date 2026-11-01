@@ -2,7 +2,9 @@ extends Node
 ## Issue #170: TOOLS — inventory items that are not weapons: they do not
 ## deal damage but perform other tasks. Three tools exist, each usable
 ## ONCE PER TURN (per character):
-##  1 Switch   — hand control to the next team member (rework of N/P)
+##  1 Switch   — hand control to the next team member (rework of N/P;
+##     issue #215: the N/P keys trigger the Switch tool directly —
+##     N next, P previous — with the same guards and quota)
 ##  2 Teleport — the next left click in the level moves the member there
 ##  3 Shield   — the member blocks all damage until its next turn begins
 ##
@@ -52,7 +54,9 @@ func has_used_tool(character: Node) -> bool:
 
 
 ## Use a tool with the currently controlled member. Returns true on success.
-func use_tool(tool: int) -> bool:
+## Issue #215: direction only affects TOOL_SWITCH — 1 hands control to
+## the next member (N), -1 to the previous one (P).
+func use_tool(tool: int, direction := 1) -> bool:
 	if not _is_in_level():
 		return false
 	if not TurnController.is_player_team(TurnController.active_team) or _switching_or_over():
@@ -74,7 +78,10 @@ func use_tool(tool: int) -> bool:
 		TOOL_SWITCH:
 			# Same guard as the old N/P: no switching after moving/aiming.
 			if not TurnController.is_switch_locked():
-				TeamController.switch_next()
+				if direction < 0:
+					TeamController.switch_prev()
+				else:
+					TeamController.switch_next()
 				done = true
 		TOOL_TELEPORT:
 			# Arm the teleport: the next left click picks the destination.
@@ -116,6 +123,16 @@ func can_use_now(tool: int) -> bool:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	# Issue #215: the N/P keys are Switch-tool shortcuts — same guards,
+	# same once-per-turn quota as the slot/keys 5-7 use of the tool.
+	if event.is_action_pressed("switch_next"):
+		get_viewport().set_input_as_handled()
+		use_tool(TOOL_SWITCH, 1)
+		return
+	if event.is_action_pressed("switch_prev"):
+		get_viewport().set_input_as_handled()
+		use_tool(TOOL_SWITCH, -1)
+		return
 	for i in TOOLS.size():
 		if event.is_action_pressed("tool_%d" % (i + 1)):
 			get_viewport().set_input_as_handled()

@@ -1,9 +1,12 @@
 extends Node
 ## Issue #33: switches which member of the player's team is controlled.
 ##
-## Issue #170 rework: direct N/P switching is GONE — switching is now the
-## Switch TOOL in the ToolInventory (once per turn). This autoload keeps
-## only the control hand-over logic (used by the Switch tool).
+## Issue #170 rework: direct FREE N/P switching is GONE — switching is
+## the Switch TOOL in the ToolInventory (once per turn). This autoload
+## keeps only the control hand-over logic (used by the Switch tool).
+## Issue #215: the N/P keys work again as Switch-tool SHORTCUTS —
+## ToolInventory maps them to the tool, so the once-per-turn economy
+## and the move/aim lock of #170 still apply.
 
 func _ready() -> void:
 	# Give control to the first team member once the scene is up.
@@ -36,6 +39,18 @@ func switch_next() -> void:
 	if index == -1:
 		index = 0
 	set_active_index((index + 1) % members.size())
+
+
+## Issue #215: the P key hands control to the PREVIOUS team member —
+## the mirror of switch_next(), with the same dead-member rules.
+func switch_prev() -> void:
+	var members := _team()
+	if members.is_empty():
+		return
+	var index := _active_index()
+	if index == -1:
+		index = 0
+	set_active_index((index - 1 + members.size()) % members.size())
 
 
 func set_active_index(index: int) -> void:
