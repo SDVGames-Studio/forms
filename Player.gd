@@ -208,7 +208,12 @@ func _hit_flash() -> void:
 			visual = rect
 			break
 		var shape := child as Node
-		if shape != null and shape.name.ends_with("Shape") and shape.visible:
+		# Issue #222: the scene's collision shape is named "PlayerShape" —
+		# it ends with "Shape" but is a CollisionShape2D, not a ShapeVisual,
+		# so it must never take the shape-visual branch (every hit on a
+		# player used to throw a script error and skip the flash).
+		if shape != null and shape.name.ends_with("Shape") and shape.visible \
+				and shape.has_method("set_shape_color"):
 			visual = shape
 			break
 	if visual == null:
@@ -232,6 +237,16 @@ func _hit_flash() -> void:
 ## never stays on the field and win checks / turn flow see it as gone.
 func _die() -> void:
 	set_physics_process(false)
+	# Issue #222: the shared camera must survive EVERY dying member — its
+	# host may die while someone else is controlled, or when the whole team
+	# is wiped at the end of the game. Reparent it to the level and keep it
+	# ENABLED: with nobody left controlled it becomes the free spectator
+	# camera (issue #126), so the view never freezes after the win and the
+	# field stays watchable.
+	if _camera != null and is_instance_valid(_camera) \
+			and _camera.get_parent() == self:
+		_camera.reparent(get_parent())
+		_camera.enabled = true
 	# Issue #187: a dying CONTROLLED member must not keep control — the
 	# camera would follow the shrinking corpse and, until the node is
 	# freed, switch/input logic would still see it as the active character.
@@ -245,13 +260,8 @@ func _die() -> void:
 					and (member.get("health") is int) and member.get("health") > 0:
 				successor = member
 				break
-		# Issue #187: if this body hosts the shared team camera, move it out
-		# of the dying node so the player's view survives the corpse.
-		if _camera != null and _camera.get_parent() == self:
-			_camera.reparent(get_parent())
-			_camera.enabled = successor != null
 		if successor != null:
-			successor.set_controlled(true)
+				successor.set_controlled(true)
 	var tween := create_tween()
 	tween.tween_property(self, "scale", Vector2.ZERO, 0.25)
 	tween.tween_callback(queue_free)

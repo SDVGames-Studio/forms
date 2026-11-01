@@ -94,6 +94,9 @@ const HINT_ROLL := "Rolling for the first team..."
 const HINT_PLAYER := "Move: A/D or arrows • Jump: Space • Aim: W/S or Up/Down • Shoot: F • Tool: 5-7 • Weapon: 1-4 • Skip turn: Tab"
 const HINT_ENEMY := "Enemy turn — wait for your move..."
 const HINT_SWITCH := "Shot fired — waiting for the projectiles..."
+## Issue #222: after a win the game keeps running — nobody may move, but
+## the player keeps a live view to spectate the field with the camera.
+const HINT_SPECTATE := "Game over — spectate: drag to pan, +/- to zoom"
 
 
 func _process(delta: float) -> void:
@@ -290,8 +293,11 @@ func _start_round() -> void:
 
 func _show_roll(team: String) -> void:
 	# A stale roll tween (killed round, forced recovery) must never
-	# overwrite an already started turn (issue #85 rework 2).
-	if _label == null or active_team != "":
+	# overwrite an already started turn (issue #85 rework 2) — nor the
+	# win banner: game_over clears active_team, so without this guard a
+	# roll callback racing the end of the game would eat the "WINS!"
+	# banner (issue #222).
+	if _label == null or active_team != "" or game_over:
 		return
 	_label.text = "PICKING FIRST TEAM..."
 	_label.add_theme_color_override("font_color", _team_color(team))
@@ -478,8 +484,16 @@ func _check_win() -> void:
 			var winner: String = alive_teams[0]
 			_label.text = "%s WINS!" % _team_name(winner)
 			_label.add_theme_color_override("font_color", _team_color(winner))
+	# Issue #222: the game must never block after the win — figures keep
+	# idling but nobody may move, and the player keeps a live view to
+	# spectate: the shared camera stays enabled even when the whole player
+	# team died out (with nobody controlled it is the free spectator
+	# camera of issue #126) and the hint says how to use it.
+	for camera in get_tree().get_nodes_in_group("player_camera"):
+		if is_instance_valid(camera):
+			camera.enabled = true
 	if _hint_label != null:
-		_hint_label.text = ""
+		_hint_label.text = HINT_SPECTATE
 
 
 func _build_ui() -> void:
