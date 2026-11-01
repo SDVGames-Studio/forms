@@ -76,6 +76,17 @@ var _cooldown_left := 0.0
 ## avoidance checks are applied probabilistically per shot).
 @export_range(0, 10) var ai_friendly_fire := 0
 var _flank_slot := 0.0  # Per-instance offset so team members spread out.
+## Issue #221: energy shield — while true the figure takes no damage
+## (the same Shield tool the player team has, issue #170).
+var shielded := false
+var _shield_rect: ColorRect
+## Issue #221: per-turn AI state — a tool already spent this turn's
+## action, the "nothing useful left" watchdog and the last position used
+## to detect REAL movement (a blocked walk does not count).
+var _tool_used := false
+var _turn_stall := 0.0
+var _last_pos := Vector2.ZERO
+var _active_last := false
 ## Issue #66: current aim (view) angle in radians, like Player.gd.
 var view_angle := 0.0
 const AIM_SPEED := Stats.VIEW_SPEED
@@ -88,7 +99,24 @@ const FIRE_PAUSE := [2.0, 0.9, 0.0]
 const GRENADE_MIN_RANGE := 130.0
 ## Issue #120: below this health fraction the AI kites — backs away from
 ## the target instead of walking deeper into danger, while still shooting.
-const KITE_HEALTH_FRACTION := 0.3
+## Issue #221: raised from 0.3 — the hurt AI now plays a TOOL (shield or
+## teleport) and keeps its distance instead of trading blows.
+const KITE_HEALTH_FRACTION := 0.35
+## Issue #221: tool play — a badly hurt AI (health fraction at or below
+## KITE_HEALTH_FRACTION) defends itself with its tools instead of firing:
+## TELEPORT away when an enemy is breathing down its neck, SHIELD when
+## the threat is merely near. The tool spends the turn's action (tool OR
+## weapon, mirroring the player rule of issue #207). Easy AI (difficulty
+## 0) fights as before.
+const TOOL_THREAT_RANGE := 360.0
+const TELEPORT_THREAT_RANGE := 170.0
+## Issue #221: seconds of "nothing useful left" (not really moving, not
+## firing, weapon idle) before the AI ends its own turn early instead of
+## standing around until the turn timer runs out.
+const STALL_SKIP_AFTER := 3.0
+## Issue #221: inside this band only the spear or the flat shotgun are
+## allowed — a grenade or rocket detonating that close self-harms.
+const SHOTGUN_CLOSE_NPC := 200.0
 const VIEW_MAX := Stats.VIEW_MAX
 ## Issue #66: the weapon carried by this NPC (created in _ready).
 var _weapon: Node2D
@@ -192,8 +220,30 @@ func _update_bar() -> void:
 	_bar_fill.offset_right = 1.0 + inner_width * ratio
 
 
+## Issue #221: toggle the energy shield (and its visual bubble) — the
+## same Shield tool the player team has (issue #170). TurnController
+## clears it when this team's next turn begins.
+func set_shielded(value: bool) -> void:
+	shielded = value
+	if shielded and _shield_rect == null:
+		_shield_rect = ColorRect.new()
+		_shield_rect.name = "Shield"
+		_shield_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_shield_rect.offset_left = -BAR_WIDTH / 2.0 - 4.0
+		_shield_rect.offset_top = -44.0 - BAR_HEIGHT - 8.0
+		_shield_rect.offset_right = BAR_WIDTH / 2.0 + 4.0
+		_shield_rect.offset_bottom = -44.0 + 24.0
+		_shield_rect.color = Color(0.25, 0.4, 0.95, 0.35)
+		add_child(_shield_rect)
+	if _shield_rect != null:
+		_shield_rect.visible = shielded
+
+
 func take_damage(amount: int) -> void:
 	if _dead:
+		return
+	# Issue #221: the energy shield blocks all damage until the next turn.
+	if shielded:
 		return
 	health = clampi(health - amount, 0, MAX_HEALTH)
 	_update_bar()
@@ -244,8 +294,15 @@ func _physics_process(delta: float) -> void:
 	# still points at it (that desync let the computer move and shoot
 	# during the player's move).
 	var my_team: String = TurnController.team_id_of(self)
-	if TurnController.game_over or TurnController.active_team != my_team \
-			or TurnController.active_member != self:
+	# Issue #221: track the activation edge — the first tick of this NPC's
+	# OWN turn runs the tool decisions and resets the per-turn AI state.
+	var active: bool = not TurnController.game_over \
+			and TurnController.active_team == my_team \
+			and TurnController.active_member == self
+	if active and not _active_last:
+		_begin_my_turn()
+	_active_last = active
+	if not active:
 		velocity.x = 0.0
 		move_and_slide()
 		return
@@ -255,6 +312,9 @@ func _physics_process(delta: float) -> void:
 		# Issue #58: stop instantly instead of gliding to a halt.
 		velocity.x = 0.0
 		move_and_slide()
+		# Issue #221: nothing left to fight — hand the turn over at once
+		# instead of burning the whole timer (the win check follows).
+		TurnController.skip_turn(self)
 		return
 
 	# Aim at the chosen target, offset by this NPC's flank slot so the
@@ -287,6 +347,11 @@ func _physics_process(delta: float) -> void:
 	# pressing into it, while still shooting from the safety of range.
 	if _wants_retreat(distance):
 		direction = -signf(to_target.x)
+	# Issue #221: after a defensive tool the AI does not re-engage — it
+	# holds its safe distance and lets the stall watchdog hand the turn
+	# over once nothing useful is left.
+	if _tool_used and not _wants_retreat(distance):
+		direction = 0.0
 	velocity.x = clampf(direction, -1.0, 1.0) * SPEED
 
 	# Jump when blocked or when the target is clearly above us.
@@ -299,12 +364,108 @@ func _physics_process(delta: float) -> void:
 	# angle has slewed onto it — no more blind flat shots while the aim is
 	# still turning (cooldown stays at 0, so the shot fires as soon as the
 	# aim lines up).
-	if distance <= ATTACK_RANGE and _cooldown_left == 0.0 and _aim_ready():
+	if distance <= ATTACK_RANGE and _cooldown_left == 0.0 and _aim_ready() \
+			and not _tool_used:
 		_pick_weapon(distance, absf(_target.global_position.y - global_position.y))
 		_shoot()
 		_cooldown_left = FIRE_PAUSE[difficulty]
 
+	# Issue #221: stall watchdog — ended turns instead of idle standing.
+	_update_stall(delta)
+
 	move_and_slide()
+
+
+## Issue #221: the AI's own turn just began — reset the per-turn state
+## and play a TOOL when badly hurt near the enemy: teleport out of
+## point-blank trouble, otherwise raise the shield. The tool spends the
+## turn's action (tool OR weapon, like the player rule of issue #207),
+## so a hurt AI retreats and hands over instead of trading blows it
+## would lose. Easy AI (difficulty 0) skips the tool play.
+func _begin_my_turn() -> void:
+	_tool_used = false
+	_turn_stall = 0.0
+	_last_pos = global_position
+	if difficulty < 1 \
+			or float(health) > float(MAX_HEALTH) * KITE_HEALTH_FRACTION:
+		return
+	var enemy := _nearest_opponent()
+	if enemy == null:
+		return
+	var distance := global_position.distance_to(enemy.global_position)
+	if distance <= TELEPORT_THREAT_RANGE and _try_teleport_away(enemy):
+		_tool_used = true
+		return
+	if distance <= TOOL_THREAT_RANGE:
+		set_shielded(true)
+		_tool_used = true
+
+
+## Issue #221: TELEPORT tool — hop away from the threatening enemy to
+## the nearest collision-free spot that keeps every opponent at a safe
+## distance. Returns true when a hop was made.
+func _try_teleport_away(enemy: Node2D) -> bool:
+	var away := signf(global_position.x - enemy.global_position.x)
+	if away == 0.0:
+		away = 1.0 if randf() < 0.5 else -1.0
+	var space := get_world_2d().direct_space_state
+	for dist in [260.0, 330.0, 190.0, 400.0, 130.0]:
+		for lift in [0.0, -80.0, 80.0]:
+			var candidate := Vector2(global_position.x + away * dist,
+					global_position.y + lift)
+			if not _teleport_spot_free(space, candidate):
+				continue
+			if _nearest_opponent_distance_at(candidate) < TELEPORT_THREAT_RANGE:
+				continue
+			global_position = candidate
+			velocity = Vector2.ZERO
+			return true
+	return false
+
+
+## Issue #221: true when the point is clear of solid world geometry
+## (layer 1 = terrain, layer 8 = borders — characters may be overlapped,
+## the body slides out of them).
+func _teleport_spot_free(space: PhysicsDirectSpaceState2D, point: Vector2) -> bool:
+	var query := PhysicsPointQueryParameters2D.new()
+	query.position = point
+	query.collision_mask = 1 | 8
+	query.collide_with_areas = false
+	query.collide_with_bodies = true
+	return space.intersect_point(query, 1).is_empty()
+
+
+## Issue #221: distance from `point` to the closest living opponent
+## (INF when there is none).
+func _nearest_opponent_distance_at(point: Vector2) -> float:
+	var best := INF
+	for group in ["player", "team", "player_team", "enemy_team"]:
+		for node in get_tree().get_nodes_in_group(group):
+			var candidate := node as Node2D
+			if candidate == null or _same_side(candidate):
+				continue
+			var d: float = point.distance_to(candidate.global_position)
+			if d < best:
+				best = d
+	return best
+
+
+## Issue #221: the stall watchdog — when the AI is not really moving and
+## its weapon is idle, it has nothing useful left to do: after
+## STALL_SKIP_AFTER seconds it ends its own turn (the AI analogue of the
+## player's Tab skip, #102) instead of standing idle until the timer
+## runs out. REAL movement counts (distance from the last tick), so a
+## walk blocked by a wall still accumulates the stall.
+func _update_stall(delta: float) -> void:
+	var moved := global_position.distance_to(_last_pos) > 0.5
+	_last_pos = global_position
+	if moved or (_weapon != null and _weapon.is_busy()):
+		_turn_stall = 0.0
+		return
+	_turn_stall += delta
+	if _turn_stall >= STALL_SKIP_AFTER:
+		_turn_stall = 0.0
+		TurnController.skip_turn(self)
 
 
 ## Issue #147: true when the shot direction matches the target — the NPC
@@ -332,7 +493,10 @@ func _aim_ready() -> bool:
 func _wants_retreat(distance: float) -> bool:
 	if health > int(float(MAX_HEALTH) * KITE_HEALTH_FRACTION):
 		return false
-	return distance < KEEP_DISTANCE + 60.0
+	# Issue #221: the hurt AI keeps its distance as soon as the threat is
+	# merely NEAR (not already on top of it) — it played a tool this turn
+	# and now disengages instead of trading blows.
+	return distance < TOOL_THREAT_RANGE
 
 
 
@@ -340,8 +504,9 @@ func _wants_retreat(distance: float) -> bool:
 ## attack range (focus fire), otherwise the nearest one. Re-evaluated every
 ## frame, so when a target dies the NPC naturally switches to another.
 func _nearest_opponent() -> Node2D:
-	var best: Node2D = null
+	var fallback: Node2D = null
 	var nearest_distance := INF
+	var focus: Node2D = null
 	var best_health := INF
 	for group in ["player", "team", "player_team", "enemy_team"]:
 		for node in get_tree().get_nodes_in_group(group):
@@ -351,18 +516,22 @@ func _nearest_opponent() -> Node2D:
 			# Issue #121: never target a figure from our own side.
 			if _same_side(candidate):
 				continue
+			# Issue #221: dying (0-health) figures are skipped outright.
+			var hp = candidate.get("health")
+			if hp != null and float(hp) <= 0.0:
+				continue
 			var d := global_position.distance_to(candidate.global_position)
-			# Track the plain nearest figure as the fallback target.
+			# Track the plain nearest figure as the fallback target
+			# (issue #221: the TRUE nearest — the old code kept the
+			# first-seen figure and ignored a closer enemy).
 			if d < nearest_distance:
 				nearest_distance = d
-				if best == null:
-					best = candidate
+				fallback = candidate
 			# Focus fire: prefer the weakest figure in attack range.
-			if d <= ATTACK_RANGE and candidate.get("health") != null \
-					and float(candidate.get("health")) < best_health:
-				best_health = float(candidate.get("health"))
-				best = candidate
-	return best
+			if d <= ATTACK_RANGE and hp != null and float(hp) < best_health:
+				best_health = float(hp)
+				focus = candidate
+	return focus if focus != null else fallback
 
 
 ## Issue #121: true when the figure fights for the same team as we do.
@@ -379,9 +548,19 @@ func _pick_weapon(distance: float, height_diff: float = 0.0) -> void:
 	if _weapon == null:
 		return
 	if distance <= SPEAR_RANGE_NPC:
-		_weapon.selected_weapon = 3  # spear
+		_weapon.selected_weapon = 3  # spear (melee)
+	elif distance <= SHOTGUN_CLOSE_NPC:
+		# Issue #221: at close range only melee or the flat shotgun — a
+		# lobbed grenade or a rocket detonating that near self-harms, even
+		# when the target sits above us.
+		_weapon.selected_weapon = 0  # shotgun
 	elif distance <= SHOTGUN_RANGE_NPC and height_diff <= 60.0:
 		_weapon.selected_weapon = 0  # shotgun (flat line of sight only)
+	elif distance <= ROCKET_RANGE_NPC and height_diff <= 40.0 \
+			and not _teammate_blocks_shot():
+		# Issue #221: the flat rocket finally gets used — it reaches farther
+		# than the pellets on an open lane with no teammate in the corridor.
+		_weapon.selected_weapon = 1  # rocket
 	else:
 		# Issue #99: prefer the ballistic grenade for long range or any
 		# height difference — its arc reaches targets over terrain, while a

@@ -211,6 +211,13 @@ func reset_shots() -> void:
 	_shot_delay_left = 0.0
 
 
+## Issue #221: true while a fresh shot is still impossible (muzzle
+## cooldown or the between-shots pause). The NPC AI uses this so its
+## "nothing useful left to do" watchdog does not end a turn mid-reload.
+func is_busy() -> bool:
+	return _cooldown_left > 0.0 or _shot_delay_left > 0.0
+
+
 func _fire(power := 1.0) -> void:
 	# Issue #207: a character that used a tool this turn can't also fire —
 	# tool OR weapon per character per turn, never both.

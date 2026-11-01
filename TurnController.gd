@@ -141,6 +141,20 @@ func _unhandled_input(event: InputEvent) -> void:
 			_end_turn()
 
 
+## Issue #221: the AI analogue of the player's Tab skip (#102) — the
+## currently ACTIVE member may end its own turn early once it has
+## nothing useful left to do (out of options, or every intended action
+## is done). Guards mirror _unhandled_input: never during a shot
+## handover or a roll, never after the game ended, and only the acting
+## member's own request ends its turn.
+func skip_turn(requester: Node) -> void:
+	if _level == null or game_over or _switching or active_team == "":
+		return
+	if requester == null or requester != active_member:
+		return
+	_end_turn()
+
+
 ## Issue #104: the active player member reports a move or aim action —
 ## from that moment character switching is locked until the turn ends.
 func notify_member_action() -> void:
@@ -363,12 +377,14 @@ func _begin_turn(team: String) -> void:
 	# weapon selection (for every character).
 	if is_player_team(team):
 		WeaponInventory.unlock_all()
-		# Issue #170: a fresh player turn refills the tool quota and ends
-		# every shield from the previous turn ("until its next turn begins").
+		# Issue #170: a fresh player turn refills the tool quota.
 		ToolInventory.reset_turn()
-		for member in members:
-			if member.has_method("set_shielded"):
-				member.set_shielded(false)
+	# Issue #170/#221: a fresh turn of a team ends every shield of that
+	# team's members ("defends until its next turn begins") — NPCs raise
+	# shields too now, so the clear can no longer be player-team only.
+	for member in members:
+		if member.has_method("set_shielded"):
+			member.set_shielded(false)
 	_turn_left = _turn_duration()
 	# Issue #187: drop the previous turn's active member before picking.
 	# Without this, an enemy NPC left in active_member from the enemy turn
