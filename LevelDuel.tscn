@@ -69,6 +69,7 @@ collision_mask = 1
 script = ExtResource("1_npc")
 display_name = "Red AI"
 team_color = Color(0.75, 0.2, 0.45, 1)
+team_shape = "circle"
 
 [node name="RedAIShape" type="CollisionShape2D" parent="RedAI"]
 shape = SubResource("CircleShape2D_body")

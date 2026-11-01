@@ -64,9 +64,9 @@ const MAX_TEAM_MEMBERS := 3
 const MAX_TEAMS := 8
 
 
-## Issue #208: the default set of teams = the teams that are in the
+## Issue #226: the default set of teams = the teams that are in the
 ## levels, with NEUTRAL names (owner rework: no player/enemies concept
-## in the team configuration).
+## in the team configuration) and DISTINCT body shapes per team.
 static func default_teams() -> Array:
 	var first_names: Array[String] = []
 	for member_name in member_names:
@@ -82,7 +82,7 @@ static func default_teams() -> Array:
 		},
 		{
 			"label": "Team 2", "color": Color(0.75, 0.2, 0.45, 1),
-			"shape": "square",
+			"shape": "circle",
 			"names": second_names,
 			"skill": ai_skill, "friendly_fire": ai_friendly_fire,
 		},
@@ -197,6 +197,11 @@ static func save_team() -> void:
 
 
 static func apply(level: Node) -> void:
+	# Issue #226: make sure the team set is loaded (fresh defaults give
+	# every team its own shape) even if the player never opened the team
+	# menu.
+	if teams.is_empty():
+		load_teams()
 	# Trim the player team: keep the hero plus team_size - 1 teammates.
 	var teammates: Array[String] = ["Teammate1", "Teammate2"]
 	for i in teammates.size():
@@ -209,6 +214,10 @@ static func apply(level: Node) -> void:
 	# Issue #180: AI behavior parameters come from the team configuration:
 	# skill maps onto the difficulty bands, friendly-fire passes through.
 	var ai_difficulty := 0 if ai_skill <= 3 else (1 if ai_skill <= 7 else 2)
+	# Issue #226: the computer team wears its own body shape — enemy NPCs
+	# take teams[1]'s shape, NPCs staged for the player side (duel levels,
+	# team = "player") take teams[0]'s, mirroring how the colors are staged.
+	var enemy_shape := str(teams[1]["shape"]) if teams.size() > 1 else team_shape
 	for i in npcs.size():
 		var npc := level.get_node_or_null(NodePath(npcs[i]))
 		if npc == null:
@@ -220,6 +229,9 @@ static func apply(level: Node) -> void:
 			npc.set("difficulty", ai_difficulty)
 		if npc.get("ai_friendly_fire") != null:
 			npc.set("ai_friendly_fire", ai_friendly_fire)
+		if npc.has_method("set_team_shape"):
+			npc.call("set_team_shape",
+				team_shape if str(npc.get("team")) == "player" else enemy_shape)
 	# Issue #169: apply the customised team color, shape and names.
 	var members := level.get_tree().get_nodes_in_group("player_team")
 	for member in members:
