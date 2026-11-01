@@ -1,8 +1,9 @@
-[gd_scene load_steps=5 format=3]
+[gd_scene load_steps=6 format=3]
 
 [ext_resource type="Script" path="res://Npc.gd" id="1_npc"]
 
 [ext_resource type="Script" path="res://ZoomCamera.gd" id="2_zoomcam"]
+[ext_resource type="Script" path="res://scripts/DestructibleGround.gd" id="11_destr"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_ground"]
 size = Vector2(1152, 120)
@@ -36,6 +37,11 @@ offset_left = -576.0
 offset_top = -60.0
 offset_right = 576.0
 offset_bottom = 60.0
+
+[node name="Soil" type="StaticBody2D" parent="."]
+position = Vector2(576, 498)
+script = ExtResource("11_destr")
+rect_size = Vector2(1152, 60)
 color = Color(0.22, 0.45, 0.28, 1)
 
 [node name="BlueAI" type="CharacterBody2D" parent="."]

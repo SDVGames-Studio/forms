@@ -1,4 +1,4 @@
-[gd_scene load_steps=12 format=3 uid="uid://bx8k2level2fa"]
+[gd_scene load_steps=13 format=3 uid="uid://bx8k2level2fa"]
 
 [ext_resource type="Script" path="res://Player.gd" id="1_player"]
 
@@ -9,6 +9,7 @@
 [ext_resource type="Script" path="res://Npc.gd" id="4_npc"]
 [ext_resource type="Script" path="res://ZoomCamera.gd" id="5_zoomcam"]
 [ext_resource type="Script" path="res://scripts/LevelConfig.gd" id="9_lvlcfg"]
+[ext_resource type="Script" path="res://scripts/DestructibleGround.gd" id="11_destr"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_ground"]
 size = Vector2(2304, 120)
@@ -53,6 +54,16 @@ offset_left = -1152.0
 offset_top = -60.0
 offset_right = 1152.0
 offset_bottom = 60.0
+
+[node name="SoilLeft" type="StaticBody2D" parent="."]
+position = Vector2(235, 498)
+script = ExtResource("11_destr")
+rect_size = Vector2(470, 60)
+
+[node name="SoilRight" type="StaticBody2D" parent="."]
+position = Vector2(1502, 498)
+script = ExtResource("11_destr")
+rect_size = Vector2(1604, 60)
 color = Color(0.3, 0.25, 0.45, 1)
 
 [node name="GapPit" type="ColorRect" parent="."]
