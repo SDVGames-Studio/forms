@@ -17,7 +17,8 @@ extends CanvasLayer
 ## slots/icons grow (~2x), so the grid is comfortably finger-sized.
 
 ## Issue #179: tools joined the weapons in THIS panel — one unified
-## inventory grid: weapons on keys 1-4, tools on keys 5-7. The tool
+## inventory grid: weapons on keys 1-4, tools on keys 5-8 (issue #227
+## added the fourth tool, Rock). The tool
 ## LOGIC stays in the ToolInventory autoload; this script only renders
 ## the shared slots.
 
@@ -63,11 +64,12 @@ const WEAPONS := ["Shotgun", "Rocket", "Grenade", "Spear"]
 
 ## Issue #179: per-tool icon shapes (mirrors the old ToolInventory
 ## panel): switch = yellow bar pair, teleport = cyan ring, shield =
-## blue vertical bar.
+## blue vertical bar. Issue #227: rock = gray boulder circle.
 const TOOL_ICONS: Array = [
 	{"shape": "rect", "size": Vector2(30, 6), "color": Color(0.9, 0.9, 0.4, 1)},
 	{"shape": "ring", "radius": 9.0, "color": Color(0.2, 0.7, 0.95, 1)},
 	{"shape": "rect", "size": Vector2(16, 22), "color": Color(0.25, 0.4, 0.95, 1)},
+	{"shape": "circle", "radius": 10.0, "color": Color(0.55, 0.5, 0.45, 1)},
 ]
 
 ## Issue #64: icon shapes per weapon, mirroring the held-weapon visuals

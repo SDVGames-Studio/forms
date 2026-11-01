@@ -7,6 +7,10 @@ extends Node
 ##     N next, P previous — with the same guards and quota)
 ##  2 Teleport — the next left click in the level moves the member there
 ##  3 Shield   — the member blocks all damage until its next turn begins
+##  4 Rock     — issue #227: lob a rock like a grenade; instead of
+##     exploding it crumbles into destructible ground around where it
+##     rests, clearing every figure and never covering indestructible
+##     ground
 ##
 ## Issue #179: tools and weapons share ONE HUD panel — the slots are
 ## rendered by the WeaponInventory autoload (weapons in keys 1-4, tools
@@ -17,7 +21,8 @@ extends Node
 const TOOL_SWITCH := 0
 const TOOL_TELEPORT := 1
 const TOOL_SHIELD := 2
-const TOOLS := ["Switch", "Teleport", "Shield"]
+const TOOL_ROCK := 3
+const TOOLS := ["Switch", "Teleport", "Shield", "Rock"]
 
 ## Tool armed for the next click (only teleport uses this).
 var armed_tool := -1
@@ -91,11 +96,26 @@ func use_tool(tool: int, direction := 1) -> bool:
 			if member.has_method("set_shielded"):
 				member.set_shielded(true)
 				done = true
+		TOOL_ROCK:
+			# Issue #227: throw the rock through the member's own Weapon —
+			# it owns the aim and the launch arc. The rock body itself
+			# handles the ground creation on its fuse.
+			done = _throw_rock(member)
 	if done and tool != TOOL_TELEPORT:
 		_mark_used(member, tool)
 		armed_tool = -1
 	refresh_slots()
 	return done
+
+
+## Issue #227: hand the rock throw to the member's Weapon node (same aim
+## and launch arc as a grenade; see Weapon.throw_rock).
+func _throw_rock(member: Node) -> bool:
+	var weapon: Node = member.get_node_or_null("Weapon")
+	if weapon == null or not weapon.has_method("throw_rock"):
+		return false
+	weapon.throw_rock()
+	return true
 
 
 func _switching_or_over() -> bool:
