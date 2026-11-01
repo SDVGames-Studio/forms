@@ -535,12 +535,19 @@ func _nearest_opponent() -> Node2D:
 
 
 ## Issue #121: true when the figure fights for the same team as we do.
+## Issue #228: a team death-match — every AI team is its OWN side, so a
+## computer figure only spares figures of its own team color (and, for
+## the player team, other player figures). Computers on different teams
+## fight each other, not just the player.
 func _same_side(other: Node2D) -> bool:
 	if other == self:
 		return true
 	if is_in_group("player_team"):
 		return other.is_in_group("player_team")
-	return other.is_in_group("enemy_team")
+	if not other.is_in_group("enemy_team"):
+		return false
+	var mate_color = other.get("team_color")
+	return mate_color is Color and team_color == mate_color
 
 
 ## Issue #66: choose the weapon that fits the distance to the target.
@@ -623,6 +630,10 @@ func _teammate_blocks_shot() -> bool:
 	for mate in get_tree().get_nodes_in_group(
 			"player_team" if is_in_group("player_team") else "enemy_team"):
 		if mate == self or not is_instance_valid(mate):
+			continue
+		# Issue #228: only TRUE teammates block the shot — a figure from
+		# another AI team standing in the line is fair collateral damage.
+		if not _same_side(mate):
 			continue
 		var rel: Vector2 = mate.global_position - global_position
 		var along := rel.dot(dir)
