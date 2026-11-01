@@ -44,6 +44,11 @@ position = Vector2(576, 498)
 script = ExtResource("11_destr")
 rect_size = Vector2(1152, 60)
 
+[node name="SoilPlatform" type="StaticBody2D" parent="."]
+position = Vector2(950, 400)
+script = ExtResource("11_destr")
+rect_size = Vector2(240, 40)
+
 [node name="Hill" type="StaticBody2D" parent="."]
 position = Vector2(260, 440)
 script = ExtResource("10_indestr")

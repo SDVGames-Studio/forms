@@ -1,4 +1,4 @@
-[gd_scene load_steps=11 format=3 uid="uid://cev4lline4lvl"]
+[gd_scene load_steps=12 format=3 uid="uid://cev4lline4lvl"]
 
 [ext_resource type="Script" path="res://Player.gd" id="1_player"]
 
@@ -9,6 +9,7 @@
 
 [ext_resource type="Script" path="res://ZoomCamera.gd" id="4_zoomcam"]
 [ext_resource type="Script" path="res://scripts/LevelConfig.gd" id="9_lvlcfg"]
+[ext_resource type="Script" path="res://scripts/DestructibleGround.gd" id="11_destr"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_line"]
 size = Vector2(4096, 120)
@@ -49,6 +50,16 @@ offset_left = -2048.0
 offset_top = -60.0
 offset_right = 2048.0
 offset_bottom = 60.0
+
+[node name="Soil1" type="StaticBody2D" parent="."]
+position = Vector2(1024, 450)
+script = ExtResource("11_destr")
+rect_size = Vector2(2048, 60)
+
+[node name="Soil2" type="StaticBody2D" parent="."]
+position = Vector2(3072, 450)
+script = ExtResource("11_destr")
+rect_size = Vector2(2048, 60)
 color = Color(0.45, 0.4, 0.65, 1)
 
 [node name="Platform1" type="StaticBody2D" parent="."]
