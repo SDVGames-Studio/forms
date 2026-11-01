@@ -10,11 +10,26 @@ extends RigidBody2D
 ##  GRENADE — mass 0.6, LEVEL gravity (issue #216: terrain sources or the
 ##             center-line rule, exactly like the figures), bounces off
 ##             surfaces, explodes on fuse
+##  ROCK    — issue #227: the Rock TOOL. Same mechanism as the grenade
+##             (lobbed arc, level gravity, bounce) but it NEVER explodes:
+##             on its fuse it crumbles into destructible ground in a disk
+##             slightly larger than a grenade blast, keeping clear of every
+##             character and never overlapping indestructible ground.
 ## Visuals are plain rectangles built in code — no assets.
 
-enum Kind { ROCKET, GRENADE }
+enum Kind { ROCKET, GRENADE, ROCK }
 
-const BOUNCE := {Kind.ROCKET: 0.0, Kind.GRENADE: 0.45}
+const BOUNCE := {Kind.ROCKET: 0.0, Kind.GRENADE: 0.45, Kind.ROCK: 0.45}
+
+## Issue #227: rock crumble parameters. The created soil disk is a little
+## larger than a grenade blast (GRENADE_BLAST = 100 in Weapon.gd); cells of
+## a 25 px grid are kept only when their rect stays inside the disk, clears
+## every character by 1.3 x the figure shape size (ShapeVisual = 64 px) and
+## does not overlap solid terrain — so the fill hugs indestructible ground
+## with a common border instead of covering it.
+const ROCK_GROUND_RADIUS := 110.0
+const ROCK_CELL := 25.0
+const ROCK_CHAR_CLEAR := 1.3 * 64.0
 ## Issue #216: grenade acceleration matches the figures (Stats.GRAVITY).
 const Stats := preload("res://scripts/CharacterStats.gd")
 const GRAVITY := Stats.GRAVITY
@@ -91,10 +106,10 @@ func _ready() -> void:
 
 
 func _integrate_forces(state: PhysicsDirectBodyState2D) -> void:
-	# Issue #216: the grenade obeys the level's gravity — terrain sources
-	# first, then the center-line rule, then the static direction — the same
-	# ladder the figures use (Player.gd / Npc.gd).
-	if kind == Kind.GRENADE:
+	# Issue #216: the grenade (and the rock, issue #227) obeys the level's
+	# gravity — terrain sources first, then the center-line rule, then the
+	# static direction — the same ladder the figures use (Player.gd / Npc.gd).
+	if kind != Kind.ROCKET:
 		state.linear_velocity += _level_gravity() * GRAVITY * state.step
 
 
@@ -123,6 +138,13 @@ func _explode() -> void:
 	if _exploded:
 		return
 	_exploded = true
+	# Issue #227: the rock never explodes — its "fuse moment" crumbles it
+	# into destructible ground instead (no damage, no blast).
+	if kind == Kind.ROCK:
+		_create_ground()
+		_spawn_blast_visual(Color(0.45, 0.32, 0.2), Color(0.55, 0.42, 0.28))
+		queue_free()
+		return
 	# Area damage to everything with health inside the blast radius.
 	var targets: Array = []
 	targets.append_array(get_tree().get_nodes_in_group("player_team"))
@@ -136,13 +158,112 @@ func _explode() -> void:
 	queue_free()
 
 
+## Issue #227: the rock's "explosion" — a disk of destructible ground
+## around the resting point. The disk is filled row by row with merged soil
+## strips (DestructibleGround chunks). A grid cell is kept only when it
+##  - lies inside ROCK_GROUND_RADIUS of the impact point,
+##  - clears every character by ROCK_CHAR_CLEAR (1.3 x the figure's shape
+##    size) — ground is created AROUND a figure, never on it, and
+##  - does not overlap indestructible ground (slab or disc) or existing
+##    soil — the fill borders them instead of covering them.
+func _create_ground() -> void:
+	var parent := get_parent()
+	if parent == null:
+		return
+	# Characters (both teams) to keep clear of.
+	var clear: Array[Vector2] = []
+	for group in ["player_team", "enemy_team"]:
+		for node in get_tree().get_nodes_in_group(group):
+			var body := node as Node2D
+			if body != null and is_instance_valid(body):
+				clear.append(body.global_position)
+	# Solid terrain the new soil must never overlap.
+	var solids: Array[Rect2] = []
+	var discs: Array[Vector3] = []
+	for node in get_tree().get_nodes_in_group("indestructible_ground"):
+		var ground := node as IndestructibleGround
+		if ground == null or not is_instance_valid(ground):
+			continue
+		if ground.radius > 0.0:
+			discs.append(Vector3(ground.position.x, ground.position.y, ground.radius))
+		else:
+			solids.append(Rect2(ground.position - ground.rect_size / 2.0, ground.rect_size))
+	for node in get_tree().get_nodes_in_group("destructible_ground"):
+		var soil := node as DestructibleGround
+		if soil != null and is_instance_valid(soil):
+			solids.append(Rect2(soil.position - soil.rect_size / 2.0, soil.rect_size))
+	# Fill the disk row by row; consecutive kept cells merge into one strip.
+	var steps := int(ceilf(ROCK_GROUND_RADIUS / ROCK_CELL))
+	for iy in range(-steps, steps):
+		var in_run := false
+		var run_start := 0
+		for ix in range(-steps, steps + 1):
+			var open := ix < steps and _cell_open(ix, iy, clear, solids, discs)
+			if open and not in_run:
+				in_run = true
+				run_start = ix
+			elif not open and in_run:
+				in_run = false
+				_spawn_soil_strip(parent, run_start, iy, ix - run_start)
+
+
+## True when the disk grid cell (ix, iy) may be filled with new soil.
+func _cell_open(ix: int, iy: int, clear: Array[Vector2], solids: Array[Rect2],
+			discs: Array[Vector3]) -> bool:
+	var rect := Rect2(global_position + Vector2(ix, iy) * ROCK_CELL,
+			Vector2(ROCK_CELL, ROCK_CELL))
+	var center := rect.get_center()
+	if center.distance_to(global_position) > ROCK_GROUND_RADIUS:
+		return false
+	# 1.3 x shape size of clearance around every character: the new ground
+	# may touch the edge of that zone but never reach inside it.
+	for pos in clear:
+		if _rect_distance(rect, pos) < ROCK_CHAR_CLEAR:
+			return false
+	# Indestructible slabs and existing soil: overlap is forbidden,
+	# bordering is fine (Rect2.intersects ignores exact edge contact).
+	for solid in solids:
+		if rect.intersects(solid):
+			return false
+	# Indestructible discs (hills): same rule against the circle.
+	for disc in discs:
+		if _rect_distance(rect, Vector2(disc.x, disc.y)) < disc.z:
+			return false
+	return true
+
+
+## Distance from `point` to the closest point of `rect` (0 when inside).
+func _rect_distance(rect: Rect2, point: Vector2) -> float:
+	var closest := Vector2(
+			clampf(point.x, rect.position.x, rect.end.x),
+			clampf(point.y, rect.position.y, rect.end.y))
+	return closest.distance_to(point)
+
+
+## One merged soil strip: `count` grid cells wide starting at column
+## `first`, on row `iy`, spawned as a single DestructibleGround chunk.
+func _spawn_soil_strip(parent: Node, first: int, iy: int, count: int) -> void:
+	var size := Vector2(count * ROCK_CELL, ROCK_CELL)
+	if size.x < DestructibleGround.MIN_PIECE or size.y < DestructibleGround.MIN_PIECE:
+		return
+	var piece := DestructibleGround.new()
+	piece.rect_size = size
+	piece.position = global_position + Vector2(
+			(first + count / 2.0) * ROCK_CELL, (iy + 0.5) * ROCK_CELL)
+	parent.add_child(piece)
+
+
 ## Issue #150: brief expanding ring showing the blast radius at the
-## moment of explosion. Drawn in code — no assets.
-func _spawn_blast_visual() -> void:
+## moment of explosion. Drawn in code — no assets. Issue #227: the ring
+## colors are parametric so the rock crumble can flash brown.
+func _spawn_blast_visual(ring_color := Color(1.0, 0.8, 0.3),
+		fill_color := Color(1.0, 0.6, 0.2)) -> void:
 	if blast_radius <= 0.0:
 		return
 	var ring := BlastRing.new()
 	ring.radius = blast_radius
+	ring.ring_color = ring_color
+	ring.fill_color = fill_color
 	ring.position = global_position
 	ring.z_index = 50
 	get_parent().add_child(ring)
@@ -154,6 +275,8 @@ class BlastRing:
 	const LIFETIME := 0.4
 
 	var radius := 100.0
+	var ring_color := Color(1.0, 0.8, 0.3)
+	var fill_color := Color(1.0, 0.6, 0.2)
 	var _age := 0.0
 
 	func _process(delta: float) -> void:
@@ -168,7 +291,7 @@ class BlastRing:
 		var alpha := 1.0 - t
 		var r := radius * (0.6 + 0.4 * t)
 		# Filled flash fading out fast.
-		draw_circle(Vector2.ZERO, r, Color(1.0, 0.6, 0.2, 0.35 * alpha))
+		draw_circle(Vector2.ZERO, r, Color(fill_color, 0.35 * alpha))
 		# Bright expanding outline.
 		draw_arc(Vector2.ZERO, r, 0.0, TAU, 48,
-				Color(1.0, 0.8, 0.3, alpha), 3.0, true)
+				Color(ring_color, alpha), 3.0, true)

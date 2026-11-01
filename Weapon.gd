@@ -43,6 +43,8 @@ const MIN_SHOT_POWER := 0.4
 const MAX_CHARGE_TIME := 1.5
 const ROCKET_MASS := 1.0
 const GRENADE_MASS := 0.6
+## Issue #227: the Rock tool projectile is a touch heavier than a grenade.
+const ROCK_MASS := 0.8
 
 var _facing := 1.0
 var _gravity_dir := 1.0
@@ -309,6 +311,20 @@ func _fire_grenade(power := 1.0) -> void:
 	_spawn_body(ProjectileBody.Kind.GRENADE, velocity, GRENADE_DAMAGE,
 		GRENADE_FUSE, Vector2(14, 14), Color(0.3, 0.7, 0.3, 1),
 		GRENADE_BLAST, GRENADE_MASS)
+
+
+## Issue #227: the Rock TOOL throw. Same launch arc as a player grenade at
+## full power (lobbed, level gravity, bouncing), but the rock never
+## explodes — on its fuse it crumbles into destructible ground where it
+## rests (ProjectileBody._create_ground). Called by ToolInventory; the
+## tool quota and the tool-or-weapon lock stay the tool system's business.
+func throw_rock() -> void:
+	var rock_aim := _aim()
+	var rock_velocity := (Vector2(GRENADE_SPEED, -320.0) * Vector2(_facing, 1.0)) \
+			.rotated(rock_aim.angle())
+	_spawn_body(ProjectileBody.Kind.ROCK, rock_velocity, 0, GRENADE_FUSE,
+		Vector2(16, 16), Color(0.55, 0.5, 0.45, 1),
+		ProjectileBody.ROCK_GROUND_RADIUS, ROCK_MASS)
 
 
 ## Issue #114: spawn a physics-driven explosive projectile (rigid body).
