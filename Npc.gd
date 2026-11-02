@@ -208,13 +208,23 @@ func _ready() -> void:
 	shape.shape = capsule
 	add_child(shape)
 
-	_visual = ColorRect.new()
-	_visual.offset_left = -32.0
-	_visual.offset_top = -32.0
-	_visual.offset_right = 32.0
-	_visual.offset_bottom = 32.0
+	# Issue #226 rework: Level2/3/4 author the NPC body ColorRect in the
+	# scene ("NpcVisual") — ADOPT it as the one body instead of stacking a
+	# second code-made square: a non-square team shape hid only the code
+	# rect, so the figure wore square AND circle shapes simultaneously.
+	for child in get_children():
+		var authored := child as ColorRect
+		if authored != null:
+			_visual = authored
+			break
+	if _visual == null:
+		_visual = ColorRect.new()
+		_visual.offset_left = -32.0
+		_visual.offset_top = -32.0
+		_visual.offset_right = 32.0
+		_visual.offset_bottom = 32.0
+		add_child(_visual)
 	_visual.color = team_color
-	add_child(_visual)
 	_apply_team_shape()
 
 	_build_health_bar()
