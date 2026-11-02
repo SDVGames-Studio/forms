@@ -47,6 +47,9 @@ var health: int = MAX_HEALTH
 ## Issue #170: energy shield — while true the figure takes no damage.
 ## Set by the Shield tool; TurnController clears it at the start of the
 ## team's next turn ("defends until its next turn begins").
+## Issue #255 rework: the shield blocks ONE attack — the block consumes
+## it. Identical logic in Npc.gd: every figure shields the same way,
+## player's or computer's.
 var shielded := false
 var _shield_rect: ColorRect
 
@@ -188,7 +191,12 @@ func take_damage(amount: int) -> void:
 	if _dead:
 		return
 	# Issue #170: the energy shield blocks all damage until next turn.
+	# Issue #255 rework: the shield blocks ONE attack — blocking consumes
+	# it (same rule as Npc.take_damage, no player/NPC difference).
 	if shielded:
+		set_shielded(false)
+		# Issue #252: action-log line — the shield absorbed the hit.
+		DebugInfo.log("%s's shield blocked %d damage" % [display_name, amount])
 		return
 	health = clampi(health - amount, 0, MAX_HEALTH)
 	_hit_flash()

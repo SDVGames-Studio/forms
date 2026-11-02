@@ -6,7 +6,8 @@ extends Node
 ##     issue #215: the N/P keys trigger the Switch tool directly —
 ##     N next, P previous — with the same guards and quota)
 ##  2 Teleport — the next left click in the level moves the member there
-##  3 Shield   — the member blocks all damage until its next turn begins
+##  3 Shield   — the member blocks ONE attack (the block consumes the
+##     shield, issue #255) until its next turn begins
 ##  4 Rock     — issue #227: lob a rock like a grenade; instead of
 ##     exploding it crumbles into destructible ground around where it
 ##     rests, clearing every figure and never covering indestructible

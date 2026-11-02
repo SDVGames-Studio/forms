@@ -87,6 +87,9 @@ var _cooldown_left := 0.0
 var _flank_slot := 0.0  # Per-instance offset so team members spread out.
 ## Issue #221: energy shield — while true the figure takes no damage
 ## (the same Shield tool the player team has, issue #170).
+## Issue #255 rework: the shield blocks ONE attack — the block consumes
+## it. Identical logic in Player.gd: every figure shields the same way,
+## player's or computer's.
 var shielded := false
 var _shield_rect: ColorRect
 ## Issue #221: per-turn AI state — a tool already spent this turn's
@@ -301,7 +304,12 @@ func take_damage(amount: int) -> void:
 	if _dead:
 		return
 	# Issue #221: the energy shield blocks all damage until the next turn.
+	# Issue #255 rework: the shield blocks ONE attack — blocking consumes
+	# it (same rule as Player.take_damage, no player/NPC difference).
 	if shielded:
+		set_shielded(false)
+		# Issue #252: action-log line — the shield absorbed the hit.
+		DebugInfo.log("%s's shield blocked %d damage" % [display_name, amount])
 		return
 	health = clampi(health - amount, 0, MAX_HEALTH)
 	_update_bar()
