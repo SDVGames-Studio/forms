@@ -337,6 +337,14 @@ func _physics_process(delta: float) -> void:
 			dir = -1.0
 		grav = Vector2.DOWN if dir > 0.0 else Vector2.UP
 	up_direction = -grav
+	# Issue #250 rework: NPC walking lives in the gravity frame's tangent,
+	# not on the world x axis — on the circular arena world-x movement
+	# launched figures off the curved surface into ballistic up-down
+	# flights. On flat levels the tangent IS the x axis (kept facing +x so
+	# behaviour there is unchanged, flipped gravity included).
+	var tangent := Vector2(grav.y, -grav.x)
+	if tangent.x < 0.0:
+		tangent = -tangent
 	if not is_on_floor():
 		velocity += grav * GRAVITY * delta
 
@@ -357,14 +365,17 @@ func _physics_process(delta: float) -> void:
 		_begin_my_turn()
 	_active_last = active
 	if not active:
-		velocity.x = 0.0
+		# Issue #250 rework: zero the walk along the surface (the tangent
+		# frame), keep the fall/jump component along gravity.
+		velocity = grav * velocity.dot(grav)
 		move_and_slide()
 		return
 
 	_target = _nearest_opponent()
 	if _target == null:
-		# Issue #58: stop instantly instead of gliding to a halt.
-		velocity.x = 0.0
+		# Issue #58: stop instantly instead of gliding to a halt
+		# (tangent frame — see the walk step below).
+		velocity = grav * velocity.dot(grav)
 		move_and_slide()
 		# Issue #221: nothing left to fight — hand the turn over at once
 		# instead of burning the whole timer (the win check follows).
@@ -406,7 +417,11 @@ func _physics_process(delta: float) -> void:
 	# over once nothing useful is left.
 	if _tool_used and not _wants_retreat(distance):
 		direction = 0.0
-	velocity.x = clampf(direction, -1.0, 1.0) * SPEED
+	# Issue #250 rework: walk in the gravity frame's tangent (see above) —
+	# the AI keeps its world-x heuristics, but the step itself follows the
+	# surface instead of launching the figure off it.
+	velocity = tangent * clampf(direction, -1.0, 1.0) * SPEED \
+			+ grav * velocity.dot(grav)
 
 	# Jump when blocked or when the target is clearly above us.
 	if is_on_floor() and (is_on_wall() or (_target.global_position.y - global_position.y) * gravity_dir < -80.0):

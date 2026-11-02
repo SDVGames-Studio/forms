@@ -12,11 +12,20 @@ extends StaticBody2D
 ## and `arc_span <= 0` marks a WHOLE RING (an external dirt layer around a
 ## circular indestructible core): `_ready` turns it into the shapeless
 ## CONTAINER of RING_SECTORS equal sector chunks (children — the parent
-## level is still setting up, so siblings cannot be added yet). Blasts split
-## a sector into angular/radial halves exactly like the rect strips; halves
-## that ended up fully inside the blast box are not respawned, so craters
-## grow chunk by chunk here too. All chunks share the container's origin
-## (the arena centre), so their local sector coordinates always line up.
+## level is still setting up, so siblings cannot be added yet). All chunks
+## share the container's origin (the arena centre), so their local sector
+## coordinates always line up.
+##
+## Issue #250 rework: blasts carve the ring with the actual blast CIRCLE
+## (not its bounding box). The blast is expressed in the arena's polar
+## space — its radial reach [d - r, d + r] and the angular span it
+## subtends from the centre — and each piece is decided against that:
+## disjoint pieces survive untouched, a piece whose border points all sit
+## inside the circle is carved away, and everything in between is halved
+## (angularly/radially) until it is small enough to decide by its centre.
+## Craters therefore actually OPEN chunk by chunk — the first delivery
+## only ever split chunks smaller (a half never fitted inside the blast
+## BOX), so the ring stayed solid.
 
 const COLOR := Color(0.45, 0.32, 0.2, 1)
 ## Strips thinner than this are discarded (avoids sub-pixel slivers).
@@ -96,35 +105,94 @@ func apply_blast(global_point: Vector2, radius: float) -> void:
 	queue_free()
 
 
-## Issue #250: carve an annular-sector chunk with a blast circle. Splits the
-## sector into angular and radial halves; a half that ended up fully inside
-## the blast box is not respawned, so the crater opens chunk by chunk.
+## Issue #250 rework: carve an annular-sector chunk with a blast CIRCLE.
+## Pieces disjoint from the blast's polar region survive untouched, fully
+## covered pieces are carved away, and partial ones are halved until they
+## are small enough to decide by their centre — craters open chunk by chunk.
 func _carve_sector(point: Vector2, blast: float) -> void:
-	var blast_box := Rect2(point - Vector2(blast, blast),
-			Vector2(blast, blast) * 2.0)
-	if not blast_box.intersects(_sector_bbox(ring_inner, ring_outer,
-			arc_center, arc_span)):
+	var d := maxf(point.length(), 1.0)
+	_blast_point = point
+	_blast_radius = blast
+	_blast_lo = maxf(0.0, d - blast)
+	_blast_hi = d + blast
+	_blast_aim = point.angle()
+	# A blast swallowing the centre axis reaches every angle equally.
+	_blast_half = PI if d <= blast else asin(clampf(blast / d, 0.0, 1.0))
+	if _polar_disjoint(ring_inner, ring_outer, arc_center, arc_span):
 		return
-	var split_angular := arc_span / 2.0 >= MIN_ARC_SPAN
-	var split_radial := (ring_outer - ring_inner) / 2.0 >= MIN_BAND
-	if not split_angular and not split_radial:
-		return  # Too small to halve — stays solid like the MIN_PIECE strips.
 	queue_free()
-	var half_span := arc_span / 2.0
-	var mid_r := (ring_inner + ring_outer) / 2.0
-	var angles: Array[float] = [arc_center]
-	if split_angular:
-		angles = [arc_center - half_span / 2.0, arc_center + half_span / 2.0]
-	var bands: Array = [[ring_inner, ring_outer]]
-	if split_radial:
-		bands = [[ring_inner, mid_r], [mid_r, ring_outer]]
-	for a in angles:
-		var span := half_span if split_angular else arc_span
-		for band in bands:
-			# A half fully inside the blast box is carved away — skip it.
-			if blast_box.encloses(_sector_bbox(band[0], band[1], a, span)):
-				continue
-			get_parent().add_child(_make_sector(band[0], band[1], a, span))
+	_split_or_keep(get_parent(), ring_inner, ring_outer, arc_center, arc_span)
+
+
+## Blast context while carving this chunk (polar, in the container's space).
+var _blast_point := Vector2.ZERO
+var _blast_radius := 0.0
+var _blast_lo := 0.0
+var _blast_hi := 0.0
+var _blast_aim := 0.0
+var _blast_half := 0.0
+
+
+## True when the piece's band/arc cannot touch the blast's polar region.
+func _polar_disjoint(inner: float, outer: float, center: float, span: float) -> bool:
+	if outer <= _blast_lo or inner >= _blast_hi:
+		return true
+	var ad := absf(wrapf(center - _blast_aim, -PI, PI))
+	return ad >= _blast_half + span / 2.0
+
+
+## True when the whole piece sits inside the blast circle: its polar band
+## and arc are contained AND every border probe (corners + outer mid-arc)
+## is within the blast radius.
+func _blast_covers(inner: float, outer: float, center: float, span: float) -> bool:
+	if inner < _blast_lo or outer > _blast_hi:
+		return false
+	var ad := absf(wrapf(center - _blast_aim, -PI, PI))
+	if ad + span / 2.0 > _blast_half:
+		return false
+	var lo := center - span / 2.0
+	var hi := center + span / 2.0
+	var probes: Array = [Vector2(cos(lo), sin(lo)) * inner,
+			Vector2(cos(hi), sin(hi)) * inner,
+			Vector2(cos(lo), sin(lo)) * outer,
+			Vector2(cos(hi), sin(hi)) * outer,
+			Vector2(cos(center), sin(center)) * outer]
+	for probe in probes:
+		if probe.distance_to(_blast_point) > _blast_radius:
+			return false
+	return true
+
+
+## Recursive half-splitting: keep disjoint pieces, drop covered ones, halve
+## the rest (angular and/or radial); a piece too small to halve is dropped
+## when the blast circle swallows its centre, kept otherwise — mirroring how
+## the rect strips keep slivers the blast box only grazes.
+func _split_or_keep(parent: Node, inner: float, outer: float,
+		center: float, span: float) -> void:
+	if _polar_disjoint(inner, outer, center, span):
+		parent.add_child(_make_sector(inner, outer, center, span))
+		return
+	if _blast_covers(inner, outer, center, span):
+		return
+	var half_span := span / 2.0
+	var split_angular := half_span >= MIN_ARC_SPAN
+	var split_radial := (outer - inner) / 2.0 >= MIN_BAND
+	if split_angular or split_radial:
+		var angles: Array[float] = [center]
+		if split_angular:
+			angles = [center - half_span / 2.0, center + half_span / 2.0]
+		var mid_r := (inner + outer) / 2.0
+		var bands: Array = [[inner, outer]]
+		if split_radial:
+			bands = [[inner, mid_r], [mid_r, outer]]
+		for a in angles:
+			var s := half_span if split_angular else span
+			for band in bands:
+				_split_or_keep(parent, band[0], band[1], a, s)
+		return
+	var mid := Vector2(cos(center), sin(center)) * ((inner + outer) / 2.0)
+	if mid.distance_to(_blast_point) > _blast_radius:
+		parent.add_child(_make_sector(inner, outer, center, span))
 
 
 ## New chunk node for a band of [inner, outer] over `span` radians centred
@@ -151,21 +219,6 @@ func _sector_polygon() -> PackedVector2Array:
 		var a := arc_center + arc_span / 2.0 - arc_span * float(i) / float(steps)
 		points.append(Vector2(cos(a), sin(a)) * ring_inner)
 	return points
-
-
-## Bounding box of the band's inner and outer arcs (the blunt sector
-## approximation used for blast hit/containment tests, mirroring how the
-## rect chunks intersect with the blast's bounding box).
-func _sector_bbox(inner: float, outer: float, center: float, span: float) -> Rect2:
-	var rect := Rect2(Vector2(cos(center), sin(center)) * inner,
-			Vector2.ZERO)
-	for i in 5:
-		var a := center - span / 2.0 + span * float(i) / 4.0
-		rect = rect.expand(Vector2(cos(a), sin(a)) * inner)
-		rect = rect.expand(Vector2(cos(a), sin(a)) * outer)
-	if span >= PI:
-		rect = rect.expand(Vector2.ZERO)
-	return rect
 
 
 func _spawn(offset: Vector2, size: Vector2) -> void:

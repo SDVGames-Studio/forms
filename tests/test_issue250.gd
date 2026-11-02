@@ -59,8 +59,9 @@ func _ready() -> void:
 			" enemy_teams=", enemy_colors.size())
 	ok = ok and teams_ok
 
-	# --- A blast carves the ring chunk by chunk (angular + radial halves;
-	# a half fully inside the blast box is not respawned). ---
+	# --- A blast carves the ring chunk by chunk (issue #250 rework: pieces
+	# inside the blast CIRCLE are removed, so the crater actually OPENS;
+	# remainders are angular/radial halves; the far side stays solid). ---
 	var top: Node = null
 	var top_off := 999.0
 	for chunk in get_tree().get_nodes_in_group("destructible_ground"):
@@ -71,7 +72,11 @@ func _ready() -> void:
 	var blast_point := ARENA_CENTER + Vector2(0, -960.0)
 	var top_found := top != null and top_off < 0.2
 	if top_found:
-		top.call("apply_blast", blast_point, 100.0)
+		# The real explosions (Projectile/ProjectileBody._explode) carve EVERY
+		# destructible chunk — the point sits on a sector boundary, so a
+		# single-chunk blast would leave the neighbor solid.
+		for chunk in get_tree().get_nodes_in_group("destructible_ground"):
+			chunk.call("apply_blast", blast_point, 100.0)
 	await get_tree().physics_frame
 	await get_tree().physics_frame
 	var after := get_tree().get_nodes_in_group("destructible_ground")
@@ -83,11 +88,27 @@ func _ready() -> void:
 				or chunk.get("ring_outer") == 960.0:
 			radial_split = true
 			break
+	# A ring point is "covered" while some remaining chunk's band and arc
+	# contain its polar coordinates around the arena centre.
+	var covered := func(p: Vector2) -> bool:
+		var local := p - ARENA_CENTER
+		var r := local.length()
+		var a := local.angle()
+		for chunk in after:
+			if r >= float(chunk.get("ring_inner")) \
+					and r <= float(chunk.get("ring_outer")) \
+					and absf(wrapf(a - float(chunk.get("arc_center")), -PI, PI)) \
+							<= float(chunk.get("arc_span")) / 2.0:
+				return true
+		return false
+	var crater_open: bool = not bool(covered.call(blast_point))
+	var far_side_kept: bool = bool(covered.call(ARENA_CENTER + Vector2(0, 960.0)))
 	print("ISSUE250 carve top_gone=", top_gone, " top_found=", top_found,
 			" top_off=", top_off, " chunks_after=", after.size(),
-			" radial_split=", radial_split)
+			" radial_split=", radial_split, " crater_open=", crater_open,
+			" far_side_kept=", far_side_kept)
 	ok = ok and top_found and top_gone \
-			and count_changed and radial_split
+			and count_changed and radial_split and crater_open and far_side_kept
 
 	print("ISSUE250 ok=", ok)
 	get_tree().quit(0 if ok else 1)
