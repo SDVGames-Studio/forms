@@ -21,7 +21,8 @@ extends RigidBody2D
 ##             dormant (even across turns — it leaves the "projectiles"
 ##             group once it comes to rest, so the turn handover never
 ##             waits for it) until some character steps within
-##             MINE_TRIGGER (0.6 of the figure width). Then it arms, beeps/
+##             MINE_TRIGGER (1.2 of the figure width — doubled in issue
+##             #262). Then it arms, beeps/
 ##             blinks for MINE_FUSE seconds and explodes.
 ## Visuals are plain rectangles built in code — no assets.
 
@@ -29,13 +30,14 @@ enum Kind { ROCKET, GRENADE, ROCK, MINE }
 
 const BOUNCE := {Kind.ROCKET: 0.0, Kind.GRENADE: 0.45, Kind.ROCK: 0.45, Kind.MINE: 0.2}
 
-## Issue #246: mine parameters. The proximity trigger is 0.6 of a
+## Issue #246: mine parameters. The proximity trigger is 1.2 of a
 ## character's width (the figure visual is 64 px, like ShapeVisual and
-## ROCK_CHAR_CLEAR above); once triggered the mine counts MINE_FUSE
+## ROCK_CHAR_CLEAR above) — doubled from the original 0.6 in issue #262;
+## once triggered the mine counts MINE_FUSE
 ## seconds before it explodes. A mine is only "a projectile" while it
 ## flies: once it slows below MINE_REST_SPEED it is settled — a dormant
 ## hazard that stays until it explodes, across any number of turns.
-const MINE_TRIGGER := 0.6 * 64.0
+const MINE_TRIGGER := 1.2 * 64.0  # issue #262: doubled from 0.6 * 64.0
 const MINE_FUSE := 2.0
 const MINE_REST_SPEED := 30.0
 ## Safety net: if a thrown mine never comes to rest (endless slide), it

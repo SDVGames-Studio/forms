@@ -4,7 +4,8 @@ extends Node
 ## A thrown mine lies dormant once it comes to rest — it leaves the
 ## "projectiles" group (so the turn handover never waits on it) and does
 ## NOT explode on any fuse. It only arms when a character steps within
-## MINE_TRIGGER (0.6 of the 64 px figure width) and then explodes after
+## MINE_TRIGGER (1.2 of the 64 px figure width, doubled in issue #262)
+## and then explodes after
 ## the 2-second countdown, damaging everyone in the blast.
 ##
 ## Run headless: godot --headless res://tests/test_issue246.tscn
@@ -74,7 +75,8 @@ func _ready() -> void:
 	print("ISSUE246 still_dormant=", still_dormant)
 	ok = ok and still_dormant
 
-	# --- A character steps within MINE_TRIGGER (0.6 x 64 = 38.4 px): the
+	# --- A character steps within MINE_TRIGGER (1.2 x 64 = 76.8 px since
+	# issue #262): the
 	# mine arms, counts 2 seconds and explodes — the victim takes damage. ---
 	far_guy.global_position = mine.global_position + Vector2(30, 0)
 	var boom := false
