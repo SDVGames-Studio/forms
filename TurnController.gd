@@ -4,9 +4,13 @@ extends Node
 ## Only active inside scenes carrying the "level" group (menus are never
 ## affected). When a level starts, a visual random generator rolls team
 ## colors and the winning color's team moves first. A turn gives the team
-## TURN_TIME seconds to pick a character, move it and make ONE shot; firing
-## ends the turn (after a short follow-up delay), as does the timer or the
-## active character dying. The game runs until only one team is alive.
+## TURN_TIME seconds to pick a character, move it and make ONE shot;
+## firing ends the turn (after a short follow-up delay), as does the timer
+## or the active character dying. Issue #244: however the turn ends, the
+## acting character is blocked first and the next turn begins only after
+## every effect is done — flying projectiles AND explosions — even when
+## the timer finished first.
+## The game runs until only one team is alive.
 
 ## Issue #192: default fallback; the configured value lives in
 ## GameConfig.turn_time (level configuration menu).
@@ -70,8 +74,14 @@ var _shot_serial := 0
 ## delay, then keeps waiting until no projectile is alive — grenades with
 ## a 3 s fuse must land and explode before the next turn starts.
 var _after_shot_left := 0.0
+## Issue #244: the handover was started by the turn TIMER running out
+## (not by a shot) — only used to pick the waiting hint text.
+var _timer_wait := false
 ## Issue #119: projectile nodes register in this group while alive.
 const PROJECTILE_GROUP := "projectiles"
+## Issue #244: transient explosion EFFECT nodes (blast rings still
+## fading) register in this group — the handover waits for them too.
+const EFFECT_GROUP := "turn_effects"
 ## Issue #85: stall watchdogs — if the first-team roll or the post-shot
 ## handover never completes (tween killed, timer lost, node freed
 ## mid-animation), the game force-recovers instead of freezing forever.
@@ -94,6 +104,9 @@ const HINT_ROLL := "Rolling for the first team..."
 const HINT_PLAYER := "Move: A/D or arrows • Jump: Space • Aim: W/S or Up/Down • Shoot: F • Tool: 5-8 • Weapon: 1-4 • Skip turn: Tab"
 const HINT_ENEMY := "Enemy turn — wait for your move..."
 const HINT_SWITCH := "Shot fired — waiting for the projectiles..."
+## Issue #244: the timer ran out — the turn is over, the character is
+## blocked and the handover waits for every effect to finish.
+const HINT_EFFECTS := "Turn over — waiting for the effects..."
 ## Issue #222: after a win the game keeps running — nobody may move, but
 ## the player keeps a live view to spectate the field with the camera.
 const HINT_SPECTATE := "Game over — spectate: drag to pan, +/- to zoom"
@@ -109,9 +122,13 @@ func _process(delta: float) -> void:
 	_process_watchdog(delta)
 	# Issue #119: post-shot handover — wait for the short delay AND for
 	# every projectile to explode before passing the turn.
+	# Issue #244: the same handover now also serves an expired turn timer,
+	# and it waits for every EFFECT — live projectiles (issue #119) plus
+	# explosion rings still fading — so the next turn begins only after
+	# the field is quiet, even when the timer finished first.
 	if _switching and not game_over:
 		_after_shot_left = maxf(0.0, _after_shot_left - delta)
-		if _after_shot_left <= 0.0 and _live_projectiles() == 0:
+		if _after_shot_left <= 0.0 and _pending_effects() == 0:
 			_end_turn(_shot_serial)
 			return
 	if _level == null or game_over or _switching:
@@ -126,7 +143,10 @@ func _process(delta: float) -> void:
 	_turn_left = maxf(0.0, _turn_left - delta)
 	_update_label()
 	if _turn_left == 0.0:
-		_end_turn()
+		# Issue #244: an expired timer no longer ends the turn at once —
+		# the character is blocked first and the turn passes only after
+		# every effect (flying projectiles, explosions) is done.
+		_begin_effects_wait()
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -177,10 +197,41 @@ func notify_shot() -> void:
 	# Issue #131, reworked in #143: the weapon lock is per character and
 	# applied by Weapon._fire — notify_shot no longer locks the inventory
 	# globally.
+	_timer_wait = false
 	_shot_serial += 1
 	_switch_wait = 0.0
 	_after_shot_left = AFTER_SHOT_DELAY
 	_update_label()
+
+
+## Issue #244: the turn timer ran out — block the acting character and
+## hand the turn over only after every effect (live projectiles,
+## explosions) has finished. Mirrors the post-shot handover (issue #119):
+## the shared _switching state freezes all character input while the
+## effects resolve; the SWITCH_WATCHDOG still force-recovers a stuck wait.
+func _begin_effects_wait() -> void:
+	_switching = true
+	_timer_wait = true
+	_after_shot_left = 0.0
+	_switch_wait = 0.0
+	_update_label()
+
+
+## Issue #244: true while the handover blocks ALL character input —
+## Player, NPC, weapon and tools ask before acting. Covers both the
+## post-shot wait (issue #119) and the expired-timer wait.
+func is_input_frozen() -> bool:
+	return _switching
+
+
+## Issue #244: everything the handover waits for — live projectiles
+## (issue #119) AND live explosion effects (blast rings still fading).
+func _pending_effects() -> int:
+	var count := _live_projectiles()
+	for node in get_tree().get_nodes_in_group(EFFECT_GROUP):
+		if is_instance_valid(node) and not node.is_queued_for_deletion():
+			count += 1
+	return count
 
 
 ## Issue #119: projectiles still flying/exploding (queue_free()d ones don't
@@ -207,6 +258,7 @@ func _on_level_changed() -> void:
 		_switching = false
 		_shot_serial = 0
 		_after_shot_left = 0.0
+		_timer_wait = false
 		_roll_wait = 0.0
 		_switch_wait = 0.0
 		_stall_wait = 0.0
@@ -369,6 +421,8 @@ func _begin_turn(team: String) -> void:
 		return
 	active_team = team
 	_switching = false
+	# Issue #244: a fresh turn clears the expired-timer wait state.
+	_timer_wait = false
 	# Issue #104: a fresh turn always starts with switching unlocked.
 	_switch_locked = false
 	var members := _alive_of(team)
@@ -560,7 +614,9 @@ func _update_hint() -> void:
 	if _hint_label == null:
 		return
 	if _switching:
-		_hint_label.text = HINT_SWITCH
+		# Issue #244: pick the hint for HOW the turn ended — a shot or the
+		# expired timer; both block input while the effects resolve.
+		_hint_label.text = HINT_EFFECTS if _timer_wait else HINT_SWITCH
 	elif active_team == TEAM_PLAYER:
 		_hint_label.text = HINT_PLAYER
 	else:

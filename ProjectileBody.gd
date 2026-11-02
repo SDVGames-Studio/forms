@@ -272,6 +272,9 @@ func _spawn_blast_visual(ring_color := Color(1.0, 0.8, 0.3),
 	ring.fill_color = fill_color
 	ring.position = global_position
 	ring.z_index = 50
+	# Issue #244: the fading ring is a live explosion EFFECT — the turn
+	# handover waits until it is done before the next turn begins.
+	ring.add_to_group("turn_effects")
 	get_parent().add_child(ring)
 
 

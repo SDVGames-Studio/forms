@@ -352,7 +352,11 @@ func _physics_process(delta: float) -> void:
 	if not is_on_floor():
 		velocity += grav * GRAVITY * delta
 
-	if controlled and TurnController.is_player_team(TurnController.active_team):
+	# Issue #244: while the handover waits for effects (after a shot or
+	# when the turn timer ran out) the character is BLOCKED — no moving,
+	# jumping or aiming until the next turn begins.
+	if controlled and TurnController.is_player_team(TurnController.active_team) \
+				and not TurnController.is_input_frozen():
 		if Input.is_action_just_pressed("jump") and is_on_floor():
 			# Issue #202: JUMP_VELOCITY is negative, so grav * JUMP_VELOCITY
 			# points AWAY from the floor (up for grav = DOWN). The old
