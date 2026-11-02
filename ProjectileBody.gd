@@ -145,6 +145,12 @@ func _explode() -> void:
 		_spawn_blast_visual(Color(0.45, 0.32, 0.2), Color(0.55, 0.42, 0.28))
 		queue_free()
 		return
+	# Issue #190 (rework #225): rockets and grenades carve destructible
+	# terrain in the blast radius. The carve used to live only in the legacy
+	# Projectile, so physics projectiles detonated on soil without
+	# destroying any ground.
+	for ground in get_tree().get_nodes_in_group("destructible_ground"):
+		ground.apply_blast(global_position, blast_radius)
 	# Area damage to everything with health inside the blast radius.
 	var targets: Array = []
 	targets.append_array(get_tree().get_nodes_in_group("player_team"))

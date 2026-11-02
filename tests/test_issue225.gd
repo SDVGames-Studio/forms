@@ -1,9 +1,12 @@
 extends Node
 ## Regression check for issue #225: every level ships destructible ground
-## that explosions carve chunk by chunk (DestructibleGround.apply_blast).
+## that explosions carve chunk by chunk (DestructibleGround.apply_blast),
+## and a REAL grenade (ProjectileBody) explosion carves it too.
 ##
 ## Run headless: godot --headless res://tests/test_issue225.tscn
 ## Exit code 0 = pass.
+
+const ProjectileBodyScript := preload("res://ProjectileBody.gd")
 
 const LEVELS := {
 	"res://Level.tscn": 2,
@@ -44,5 +47,35 @@ func _ready() -> void:
 		level.queue_free()
 		for i in 5:
 			await get_tree().physics_frame
+	ok = ok and await _grenade_carves_soil()
 	print("ISSUE225 ok=", ok)
 	get_tree().quit(0 if ok else 1)
+
+
+## Rework #225: a real grenade (ProjectileBody — the physics projectile
+## Weapon.gd fires) must carve soil when it explodes. The original run
+## only exercised DestructibleGround.apply_blast directly, so the carve
+## was missing from the actual grenade/rocket explosion path.
+func _grenade_carves_soil() -> bool:
+	var soil := DestructibleGround.new()
+	soil.rect_size = Vector2(200, 60)
+	soil.position = Vector2(300, 300)
+	add_child(soil)
+	var grenade := RigidBody2D.new()
+	grenade.set_script(ProjectileBodyScript)
+	grenade.setup(ProjectileBody.Kind.GRENADE, Vector2.ZERO, 0, 3.0,
+		Vector2(14, 14), Color(0.3, 0.7, 0.3, 1), 60.0, 0.6)
+	add_child(grenade)
+	# Resting 8 px above the soil's top edge: the blast box overlaps the
+	# chunk, so it must split into leftover strips instead of staying whole.
+	grenade.global_position = soil.position + Vector2(0, -38.0)
+	grenade._explode()
+	for i in 5:
+		await get_tree().physics_frame
+	var pieces: Array = get_tree().get_nodes_in_group("destructible_ground")
+	var carved := pieces.size() != 1
+	print("ISSUE225 grenade explosion soil pieces=", pieces.size(),
+		" (1 = carve failed)")
+	for piece in pieces:
+		piece.queue_free()
+	return carved
