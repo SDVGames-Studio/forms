@@ -302,6 +302,14 @@ func _fire(power := 1.0) -> void:
 	_shots_used[clampi(selected_weapon, 0, _shots_used.size() - 1)] += 1
 	# Issue #101: 3-second pause before the next shot of the same turn.
 	_shot_delay_left = SHOT_DELAY
+	# Issue #252: debug action log — every shot names its wielder.
+	var shooter := get_parent()
+	var who: Variant = "?"
+	if shooter != null and shooter.get("display_name") != null:
+		who = shooter.get("display_name")
+	DebugInfo.log("%s fires %s" % [str(who),
+			WeaponInventory.WEAPONS[clampi(selected_weapon, 0,
+				WeaponInventory.WEAPONS.size() - 1)]])
 	match selected_weapon:
 		0: _fire_shotgun()
 		1: _fire_rocket(power)

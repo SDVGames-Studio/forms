@@ -228,6 +228,9 @@ func _ready() -> void:
 	_apply_team_shape()
 
 	_build_health_bar()
+	# Issue #252: debug-mode visuals — HP number, damage popup, arrow.
+	DebugInfo.attach(self)
+	DebugInfo.update_hp(self, health, MAX_HEALTH)
 	# Issue #66: give this NPC the standard weapon so it can use the full
 	# arsenal (shotgun / rocket / grenade / spear), not just plain bullets.
 	if get_node_or_null("Weapon") == null:
@@ -268,6 +271,8 @@ func _build_health_bar() -> void:
 func _update_bar() -> void:
 	if _bar_fill == null:
 		return
+	# Issue #252: keep the debug HP number near the figure in sync.
+	DebugInfo.update_hp(self, health, MAX_HEALTH)
 	var inner_width := BAR_WIDTH - 2.0
 	var ratio := float(health) / float(MAX_HEALTH)
 	_bar_fill.offset_right = 1.0 + inner_width * ratio
@@ -300,6 +305,9 @@ func take_damage(amount: int) -> void:
 		return
 	health = clampi(health - amount, 0, MAX_HEALTH)
 	_update_bar()
+	# Issue #252: debug damage number + action-log line.
+	DebugInfo.show_damage(self, amount)
+	DebugInfo.log("%s takes %d damage (%d/%d)" % [display_name, amount, health, MAX_HEALTH])
 	# Hit flash.
 	_set_body_color(Color(1.0, 0.6, 0.7, 1))
 	get_tree().create_timer(0.1).timeout.connect(
@@ -310,6 +318,8 @@ func take_damage(amount: int) -> void:
 
 func _die() -> void:
 	_dead = true
+	# Issue #252: action-log line — the figure left the field.
+	DebugInfo.log("%s died" % display_name)
 	# Tiny death puff: shrink out, then free.
 	set_physics_process(false)
 	var tween := create_tween()

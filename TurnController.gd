@@ -158,6 +158,11 @@ func _unhandled_input(event: InputEvent) -> void:
 		if _level != null and not game_over and not _switching \
 				and active_team == TEAM_PLAYER:
 			get_viewport().set_input_as_handled()
+			# Issue #252: debug action log — the player gave the turn up.
+			var skipper: Variant = "Player"
+			if active_member != null and active_member.get("display_name") != null:
+				skipper = active_member.get("display_name")
+			DebugInfo.log("%s skips the turn" % str(skipper))
 			_end_turn()
 
 
@@ -470,6 +475,11 @@ func _begin_turn(team: String) -> void:
 		if team == TEAM_PLAYER and active_member.has_method("set_controlled"):
 			active_member.set_controlled(true)
 	_update_label()
+	# Issue #252: debug action log — whose turn just began.
+	var actor: Variant = team
+	if active_member != null and active_member.get("display_name") != null:
+		actor = active_member.get("display_name")
+	DebugInfo.log("%s: %s's turn" % [_team_name(team), str(actor)])
 
 
 func _end_turn(from_serial: int = -1) -> void:

@@ -10,6 +10,9 @@ extends Control
 
 
 func _ready() -> void:
+	# Issue #252: the debug-mode switch (and any future setting) loads
+	# before any level can build its figures.
+	GameConfig.load_settings()
 	_new_game_button.pressed.connect(_on_new_game_pressed)
 	_settings_button.pressed.connect(_on_settings_pressed)
 	_quit_button.pressed.connect(_on_quit_pressed)
