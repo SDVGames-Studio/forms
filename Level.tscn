@@ -11,7 +11,6 @@
 [ext_resource type="Script" path="res://scripts/IndestructibleGround.gd" id="10_indestr"]
 [ext_resource type="Script" path="res://scripts/DestructibleGround.gd" id="11_destr"]
 
-
 [sub_resource type="CapsuleShape2D" id="CircleShape2D_shape"]
 radius = 24
 height = 64
@@ -61,7 +60,6 @@ collision_layer = 8
 collision_mask = 1
 script = ExtResource("1_bexhn")
 display_name = "Player 1"
-
 
 [node name="Camera" type="Camera2D" parent="Player"]
 script = ExtResource("5_zoomcam")
@@ -140,9 +138,3 @@ next_scene = "res://Level2.tscn"
 [node name="FinishShape" type="CollisionShape2D" parent="Finish"]
 shape = SubResource("RectangleShape2D_finish")
 
-[node name="FinishVisual" type="ColorRect" parent="Finish"]
-offset_left = -24.0
-offset_top = -64.0
-offset_right = 24.0
-offset_bottom = 64.0
-color = Color(0.2, 0.7, 0.95, 0.6)
