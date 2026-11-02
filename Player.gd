@@ -372,14 +372,25 @@ func _physics_process(delta: float) -> void:
 				or (Input.is_action_just_pressed("jump") and is_on_floor()):
 			TurnController.notify_member_action()
 		if direction != 0.0:
-			velocity.x = direction * SPEED
+			# Issue #250 rework: walk along the SURFACE — the input maps onto
+			# the current gravity frame's tangent, not the world x axis. With
+			# world-x movement on the circular arena the figure launched off
+			# the curved slope and flew up and down ballistically; on flat
+			# levels the tangent IS the x axis, so nothing changes there
+			# (tangent.x kept >= 0 so "right" stays right under flipped gravity).
+			var tangent := Vector2(grav.y, -grav.x)
+			if tangent.x < 0.0:
+				tangent = -tangent
+			velocity = tangent * direction * SPEED + grav * velocity.dot(grav)
 		else:
-			velocity.x = 0.0
+			velocity = grav * velocity.dot(grav)
 		# Issue #67: raise/lower the view with W/S / Arrow Up/Down.
 		view_angle = clampf(view_angle + view_axis * VIEW_SPEED * delta, -VIEW_MAX, VIEW_MAX)
 	else:
-		# Issue #40/#58: uncontrolled team member just stays put (no glide).
-		velocity.x = 0.0
+		# Issue #40/#58: uncontrolled team member just stays put (no glide
+		# along the surface — only the component along gravity survives,
+		# which on flat levels is exactly the old velocity.y).
+		velocity = grav * velocity.dot(grav)
 
 	move_and_slide()
 
