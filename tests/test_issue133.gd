@@ -19,6 +19,12 @@ func _ready() -> void:
 	var failures := 0
 
 	var holder := CharacterBody2D.new()
+	# Issue #257: spear damage is now dealt by the thrust animation sweep,
+	# which (like real characters, #67) requires aim_dir from the wielder.
+	var aim0 := GDScript.new()
+	aim0.source_code = "extends CharacterBody2D\nvar view_angle := 0.0\nfunc aim_dir(f: float, d: float) -> Vector2:\n\treturn Vector2(cos(view_angle) * f, -sin(view_angle) * d)\n"
+	aim0.reload()
+	holder.set_script(aim0)
 	add_child(holder)
 	var weapon := Node2D.new()
 	weapon.set_script(load("res://Weapon.gd"))
@@ -44,7 +50,11 @@ func _ready() -> void:
 
 	await get_tree().process_frame
 	weapon.call("_thrust_spear")
-	await get_tree().process_frame
+	# Issue #257: the damage is dealt by the thrust animation sweep, so
+	# wait for physics ticks to run it (headless idle frames can outrun
+	# physics ticks).
+	for i in 60:
+		await get_tree().process_frame
 
 	if on_axis.get("hits") != 1:
 		printerr("FAIL: target on the spear axis was not hit")
@@ -61,7 +71,8 @@ func _ready() -> void:
 	holder.add_child(behind)
 	await get_tree().process_frame
 	weapon.call("_thrust_spear")
-	await get_tree().process_frame
+	for i in 60:
+		await get_tree().process_frame
 	if behind.get("hits") != 0:
 		printerr("FAIL: target behind the wielder was hit")
 		failures += 1
@@ -79,8 +90,11 @@ func _ready() -> void:
 	spear.set_script(load("res://Weapon.gd"))
 	aim_holder.add_child(spear)
 	spear.set("_facing", 1.0)
+	# Rotation is applied in _physics_process — wait for real ticks
+	# (headless idle frames can outrun physics ticks).
 	await get_tree().process_frame
-	await get_tree().process_frame
+	for i in 60:
+		await get_tree().process_frame
 	var held: ColorRect = spear.get("_held")
 	if held == null:
 		printerr("FAIL: held spear instance missing")
