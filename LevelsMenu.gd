@@ -9,6 +9,7 @@ extends Control
 @onready var _level2_button: Button = %Level2Button
 @onready var _level3_button: Button = %Level3Button
 @onready var _level4_button: Button = %Level4Button
+@onready var _level5_button: Button = %Level5Button
 @onready var _duel_button: Button = %DuelButton
 @onready var _back_button: Button = %BackButton
 
@@ -18,6 +19,7 @@ func _ready() -> void:
 	_level2_button.pressed.connect(_on_level2_pressed)
 	_level3_button.pressed.connect(_on_level3_pressed)
 	_level4_button.pressed.connect(_on_level4_pressed)
+	_level5_button.pressed.connect(_on_level5_pressed)
 	_duel_button.pressed.connect(_on_duel_pressed)
 	_back_button.pressed.connect(_on_back_pressed)
 	_level1_button.grab_focus()
@@ -40,6 +42,13 @@ func _on_level3_pressed() -> void:
 
 func _on_level4_pressed() -> void:
 	GameConfig.level_path = "res://Level4.tscn"
+	get_tree().change_scene_to_file("res://LevelConfigMenu.tscn")
+
+
+## Issue #250: the circular arena — an indestructible core with a
+## destructible outer ring, three teams by default.
+func _on_level5_pressed() -> void:
+	GameConfig.level_path = "res://Level5.tscn"
 	get_tree().change_scene_to_file("res://LevelConfigMenu.tscn")
 
 
