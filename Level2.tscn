@@ -66,12 +66,12 @@ script = ExtResource("10_indestr")
 rect_size = Vector2(260, 40)
 
 [node name="Platform2" type="StaticBody2D" parent="."]
-position = Vector2(1000, 360)
+position = Vector2(1244, 360)
 script = ExtResource("10_indestr")
 rect_size = Vector2(260, 40)
 
 [node name="Platform3" type="StaticBody2D" parent="."]
-position = Vector2(1420, 460)
+position = Vector2(1888, 460)
 script = ExtResource("10_indestr")
 rect_size = Vector2(260, 40)
 
@@ -142,7 +142,7 @@ color = Color(1, 0.84, 0.2, 1)
 script = ExtResource("3_weapon")
 
 [node name="Npc" type="CharacterBody2D" parent="."]
-position = Vector2(1300, 400)
+position = Vector2(1768, 400)
 script = ExtResource("4_npc")
 display_name = "Enemy 1"
 
@@ -157,7 +157,7 @@ offset_bottom = 32.0
 color = Color(0.75, 0.2, 0.45, 1)
 
 [node name="Npc2" type="CharacterBody2D" parent="."]
-position = Vector2(1450, 400)
+position = Vector2(1918, 400)
 script = ExtResource("4_npc")
 display_name = "Enemy 2"
 
@@ -172,7 +172,7 @@ offset_bottom = 32.0
 color = Color(0.85, 0.35, 0.25, 1)
 
 [node name="Npc3" type="CharacterBody2D" parent="."]
-position = Vector2(1600, 400)
+position = Vector2(2068, 400)
 script = ExtResource("4_npc")
 display_name = "Enemy 3"
 
