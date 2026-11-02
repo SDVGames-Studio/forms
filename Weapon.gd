@@ -1,14 +1,18 @@
 extends Node2D
 ## Weapon handling for every team member (issue #3, reworked in #49).
 ##
-## Four standard weapons, selectable through the WeaponInventory HUD
-## (keys 1–4, HUD on the right side of the screen). The controlled member
-## fires with the "shoot" action (F). Each weapon has different physics:
+## Five standard weapons, selectable through the WeaponInventory HUD
+## (keys 1–4 and 9, HUD on the right side of the screen). The controlled
+## member fires with the "shoot" action (F). Each weapon has different
+## physics:
 ##  1 Shotgun       — spread of 5 fast pellets, short range, low damage each
 ##  2 Rocket        — fast rocket that keeps its launch speed but arcs
 ##                    under the level's gravity (issue #245), big blast
 ##  3 Grenade       — lobbed arc with gravity, explodes on fuse or impact
 ##  4 Melee spear   — instant short-range thrust hit in front
+##  5 Mine (key 9)  — thrown like a grenade, then lies dormant until a
+##                    character steps near it — 2-second fuse, boom
+##                    (issue #246); it persists across turns
 ## Visuals are plain rectangles built in code — no extra assets.
 
 const ProjectileScript := preload("res://Projectile.gd")
@@ -18,9 +22,9 @@ const ProjectileBodyScript := preload("res://ProjectileBody.gd")
 const COOLDOWN := 0.3
 
 ## Issue #101: shots each weapon allows during ONE turn (index = weapon:
-## shotgun 2, rocket 1, grenade 1, spear 2) and the 3-second delay after
-## every shot during which the character cannot shoot again.
-const SHOTS_PER_TURN: Array = [2, 1, 1, 2]
+## shotgun 2, rocket 1, grenade 1, spear 2, mine 1) and the 3-second delay
+## after every shot during which the character cannot shoot again.
+const SHOTS_PER_TURN: Array = [2, 1, 1, 2, 1]
 const SHOT_DELAY := 3.0
 
 const PELLET_SPEED := 900.0
@@ -37,6 +41,12 @@ const GRENADE_BLAST := 100.0
 const GRENADE_FUSE := 3.0
 const SPEAR_RANGE := 70.0
 const SPEAR_DAMAGE := 25
+## Issue #246: the mine — thrown with the grenade's arc, explodes with a
+## grenade-sized blast once a character steps on it (see ProjectileBody).
+const MINE_SPEED := 480.0
+const MINE_DAMAGE := 40
+const MINE_BLAST := 100.0
+const MINE_MASS := 0.8
 ## Issue #114: charged shots. Holding F charges a rocket/grenade launch —
 ## the longer the hold, the faster it flies (from MIN_SHOT_POWER up to the
 ## full base speed after MAX_CHARGE_TIME seconds).
@@ -109,6 +119,7 @@ const HELD_STYLES: Array = [
 	{"size": Vector2(12, 12), "color": Color(0.3, 0.7, 0.3, 1)},    # grenade
 	{"size": Vector2(40, 4), "color": Color(0.8, 0.8, 0.9, 1)},     # spear
 	{"size": Vector2(14, 14), "color": Color(0.55, 0.5, 0.45, 1)},  # rock (tool)
+	{"size": Vector2(14, 14), "color": Color(0.22, 0.24, 0.3, 1)},  # mine (#246)
 ]
 
 ## Currently selected weapon index (0..3), shared through the inventory HUD.
@@ -161,18 +172,20 @@ func _physics_process(delta: float) -> void:
 	var can_shoot: bool = _shots_used[clampi(selected_weapon, 0, _shots_used.size() - 1)] < _shot_limit() \
 			and _shot_delay_left == 0.0 and _cooldown_left == 0.0 \
 			and not ToolInventory.has_used_tool(get_parent())
-	# Issue #114: rocket (1) and grenade (2) are CHARGED — pressing F starts
+	# Issue #114: rocket (1), grenade (2) are CHARGED — pressing F starts
 	# the charge, releasing F fires with power scaled by the hold time.
 	# Shotgun and spear keep their instant press-fire behavior.
 	# Issue #234: an armed rock is charged too — same F mechanic as the
 	# grenade; releasing F throws the rock instead of firing the weapon.
+	# Issue #246: the mine (4) is charged too — it is thrown like a grenade.
 	# Issue #244: while the handover waits for effects (after a shot or
 	# when the timer ran out) the character is BLOCKED — no new charge, no
 	# throw/fire; a charge in progress is cancelled without spending
 	# anything (the not-can_act branch below).
 	var frozen: bool = TurnController.is_input_frozen()
 	var rock_armed := _rock_armed()
-	var charged := rock_armed or selected_weapon == 1 or selected_weapon == 2
+	var charged := rock_armed or selected_weapon == 1 or selected_weapon == 2 \
+			or selected_weapon == 4
 	var can_act: bool = (rock_armed or can_shoot) and not frozen
 	if controlled and can_act and not _charging \
 			and Input.is_action_just_pressed("shoot"):
@@ -284,6 +297,7 @@ func _fire(power := 1.0) -> void:
 		1: _fire_rocket(power)
 		2: _fire_grenade(power)
 		3: _thrust_spear()
+		4: _throw_mine(power)
 	# Issue #101+#65: only the LAST shot of the turn hands the turn over;
 	# with quota remaining the character keeps acting after the pause.
 	if _shots_used[clampi(selected_weapon, 0, _shots_used.size() - 1)] >= _shot_limit():
@@ -354,6 +368,19 @@ func _fire_grenade(power := 1.0) -> void:
 	_spawn_body(ProjectileBody.Kind.GRENADE, velocity, GRENADE_DAMAGE,
 		GRENADE_FUSE, Vector2(14, 14), Color(0.3, 0.7, 0.3, 1),
 		GRENADE_BLAST, GRENADE_MASS)
+
+
+## Issue #246: the MINE throw — the grenade's lobbed arc and aiming, but
+## the mine has no fuse: it lands, lies dormant (across turns) and only
+## explodes when a character steps within 0.6 of a figure width of it,
+## after a 2-second countdown (all of that lives in ProjectileBody).
+func _throw_mine(power := 1.0) -> void:
+	var mine_aim := _aim()
+	var strength := lerpf(MIN_SHOT_POWER, 1.0, power)
+	var mine_velocity := (Vector2(MINE_SPEED, -320.0) * strength \
+			* Vector2(_facing, 1.0)).rotated(mine_aim.angle())
+	_spawn_body(ProjectileBody.Kind.MINE, mine_velocity, MINE_DAMAGE, 0.0,
+		Vector2(14, 14), Color(0.22, 0.24, 0.3, 1), MINE_BLAST, MINE_MASS)
 
 
 ## Issue #227: the Rock TOOL throw. Same launch arc as a player grenade

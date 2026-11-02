@@ -17,11 +17,31 @@ extends RigidBody2D
 ##             on its fuse it crumbles into destructible ground in a disk
 ##             slightly larger than a grenade blast, keeping clear of every
 ##             character and never overlapping indestructible ground.
+##  MINE    — issue #246: thrown like a grenade, but has NO fuse: it lies
+##             dormant (even across turns — it leaves the "projectiles"
+##             group once it comes to rest, so the turn handover never
+##             waits for it) until some character steps within
+##             MINE_TRIGGER (0.6 of the figure width). Then it arms, beeps/
+##             blinks for MINE_FUSE seconds and explodes.
 ## Visuals are plain rectangles built in code — no assets.
 
-enum Kind { ROCKET, GRENADE, ROCK }
+enum Kind { ROCKET, GRENADE, ROCK, MINE }
 
-const BOUNCE := {Kind.ROCKET: 0.0, Kind.GRENADE: 0.45, Kind.ROCK: 0.45}
+const BOUNCE := {Kind.ROCKET: 0.0, Kind.GRENADE: 0.45, Kind.ROCK: 0.45, Kind.MINE: 0.2}
+
+## Issue #246: mine parameters. The proximity trigger is 0.6 of a
+## character's width (the figure visual is 64 px, like ShapeVisual and
+## ROCK_CHAR_CLEAR above); once triggered the mine counts MINE_FUSE
+## seconds before it explodes. A mine is only "a projectile" while it
+## flies: once it slows below MINE_REST_SPEED it is settled — a dormant
+## hazard that stays until it explodes, across any number of turns.
+const MINE_TRIGGER := 0.6 * 64.0
+const MINE_FUSE := 2.0
+const MINE_REST_SPEED := 30.0
+## Safety net: if a thrown mine never comes to rest (endless slide), it
+## still leaves the "projectiles" group after this many seconds so the
+## post-shot turn handover can never get stuck waiting for it.
+const MINE_SETTLE_WATCHDOG := 4.0
 
 ## Issue #227: rock crumble parameters. The created soil disk is a little
 ## larger than a grenade blast (GRENADE_BLAST = 100 in Weapon.gd); cells of
@@ -52,6 +72,12 @@ var _size := Vector2(16, 8)
 var _color := Color.WHITE
 var _mass := 1.0
 var _exploded := false
+## Issue #246: mine state — flying → settled (dormant) → armed (fuse) →
+## boom. _visual is kept so the armed fuse can blink the body red.
+var _settled := false
+var _armed := false
+var _fuse_left := 0.0
+var _visual: ColorRect = null
 
 
 func setup(p_kind: int, p_velocity: Vector2, p_damage: int, p_lifetime: float,
@@ -103,8 +129,62 @@ func _ready() -> void:
 	visual.offset_bottom = _size.y / 2.0
 	visual.color = _color
 	add_child(visual)
+	_visual = visual
 
-	get_tree().create_timer(lifetime).timeout.connect(_on_fuse)
+	# Issue #246: the mine has NO fuse timer — it only explodes after a
+	# character stepped near it. While it flies it counts as a live
+	# projectile (turn handover waits, issue #119); the watchdog makes sure
+	# it leaves that group even if it never comes to rest.
+	if kind == Kind.MINE:
+		get_tree().create_timer(MINE_SETTLE_WATCHDOG).timeout.connect(_on_mine_watchdog)
+	else:
+		get_tree().create_timer(lifetime).timeout.connect(_on_fuse)
+
+
+func _physics_process(delta: float) -> void:
+	# Issue #246: the mine's state machine. Everything else is physics
+	# handled by the engine plus the level gravity in _integrate_forces.
+	if kind != Kind.MINE:
+		return
+	if not _settled:
+		if linear_velocity.length() < MINE_REST_SPEED:
+			_settle()
+		return
+	if not _armed:
+		# Dormant: arm the fuse the moment ANY character (either team,
+		# including the thrower) steps into the trigger radius.
+		for group in ["player_team", "enemy_team"]:
+			for node in get_tree().get_nodes_in_group(group):
+				var body := node as Node2D
+				if body != null and is_instance_valid(body) \
+						and body.global_position.distance_to(global_position) \
+						<= MINE_TRIGGER:
+					_armed = true
+					_fuse_left = MINE_FUSE
+					return
+	else:
+		# Armed: blink red while the fuse counts down, then explode.
+		_fuse_left -= delta
+		if _visual != null:
+				_visual.color = Color(1.0, 0.15, 0.1, 1) \
+					if fmod(_fuse_left, 0.25) < 0.125 else _color
+		if _fuse_left <= 0.0:
+				_explode()
+
+
+## Issue #246: the mine came to rest — it stops being a live projectile
+## the turn handover waits for (issue #119) and lies dormant until someone
+## steps on it, however many turns that takes.
+func _settle() -> void:
+	_settled = true
+	remove_from_group("projectiles")
+
+
+## Issue #246: settle watchdog — a mine that never slows down (endless
+## slide) still leaves the "projectiles" group so a turn never waits on it.
+func _on_mine_watchdog() -> void:
+	if kind == Kind.MINE and not _settled and not _exploded:
+		_settle()
 
 
 func _integrate_forces(state: PhysicsDirectBodyState2D) -> void:
@@ -129,6 +209,8 @@ func _on_body_entered(body: Node2D) -> void:
 	# Issue #57: never interact with the character that fired us.
 	if body == shooter:
 		return
+	# Issue #246: the mine ignores contact — it only wakes through its
+	# proximity trigger in _physics_process.
 	if kind == Kind.ROCKET:
 		_explode()
 
