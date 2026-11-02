@@ -10,7 +10,10 @@ extends StaticBody2D
 ## surface normal (see LevelTerrain.gd). Visuals are drawn in code —
 ## no assets.
 
-const COLOR := Color(0.35, 0.38, 0.42, 1)
+## Issue #236: the level's ONLY gravity source — every level's gravity
+## comes exclusively from indestructible ground. Purple marks it as the
+## permanent, gravity-bending terrain (brown is destructible ground).
+const COLOR := Color(0.45, 0.3, 0.65, 1)
 
 ## > 0 makes this body a circular disc (no sharp corners); otherwise it is
 ## a rectangle of `rect_size`.

@@ -1,4 +1,4 @@
-[gd_scene load_steps=12 format=3 uid="uid://cev4lline4lvl"]
+[gd_scene load_steps=11 format=3 uid="uid://cev4lline4lvl"]
 
 [ext_resource type="Script" path="res://Player.gd" id="1_player"]
 
@@ -9,13 +9,8 @@
 
 [ext_resource type="Script" path="res://ZoomCamera.gd" id="4_zoomcam"]
 [ext_resource type="Script" path="res://scripts/LevelConfig.gd" id="9_lvlcfg"]
+[ext_resource type="Script" path="res://scripts/IndestructibleGround.gd" id="10_indestr"]
 [ext_resource type="Script" path="res://scripts/DestructibleGround.gd" id="11_destr"]
-
-[sub_resource type="RectangleShape2D" id="RectangleShape2D_line"]
-size = Vector2(4096, 120)
-
-[sub_resource type="RectangleShape2D" id="RectangleShape2D_platform"]
-size = Vector2(384, 48)
 
 [sub_resource type="CapsuleShape2D" id="CircleShape2D_shape"]
 radius = 24
@@ -41,15 +36,8 @@ mouse_filter = 2
 
 [node name="Line" type="StaticBody2D" parent="."]
 position = Vector2(2048, 540)
-
-[node name="LineShape" type="CollisionShape2D" parent="Line"]
-shape = SubResource("RectangleShape2D_line")
-
-[node name="LineVisual" type="ColorRect" parent="Line"]
-offset_left = -2048.0
-offset_top = -60.0
-offset_right = 2048.0
-offset_bottom = 60.0
+script = ExtResource("10_indestr")
+rect_size = Vector2(4096, 120)
 
 [node name="Soil1" type="StaticBody2D" parent="."]
 position = Vector2(1024, 450)
@@ -60,46 +48,21 @@ rect_size = Vector2(2048, 60)
 position = Vector2(3072, 450)
 script = ExtResource("11_destr")
 rect_size = Vector2(2048, 60)
-color = Color(0.45, 0.4, 0.65, 1)
 
 [node name="Platform1" type="StaticBody2D" parent="."]
 position = Vector2(900, 300)
-
-[node name="Platform1Shape" type="CollisionShape2D" parent="Platform1"]
-shape = SubResource("RectangleShape2D_platform")
-
-[node name="Platform1Visual" type="ColorRect" parent="Platform1"]
-offset_left = -192.0
-offset_top = -24.0
-offset_right = 192.0
-offset_bottom = 24.0
-color = Color(0.35, 0.3, 0.55, 1)
+script = ExtResource("10_indestr")
+rect_size = Vector2(384, 48)
 
 [node name="Platform2" type="StaticBody2D" parent="."]
 position = Vector2(2100, 280)
-
-[node name="Platform2Shape" type="CollisionShape2D" parent="Platform2"]
-shape = SubResource("RectangleShape2D_platform")
-
-[node name="Platform2Visual" type="ColorRect" parent="Platform2"]
-offset_left = -192.0
-offset_top = -24.0
-offset_right = 192.0
-offset_bottom = 24.0
-color = Color(0.35, 0.3, 0.55, 1)
+script = ExtResource("10_indestr")
+rect_size = Vector2(384, 48)
 
 [node name="Platform3" type="StaticBody2D" parent="."]
 position = Vector2(3300, 300)
-
-[node name="Platform3Shape" type="CollisionShape2D" parent="Platform3"]
-shape = SubResource("RectangleShape2D_platform")
-
-[node name="Platform3Visual" type="ColorRect" parent="Platform3"]
-offset_left = -192.0
-offset_top = -24.0
-offset_right = 192.0
-offset_bottom = 24.0
-color = Color(0.35, 0.3, 0.55, 1)
+script = ExtResource("10_indestr")
+rect_size = Vector2(384, 48)
 
 [node name="Player" type="CharacterBody2D" parent="."]
 position = Vector2(300, 400)
