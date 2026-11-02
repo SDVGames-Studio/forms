@@ -30,7 +30,7 @@ static var ai_friendly_fire := 0
 
 ## Issue #192: per-turn time limit in seconds, set in the level
 ## configuration menu and read by TurnController when a turn starts.
-static var turn_time := 30.0
+static var turn_time := 15.0
 
 ## Issue #169: player team customisation, edited in the team menu and
 ## persisted to user://team.cfg. Since issue #208 the menu edits the
