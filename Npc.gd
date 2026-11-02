@@ -351,7 +351,8 @@ func _physics_process(delta: float) -> void:
 	# OWN turn runs the tool decisions and resets the per-turn AI state.
 	var active: bool = not TurnController.game_over \
 			and TurnController.active_team == my_team \
-			and TurnController.active_member == self
+			and TurnController.active_member == self \
+			and not TurnController.is_input_frozen()
 	if active and not _active_last:
 		_begin_my_turn()
 	_active_last = active

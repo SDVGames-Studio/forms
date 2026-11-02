@@ -165,9 +165,14 @@ func _physics_process(delta: float) -> void:
 	# Shotgun and spear keep their instant press-fire behavior.
 	# Issue #234: an armed rock is charged too — same F mechanic as the
 	# grenade; releasing F throws the rock instead of firing the weapon.
+	# Issue #244: while the handover waits for effects (after a shot or
+	# when the timer ran out) the character is BLOCKED — no new charge, no
+	# throw/fire; a charge in progress is cancelled without spending
+	# anything (the not-can_act branch below).
+	var frozen: bool = TurnController.is_input_frozen()
 	var rock_armed := _rock_armed()
 	var charged := rock_armed or selected_weapon == 1 or selected_weapon == 2
-	var can_act: bool = rock_armed or can_shoot
+	var can_act: bool = (rock_armed or can_shoot) and not frozen
 	if controlled and can_act and not _charging \
 			and Input.is_action_just_pressed("shoot"):
 		if charged:
