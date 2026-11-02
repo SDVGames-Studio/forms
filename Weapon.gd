@@ -9,7 +9,8 @@ extends Node2D
 ##  2 Rocket        — fast rocket that keeps its launch speed but arcs
 ##                    under the level's gravity (issue #245), big blast
 ##  3 Grenade       — lobbed arc with gravity, explodes on fuse or impact
-##  4 Melee spear   — instant short-range thrust hit in front
+##  4 Melee spear   — thrust that damages along the whole spearhead
+##                     trajectory (out and back), not one instant check
 ##  5 Mine (key 9)  — thrown like a grenade, then lies dormant until a
 ##                    character steps near it — 2-second fuse, boom
 ##                    (issue #246); it persists across turns
@@ -75,6 +76,9 @@ var _charge_bar: ColorRect
 ## separate projectile rectangle is spawned. _thrust_t animates a quick
 ## forward lunge along the aim axis followed by a slow return to the hand.
 var _thrust_t := -1.0
+## Issue #257: bodies already damaged by the CURRENT thrust — each target
+## on the spearhead's path takes the spear hit at most once per thrust.
+var _thrust_hit: Array = []
 
 ## Issue #99: when an NPC fires a grenade, the weapon lobs it ballistically
 ## at this target (cleared after one shot). Player grenades keep the
@@ -240,6 +244,12 @@ func _physics_process(delta: float) -> void:
 				thrust = SPEAR_RANGE * (1.0 - (_thrust_t - 0.12) / 0.5)
 			else:
 				_thrust_t = -1.0
+			# Issue #257: the hitbox follows the spearhead for the ENTIRE
+			# thrust (lunge out and pull back) — everything between the
+			# wielder and the current tip position is damaged as it is
+			# reached, instead of one instant press-time check.
+			if _thrust_t >= 0.0:
+				_spear_sweep_hit(26.0 + thrust + HELD_STYLES[3]["size"].x / 2.0)
 		_held.position += aim * thrust
 
 
@@ -416,31 +426,37 @@ func _spawn_body(kind: int, velocity: Vector2, damage: int, lifetime: float,
 
 
 func _thrust_spear() -> void:
-	# Instant melee hit: damage the closest target in front within range.
+	# Issue #257: no instant press-time hit — the held spear lunges along
+	# the aim axis and damages everything the spearhead actually passes
+	# through on its way out AND back (see _spear_sweep_hit, ticked from
+	# _physics_process while the thrust animates).
+	_thrust_hit.clear()
+	_thrust_t = 0.0
+
+
+## Issue #257: continuous spear hitbox — called every physics frame while
+## the thrust animates. tip_forward is the CURRENT spearhead position along
+## the aim axis (held offset 26 + thrust + half the 40 px spear). Everything
+## between the wielder and that tip takes SPEAR_DAMAGE once per thrust, so
+## the spear damages along its entire trajectory: targets beyond the old
+## instant check range are hit when the head reaches them, and targets that
+## move into the path mid-attack are caught on the way back.
+## Issue #57 (friendly fire) and the issue #133 along-axis rule still apply.
+func _spear_sweep_hit(tip_forward: float) -> void:
 	var parent := get_parent() as Node2D
-	var targets: Array = []
-	# Issue #57: friendly fire — a spear thrust can also hit teammates.
-	targets.append_array(get_tree().get_nodes_in_group("player_team"))
-	targets.append_array(get_tree().get_nodes_in_group("enemy_team"))
-	var best: Node2D = null
-	var best_forward := SPEAR_RANGE
-	# Issue #133: the spear strikes strictly ALONG ITS AXIS — a target only
-	# counts when it sits on the aim ray (small lateral offset), not anywhere
-	# inside a wide cone in front.
+	if parent == null:
+		return
 	var dir := _aim().normalized()
 	var lateral_tolerance := 12.0
-	for node in targets:
-		var body := node as Node2D
-		if body == null or body == parent or not body.has_method("take_damage"):
-			continue
-		var offset := body.global_position - global_position
-		var forward := offset.dot(dir)
-		var lateral := absf(offset.dot(Vector2(-dir.y, dir.x)))
-		if forward > 0.0 and forward <= best_forward and lateral <= lateral_tolerance:
-			best = body
-			best_forward = forward
-	if best:
-		best.take_damage(SPEAR_DAMAGE)
-	# Issue #133 (rework): no extra spear projectile is spawned — the held
-	# spear itself lunges along the aim axis and slowly moves back.
-	_thrust_t = 0.0
+	for group in ["player_team", "enemy_team"]:
+		for node in get_tree().get_nodes_in_group(group):
+			var body := node as Node2D
+			if body == null or body == parent or not body.has_method("take_damage") \
+					or _thrust_hit.has(body):
+				continue
+			var offset := body.global_position - global_position
+			var forward := offset.dot(dir)
+			var lateral := absf(offset.dot(Vector2(-dir.y, dir.x)))
+			if forward > 0.0 and forward <= tip_forward and lateral <= lateral_tolerance:
+				_thrust_hit.append(body)
+				body.take_damage(SPEAR_DAMAGE)
