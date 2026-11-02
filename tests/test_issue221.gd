@@ -14,7 +14,7 @@ extends Node
 ##  5. STALL WATCHDOG: standing still with an idle weapon accumulates the
 ##     skip timer; real movement or a busy weapon resets it;
 ##  6. SKIP TURN: a lone NPC with no target hands its turn over at once
-##     (game over arrives in seconds, not after the 30 s turn timer).
+##     (game over arrives in seconds, not after the 15 s turn timer).
 ##
 ## Run headless: godot --headless res://tests/test_issue221.tscn
 ## Exit code 0 = pass.
@@ -138,7 +138,7 @@ func _ready() -> void:
 	add_child(lone)
 	# The roll finishes (~1.5 s), then the lone NPC team's turn starts and
 	# must hand over AT ONCE (no opponents) instead of standing through
-	# the whole 30 s turn timer.
+	# the whole 15 s turn timer.
 	var over := false
 	for i in 400:
 		await get_tree().physics_frame

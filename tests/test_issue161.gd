@@ -79,7 +79,7 @@ func _check_npc_kills_player() -> bool:
 		await get_tree().physics_frame
 
 	# Let the duel run: turns alternate, the player skips, the NPC shoots.
-	# 150 simulated seconds comfortably spans several turns (TURN_TIME 30
+	# 150 simulated seconds comfortably spans several turns (TURN_TIME 15
 	# s, shot handover ~1.5 s + projectile wait).
 	var start_health: int = player.health
 	var frames := 0

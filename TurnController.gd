@@ -14,7 +14,7 @@ extends Node
 
 ## Issue #192: default fallback; the configured value lives in
 ## GameConfig.turn_time (level configuration menu).
-const TURN_TIME := 30.0
+const TURN_TIME := 15.0
 const AFTER_SHOT_DELAY := 1.5
 const ROLL_STEPS := 10
 const ROLL_STEP_TIME := 0.12
