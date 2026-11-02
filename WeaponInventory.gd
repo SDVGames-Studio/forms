@@ -9,7 +9,7 @@ extends CanvasLayer
 ## Issue #64 refactor: the panel sits in the BOTTOM-RIGHT corner, the
 ## weapons are laid out as a 2-column TABLE of icon slots (no title, no
 ## text names — simple geometrical shape icons), and weapons are chosen
-## with digit keys 1-4 or a left mouse click on a slot. Slots ignore
+## with digit keys or a left mouse click on a slot. Slots ignore
 ## keyboard focus so arrow keys never touch the inventory.
 
 ## Issue #129: on touchscreen devices the inventory becomes the CENTERED
@@ -17,10 +17,10 @@ extends CanvasLayer
 ## slots/icons grow (~2x), so the grid is comfortably finger-sized.
 
 ## Issue #179: tools joined the weapons in THIS panel — one unified
-## inventory grid: weapons on keys 1-4, tools on keys 5-8 (issue #227
-## added the fourth tool, Rock). The tool
-## LOGIC stays in the ToolInventory autoload; this script only renders
-## the shared slots.
+## inventory grid: weapons on keys 1-4 plus the mine on key 9 (issue
+## #246), tools on keys 5-8 (issue #227 added the fourth tool, Rock).
+## The tool LOGIC stays in the ToolInventory autoload; this script only
+## renders the shared slots.
 
 var selected_weapon := 0
 
@@ -60,7 +60,7 @@ var _toggle_button: Button
 var _mobile_open := false
 var _mobile_layout_applied := false
 
-const WEAPONS := ["Shotgun", "Rocket", "Grenade", "Spear"]
+const WEAPONS := ["Shotgun", "Rocket", "Grenade", "Spear", "Mine"]
 
 ## Issue #179: per-tool icon shapes (mirrors the old ToolInventory
 ## panel): switch = yellow bar pair, teleport = cyan ring, shield =
@@ -74,12 +74,13 @@ const TOOL_ICONS: Array = [
 
 ## Issue #64: icon shapes per weapon, mirroring the held-weapon visuals
 ## in Weapon.gd (shotgun: wide yellow bar, rocket: orange bar, grenade:
-## green circle, spear: long thin bar).
+## green circle, spear: long thin bar; issue #246: mine = dark circle).
 const ICONS: Array = [
 	{"shape": "rect", "size": Vector2(26, 6), "color": Color(0.95, 0.85, 0.3, 1)},
 	{"shape": "rect", "size": Vector2(30, 8), "color": Color(0.9, 0.35, 0.15, 1)},
 	{"shape": "circle", "radius": 8.0, "color": Color(0.3, 0.7, 0.3, 1)},
 	{"shape": "rect", "size": Vector2(40, 4), "color": Color(0.8, 0.8, 0.9, 1)},
+	{"shape": "circle", "radius": 8.0, "color": Color(0.22, 0.24, 0.3, 1)},
 ]
 
 
