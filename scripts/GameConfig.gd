@@ -46,6 +46,16 @@ static var team_shape := "square"
 ## Names of the team members (index 0 is the hero).
 static var member_names: Array[String] = ["Player 1", "Player 2", "Player 3"]
 
+## Issue #252: debug mode — ON by default, switched in the settings
+## menu. While on, the OSD (zoom/FPS/level/HP readout), the per-figure
+## debug visuals (HP number, damage numbers, arrows) and the top-right
+## action log are shown; while off the game plays exactly as before.
+static var debug_mode := true
+
+## Issue #252: the debug-mode switch persists in its own settings file,
+## separate from the team customisation (team.cfg).
+const SETTINGS_PATH := "user://settings.cfg"
+
 const _SAVE_PATH := "user://team.cfg"
 
 ## Issue #208: the whole set of teams shown in the team menu — an ORDERED
@@ -194,6 +204,23 @@ static func save_team() -> void:
 	cfg.set_value("ai", "skill", ai_skill)
 	cfg.set_value("ai", "friendly_fire", ai_friendly_fire)
 	cfg.save(_SAVE_PATH)
+
+
+## Issue #252: load the persisted debug-mode setting (missing file keeps
+## the default ON).
+static func load_settings() -> void:
+	var cfg := ConfigFile.new()
+	if cfg.load(SETTINGS_PATH) != OK:
+		return
+	debug_mode = cfg.get_value("settings", "debug_mode", true)
+
+
+## Issue #252: persist the debug-mode setting.
+static func save_settings() -> void:
+	var cfg := ConfigFile.new()
+	cfg.load(SETTINGS_PATH)  # keep any other keys; missing file is fine
+	cfg.set_value("settings", "debug_mode", debug_mode)
+	cfg.save(SETTINGS_PATH)
 
 
 static func apply(level: Node) -> void:

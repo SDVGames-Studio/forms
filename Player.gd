@@ -90,6 +90,8 @@ func _ready() -> void:
 	_apply_team_color()
 	_apply_team_shape()
 	_build_health_bar()
+	# Issue #252: debug-mode visuals — HP number, damage popup, arrow.
+	_build_debug_visuals()
 	set_controlled(controlled)
 
 
@@ -190,11 +192,21 @@ func take_damage(amount: int) -> void:
 		return
 	health = clampi(health - amount, 0, MAX_HEALTH)
 	_hit_flash()
+	# Issue #252: debug damage number + action-log line.
+	DebugInfo.show_damage(self, amount)
+	DebugInfo.log("%s takes %d damage (%d/%d)" % [display_name, amount, health, MAX_HEALTH])
 	if health == 0:
 		_dead = true
 		_die()
 	health_changed.emit(health, MAX_HEALTH)
 	_update_bar()
+
+
+## Issue #252: attach the debug visuals (HP number, damage popup,
+## centre-to-top arrow) — a no-op with the debug mode off.
+func _build_debug_visuals() -> void:
+	DebugInfo.attach(self)
+	DebugInfo.update_hp(self, health, MAX_HEALTH)
 
 
 ## Issue #186: player-team characters flash on damage exactly like NPCs
@@ -237,6 +249,8 @@ func _hit_flash() -> void:
 ## never stays on the field and win checks / turn flow see it as gone.
 func _die() -> void:
 	set_physics_process(false)
+	# Issue #252: action-log line — the figure left the field.
+	DebugInfo.log("%s died" % display_name)
 	# Issue #222: the shared camera must survive EVERY dying member — its
 	# host may die while someone else is controlled, or when the whole team
 	# is wiped at the end of the game. Reparent it to the level and keep it
@@ -327,6 +341,8 @@ func _build_health_bar() -> void:
 func _update_bar() -> void:
 	if _bar_fill == null:
 		return
+	# Issue #252: keep the debug HP number near the figure in sync.
+	DebugInfo.update_hp(self, health, MAX_HEALTH)
 	var inner_width := BAR_WIDTH - 2.0
 	var ratio := float(health) / float(MAX_HEALTH)
 	_bar_fill.offset_right = 1.0 + inner_width * ratio
