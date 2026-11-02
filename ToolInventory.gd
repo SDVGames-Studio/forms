@@ -10,11 +10,15 @@ extends Node
 ##  4 Rock     — issue #227: lob a rock like a grenade; instead of
 ##     exploding it crumbles into destructible ground around where it
 ##     rests, clearing every figure and never covering indestructible
-##     ground
+##     ground. Issue #234 rework: activating the tool no longer throws
+##     instantly — the character TAKES THE ROCK IN HAND (held visual,
+##     Weapon.gd) and throws it with the grenade's full aiming mechanics
+##     (view aiming + hold-F charge); the quota is spent only when the
+##     rock actually leaves the hand (rock_thrown).
 ##
 ## Issue #179: tools and weapons share ONE HUD panel — the slots are
 ## rendered by the WeaponInventory autoload (weapons in keys 1-4, tools
-## in keys 5-7). This autoload keeps only the tool LOGIC and STATE:
+## in keys 5-8). This autoload keeps only the tool LOGIC and STATE:
 ## once-per-turn quota, teleport arming, shield application. Reset once
 ## per player turn by TurnController.
 
@@ -83,6 +87,10 @@ func use_tool(tool: int, direction := 1) -> bool:
 		TOOL_SWITCH:
 			# Same guard as the old N/P: no switching after moving/aiming.
 			if not TurnController.is_switch_locked():
+				# Issue #234: control moves to another member — an armed rock
+				# goes back (quota unspent, nobody holds it anymore).
+				if armed_tool == TOOL_ROCK:
+					armed_tool = -1
 				if direction < 0:
 					TeamController.switch_prev()
 				else:
@@ -97,25 +105,28 @@ func use_tool(tool: int, direction := 1) -> bool:
 				member.set_shielded(true)
 				done = true
 		TOOL_ROCK:
-			# Issue #227: throw the rock through the member's own Weapon —
-			# it owns the aim and the launch arc. The rock body itself
-			# handles the ground creation on its fuse.
-			done = _throw_rock(member)
-	if done and tool != TOOL_TELEPORT:
+			# Issue #234: the rock is TAKEN IN HAND, not thrown instantly —
+			# arm it like the teleport; the member aims (view keys) and
+			# throws with the grenade's charged F mechanic (Weapon.gd).
+			# The quota is spent in rock_thrown, when the rock leaves the
+			# hand. Pressing the slot/key again puts the rock back.
+			armed_tool = TOOL_ROCK if armed_tool != TOOL_ROCK else -1
+			done = true
+	if done and tool != TOOL_TELEPORT and tool != TOOL_ROCK:
 		_mark_used(member, tool)
 		armed_tool = -1
 	refresh_slots()
 	return done
 
 
-## Issue #227: hand the rock throw to the member's Weapon node (same aim
-## and launch arc as a grenade; see Weapon.throw_rock).
-func _throw_rock(member: Node) -> bool:
-	var weapon: Node = member.get_node_or_null("Weapon")
-	if weapon == null or not weapon.has_method("throw_rock"):
-		return false
-	weapon.throw_rock()
-	return true
+## Issue #234: called by Weapon once an armed rock was actually thrown —
+## spends the thrower's rock quota and clears the armed state.
+func rock_thrown(character: Node) -> void:
+	if character != null:
+		_mark_used(character, TOOL_ROCK)
+	if armed_tool == TOOL_ROCK:
+		armed_tool = -1
+	refresh_slots()
 
 
 func _switching_or_over() -> bool:
@@ -144,7 +155,7 @@ func can_use_now(tool: int) -> bool:
 
 func _unhandled_input(event: InputEvent) -> void:
 	# Issue #215: the N/P keys are Switch-tool shortcuts — same guards,
-	# same once-per-turn quota as the slot/keys 5-7 use of the tool.
+	# same once-per-turn quota as the slot/keys 5-8 use of the tool.
 	if event.is_action_pressed("switch_next"):
 		get_viewport().set_input_as_handled()
 		use_tool(TOOL_SWITCH, 1)
