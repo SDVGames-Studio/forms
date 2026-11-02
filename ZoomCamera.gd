@@ -7,7 +7,8 @@ extends Camera2D
 ## with whatever node it is parented to), and zoom persists when control
 ## switches between team members.
 ##
-## Press + / - (or numpad + / -) to zoom in and out. The zoom level shows
+## Press + / - (or numpad + / -) or scroll the mouse wheel (issue #233)
+## to zoom in and out. The zoom level shows
 ## in the top-left OSD (issue #76, shared with FPS and the level name).
 ##
 ## Issue #126: in spectator mode (no controlled member — e.g. the AI vs AI
@@ -75,6 +76,16 @@ func _unhandled_input(event: InputEvent) -> void:
 			KEY_MINUS, KEY_KP_SUBTRACT:
 				_apply_zoom(1.0 / ZOOM_STEP)
 		return
+	# Issue #233: zoom with the mouse wheel — scroll up zooms in, scroll down
+	# zooms out, with the same step/limits as the +/- keys. Handled BEFORE the
+	# armed-teleport check below: a wheel scroll is not a click, so zoom keeps
+	# working while a teleport destination is being picked.
+	if event is InputEventMouseButton and event.pressed:
+		match event.button_index:
+			MOUSE_BUTTON_WHEEL_UP:
+				_apply_zoom(ZOOM_STEP)
+			MOUSE_BUTTON_WHEEL_DOWN:
+				_apply_zoom(1.0 / ZOOM_STEP)
 	# Issue #170: while a teleport is armed the next left click picks the
 	# destination — it must reach ToolInventory, not start a camera drag.
 	if ToolInventory.armed_tool == ToolInventory.TOOL_TELEPORT:
