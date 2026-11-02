@@ -1,13 +1,15 @@
 extends Node
 ## Regression check for issue #258: rework levels 1-4 so the minimum
-## horizontal distance between separated indestructible grounds is
-## 6 character widths (the figure visual is 64 px wide -> 384 px).
+## distance between separated indestructible grounds is 6 character
+## widths (the figure visual is 64 px wide -> 384 px) in BOTH axes:
 ##
-## Two indestructible grounds are "separated" when their horizontal spans
-## do not overlap — the edge-to-edge gap a figure would have to cross.
-## Grounds stacked above each other (overlapping spans, e.g. floating
-## platforms over a level-wide floor) are connected by the floor and do
-## not count as separated.
+##  - horizontally separated grounds (disjoint x spans): edge-to-edge
+##    horizontal gap >= 384 px;
+##  - vertically stacked grounds (overlapping x spans, disjoint y spans):
+##    edge-to-edge vertical gap >= 384 px (owner rework 2026-11-02:
+##    "level 4 - vertical distance between grounds is still small");
+##  - grounds whose rects actually intersect (e.g. the level-1 hill
+##    embedded in its floor) are connected, not separated - exempt.
 ##
 ## Run headless: godot --headless res://tests/test_issue258.tscn
 ## Exit code 0 = pass.
@@ -31,34 +33,46 @@ func _ready() -> void:
 		await get_tree().physics_frame
 
 		var grounds := get_tree().get_nodes_in_group("indestructible_ground")
-		var spans := []  # [x_min, x_max] per ground, level coordinates.
+		var boxes := []  # [x_min, y_min, x_max, y_max] per ground, level coords.
 		for ground in grounds:
 			var body := ground as Node2D
 			var radius := float(body.get("radius"))
-			var x_min := body.position.x
-			var x_max := body.position.x
+			var box := [body.position.x, body.position.y, body.position.x, body.position.y]
 			if radius > 0.0:
-				x_min -= radius
-				x_max += radius
+				box[0] -= radius
+				box[1] -= radius
+				box[2] += radius
+				box[3] += radius
 			else:
 				var rect: Vector2 = body.get("rect_size")
-				x_min -= rect.x / 2.0
-				x_max += rect.x / 2.0
-			spans.append([x_min, x_max])
+				box[0] -= rect.x / 2.0
+				box[1] -= rect.y / 2.0
+				box[2] += rect.x / 2.0
+				box[3] += rect.y / 2.0
+			boxes.append(box)
 
-		var min_gap := INF
-		for i in spans.size():
-			for j in range(i + 1, spans.size()):
-				# Overlapping horizontal spans = stacked, not separated.
-				if spans[i][0] < spans[j][1] and spans[j][0] < spans[i][1]:
-					continue
-				var gap: float = maxf(spans[j][0] - spans[i][1],
-						spans[i][0] - spans[j][1])
-				min_gap = minf(min_gap, gap)
+		var min_h := INF
+		var min_v := INF
+		for i in boxes.size():
+			for j in range(i + 1, boxes.size()):
+				var a: Array = boxes[i]
+				var b: Array = boxes[j]
+				var x_overlap: bool = a[0] < b[2] and b[0] < a[2]
+				var y_overlap: bool = a[1] < b[3] and b[1] < a[3]
+				if x_overlap and y_overlap:
+					continue  # intersecting = connected, not separated
+				if x_overlap:
+					# Stacked grounds: vertical edge-to-edge gap.
+					min_v = minf(min_v, maxf(b[1] - a[3], a[1] - b[3]))
+				else:
+					# Side-by-side grounds: horizontal edge-to-edge gap.
+					min_h = minf(min_h, maxf(b[0] - a[2], a[0] - b[2]))
 
-		var level_ok := grounds.size() > 0 and min_gap >= MIN_GAP - 0.5
+		var level_ok := grounds.size() > 0 \
+				and (min_h == INF or min_h >= MIN_GAP - 0.5) \
+				and (min_v == INF or min_v >= MIN_GAP - 0.5)
 		print("ISSUE258 ", level_path, " grounds=", grounds.size(),
-				" min_gap=", min_gap, " ok=", level_ok)
+				" min_h_gap=", min_h, " min_v_gap=", min_v, " ok=", level_ok)
 		ok = ok and level_ok
 
 		level.queue_free()

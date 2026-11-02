@@ -50,17 +50,17 @@ script = ExtResource("11_destr")
 rect_size = Vector2(2048, 60)
 
 [node name="Platform1" type="StaticBody2D" parent="."]
-position = Vector2(900, 300)
+position = Vector2(900, 72)
 script = ExtResource("10_indestr")
 rect_size = Vector2(384, 48)
 
 [node name="Platform2" type="StaticBody2D" parent="."]
-position = Vector2(2100, 280)
+position = Vector2(2100, 72)
 script = ExtResource("10_indestr")
 rect_size = Vector2(384, 48)
 
 [node name="Platform3" type="StaticBody2D" parent="."]
-position = Vector2(3300, 300)
+position = Vector2(3300, 72)
 script = ExtResource("10_indestr")
 rect_size = Vector2(384, 48)
 
