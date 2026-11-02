@@ -81,12 +81,33 @@ func _aim() -> Vector2:
 var _held: ColorRect
 var _held_style := -1
 
+## Issue #234: true while THIS member carries the armed rock tool — the
+## rock replaces the weapon in hands and the shoot input throws it with
+## the grenade's aiming mechanics instead of firing the weapon. Only
+## during the player team's turn: an armed rock left over when the turn
+## ended never passes to an NPC (ToolInventory.reset_turn clears it at
+## the start of the NEXT player turn).
+func _rock_armed() -> bool:
+	var parent := get_parent()
+	return ToolInventory.armed_tool == ToolInventory.TOOL_ROCK \
+			and parent != null and TurnController.active_member == parent \
+			and TurnController.is_player_team(TurnController.active_team)
+
+
+## Issue #234: HELD_STYLES index shown in hands — the rock (4) while the
+## rock tool is armed for this member, otherwise the selected weapon.
+func _held_style_index() -> int:
+	return 4 if _rock_armed() else selected_weapon
+
 ## Issue #68: size and color of the held weapon per selected weapon index.
+## Issue #234: index 4 is the ROCK TOOL held in hands — a gray boulder,
+## shown while the rock tool is armed for this member (see _rock_armed).
 const HELD_STYLES: Array = [
 	{"size": Vector2(26, 6), "color": Color(0.95, 0.85, 0.3, 1)},   # shotgun
 	{"size": Vector2(30, 8), "color": Color(0.9, 0.35, 0.15, 1)},   # rocket
 	{"size": Vector2(12, 12), "color": Color(0.3, 0.7, 0.3, 1)},    # grenade
 	{"size": Vector2(40, 4), "color": Color(0.8, 0.8, 0.9, 1)},     # spear
+	{"size": Vector2(14, 14), "color": Color(0.55, 0.5, 0.45, 1)},  # rock (tool)
 ]
 
 ## Currently selected weapon index (0..3), shared through the inventory HUD.
@@ -142,8 +163,12 @@ func _physics_process(delta: float) -> void:
 	# Issue #114: rocket (1) and grenade (2) are CHARGED — pressing F starts
 	# the charge, releasing F fires with power scaled by the hold time.
 	# Shotgun and spear keep their instant press-fire behavior.
-	var charged := selected_weapon == 1 or selected_weapon == 2
-	if controlled and can_shoot and not _charging \
+	# Issue #234: an armed rock is charged too — same F mechanic as the
+	# grenade; releasing F throws the rock instead of firing the weapon.
+	var rock_armed := _rock_armed()
+	var charged := rock_armed or selected_weapon == 1 or selected_weapon == 2
+	var can_act: bool = rock_armed or can_shoot
+	if controlled and can_act and not _charging \
 			and Input.is_action_just_pressed("shoot"):
 		if charged:
 			_charging = true
@@ -151,9 +176,18 @@ func _physics_process(delta: float) -> void:
 		else:
 			_fire()
 	if controlled and _charging:
-		if Input.is_action_just_released("shoot") or not can_shoot:
+		if rock_armed and not can_act:
+			# Issue #234: the rock left this member's hand without a throw
+			# (disarmed, member switched, turn ended) — cancel the charge,
+			# no quota spent, nothing thrown.
 			_charging = false
-			_fire(clampf(_charge_time / MAX_CHARGE_TIME, 0.0, 1.0))
+		elif Input.is_action_just_released("shoot") or not can_act:
+			_charging = false
+			var power := clampf(_charge_time / MAX_CHARGE_TIME, 0.0, 1.0)
+			if rock_armed:
+				throw_rock(power)
+			else:
+				_fire(power)
 		else:
 			_charge_time = minf(_charge_time + delta, MAX_CHARGE_TIME)
 			_charge_bar.visible = true
@@ -164,12 +198,13 @@ func _physics_process(delta: float) -> void:
 		_charge_bar.visible = false
 
 	# Issue #68: keep the held weapon in sync with selection and facing.
-	if selected_weapon != _held_style:
+	# Issue #234: an armed rock replaces the held weapon visual.
+	if _held_style_index() != _held_style:
 		_update_held()
 	# Issue #67: keep the held weapon aligned with the character's view.
 	if _held != null and parent != null and parent.has_method("aim_dir"):
 		var aim: Vector2 = parent.aim_dir(_facing, _gravity_dir)
-		var style: Dictionary = HELD_STYLES[clampi(selected_weapon, 0, HELD_STYLES.size() - 1)]
+		var style: Dictionary = HELD_STYLES[_held_style_index()]
 		_held.position = aim * 26.0 - style["size"] / 2.0
 		# Issue #133: the spear (and every held weapon) rotates to the aim
 		# axis instead of staying parallel to the ground.
@@ -193,8 +228,8 @@ func _physics_process(delta: float) -> void:
 func _update_held() -> void:
 	if _held == null:
 		return
-	_held_style = selected_weapon
-	var style: Dictionary = HELD_STYLES[clampi(selected_weapon, 0, HELD_STYLES.size() - 1)]
+	_held_style = _held_style_index()
+	var style: Dictionary = HELD_STYLES[_held_style]
 	var size: Vector2 = style["size"]
 	_held.size = size
 	_held.position = Vector2(_facing * 26.0, 0.0) - size / 2.0
@@ -313,18 +348,23 @@ func _fire_grenade(power := 1.0) -> void:
 		GRENADE_BLAST, GRENADE_MASS)
 
 
-## Issue #227: the Rock TOOL throw. Same launch arc as a player grenade at
-## full power (lobbed, level gravity, bouncing), but the rock never
-## explodes — on its fuse it crumbles into destructible ground where it
-## rests (ProjectileBody._create_ground). Called by ToolInventory; the
-## tool quota and the tool-or-weapon lock stay the tool system's business.
-func throw_rock() -> void:
+## Issue #227: the Rock TOOL throw. Same launch arc as a player grenade
+## (lobbed, level gravity, bouncing), but the rock never explodes — on
+## its fuse it crumbles into destructible ground where it rests
+## (ProjectileBody._create_ground).
+## Issue #234 rework: the rock is thrown through the grenade's FULL aiming
+## mechanics — `power` (0..1, the hold-F charge) scales the launch speed
+## exactly like a grenade. Called by the charged-shoot release in
+## _physics_process; ToolInventory.rock_thrown spends the tool quota.
+func throw_rock(power := 1.0) -> void:
 	var rock_aim := _aim()
-	var rock_velocity := (Vector2(GRENADE_SPEED, -320.0) * Vector2(_facing, 1.0)) \
-			.rotated(rock_aim.angle())
+	var strength := lerpf(MIN_SHOT_POWER, 1.0, power)
+	var rock_velocity := (Vector2(GRENADE_SPEED, -320.0) * strength \
+			* Vector2(_facing, 1.0)).rotated(rock_aim.angle())
 	_spawn_body(ProjectileBody.Kind.ROCK, rock_velocity, 0, GRENADE_FUSE,
 		Vector2(16, 16), Color(0.55, 0.5, 0.45, 1),
 		ProjectileBody.ROCK_GROUND_RADIUS, ROCK_MASS)
+	ToolInventory.rock_thrown(get_parent())
 
 
 ## Issue #114: spawn a physics-driven explosive projectile (rigid body).

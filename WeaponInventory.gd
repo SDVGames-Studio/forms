@@ -224,6 +224,11 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func set_selected(index: int) -> void:
+	# Issue #234: picking a weapon puts an armed rock back in the bag —
+	# the rock leaves the hand (quota unspent) instead of stacking on the
+	# newly selected weapon.
+	if ToolInventory.armed_tool == ToolInventory.TOOL_ROCK:
+		ToolInventory.armed_tool = -1
 	# Issue #131, reworked in #143 + #207: no weapon changes after the
 	# first shot of the turn — nor after a tool use (tool or weapon, never
 	# both) — but only for the character that actually fired / used the
