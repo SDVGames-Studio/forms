@@ -6,7 +6,9 @@ extends RigidBody2D
 ## their own mass, inertia, gravity and (for the grenade) bounciness —
 ## instead of kinematically moved areas. The shotgun keeps its old logic
 ## (Projectile.gd, issue #49): its rework comes later.
-##  ROCKET  — mass 1.0, no gravity, explodes on any contact
+##  ROCKET  — mass 1.0, level gravity (issue #245: the rocket has
+##             weight and arcs under the level's gravity, keeping the
+##             launch speed the character gave it), explodes on any contact
 ##  GRENADE — mass 0.6, LEVEL gravity (issue #216: terrain sources or the
 ##             center-line rule, exactly like the figures), bounces off
 ##             surfaces, explodes on fuse
@@ -73,9 +75,9 @@ func _ready() -> void:
 	collision_layer = 4
 	collision_mask = 1 | 2 | 8
 	mass = _mass
-	# Issue #216: engine gravity is always OFF for projectiles — the grenade
-	# gets the LEVEL's gravity in _integrate_forces instead (the rocket stays
-	# gravity-free and flies straight).
+	# Issue #216: engine gravity is always OFF for projectiles — every
+	# kind gets the LEVEL's gravity in _integrate_forces instead
+	# (issue #245: the rocket too — it has weight now).
 	gravity_scale = 0.0
 	if shooter != null:
 		_center_line_y = float(shooter.get("center_line_y") or 0.0)
@@ -109,8 +111,9 @@ func _integrate_forces(state: PhysicsDirectBodyState2D) -> void:
 	# Issue #216: the grenade (and the rock, issue #227) obeys the level's
 	# gravity — terrain sources first, then the center-line rule, then the
 	# static direction — the same ladder the figures use (Player.gd / Npc.gd).
-	if kind != Kind.ROCKET:
-		state.linear_velocity += _level_gravity() * GRAVITY * state.step
+	# Issue #245: the rocket has weight too — it keeps the launch speed the
+	# character gave it (set in _ready) while this gravity bends its path.
+	state.linear_velocity += _level_gravity() * GRAVITY * state.step
 
 
 ## Unit gravity direction at the grenade's position (issue #216).

@@ -5,7 +5,8 @@ extends Node2D
 ## (keys 1–4, HUD on the right side of the screen). The controlled member
 ## fires with the "shoot" action (F). Each weapon has different physics:
 ##  1 Shotgun       — spread of 5 fast pellets, short range, low damage each
-##  2 Rocket        — fast straight rocket, big blast on impact
+##  2 Rocket        — fast rocket that keeps its launch speed but arcs
+##                    under the level's gravity (issue #245), big blast
 ##  3 Grenade       — lobbed arc with gravity, explodes on fuse or impact
 ##  4 Melee spear   — instant short-range thrust hit in front
 ## Visuals are plain rectangles built in code — no extra assets.
@@ -321,7 +322,9 @@ func _fire_shotgun() -> void:
 
 func _fire_rocket(power := 1.0) -> void:
 	# Issue #114: the rocket is a rigid body — its speed scales with the
-	# shot power (how long F was held).
+	# shot power (how long F was held). Issue #245: that speed is only the
+	# INITIAL velocity — the rocket now has weight, so the level's gravity
+	# bends the flight into an arc after launch.
 	var speed := ROCKET_SPEED * lerpf(MIN_SHOT_POWER, 1.0, power)
 	_spawn_body(ProjectileBody.Kind.ROCKET,
 		_aim() * speed, ROCKET_DAMAGE, ROCKET_LIFETIME,
