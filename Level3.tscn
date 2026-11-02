@@ -178,9 +178,3 @@ next_scene = "res://Main.tscn"
 [node name="FinishShape" type="CollisionShape2D" parent="Finish"]
 shape = SubResource("RectangleShape2D_finish")
 
-[node name="FinishVisual" type="ColorRect" parent="Finish"]
-offset_left = -24.0
-offset_top = -80.0
-offset_right = 24.0
-offset_bottom = 80.0
-color = Color(0.2, 0.7, 0.95, 0.6)
