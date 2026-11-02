@@ -232,6 +232,12 @@ static func apply(level: Node) -> void:
 		if npc.has_method("set_team_shape"):
 			npc.call("set_team_shape",
 				team_shape if str(npc.get("team")) == "player" else enemy_shape)
+	# Issue #226 rework: shape EVERY enemy figure, not only Npc..Npc3 —
+	# Level4 stages Npc4..Npc9, which the name list above never reached
+	# (they stayed square while the team played circles).
+	for npc_node in level.get_tree().get_nodes_in_group("enemy_team"):
+		if npc_node != null and npc_node.has_method("set_team_shape"):
+			npc_node.call("set_team_shape", enemy_shape)
 	# Issue #169: apply the customised team color, shape and names.
 	var members := level.get_tree().get_nodes_in_group("player_team")
 	for member in members:
