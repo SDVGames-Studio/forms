@@ -1,10 +1,12 @@
 extends CanvasLayer
 ## In-game menu (issue #31).
 ##
-## F10 opens the menu and pauses the game; Esc closes it and unpauses.
+## Esc toggles the menu (issue #254 — previously F10 opened it):
+## the first press opens the menu and pauses the game, the next press
+## closes it and unpauses.
 ## Issue #211: the menu only works during gameplay — every level scene's
 ## root is in the "level" group, so outside levels (main menu, submenus)
-## F10 does nothing.
+## Esc does nothing.
 ## Buttons: Main Menu (return to the main menu), Settings (placeholder
 ## until its screen exists), Cancel (close without leaving the level).
 ## The layer runs while the tree is paused so its buttons stay usable.
@@ -32,13 +34,13 @@ func open_menu() -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
 		var key := event as InputEventKey
-		if key.keycode == KEY_F10 or key.physical_keycode == KEY_F10:
-			if _is_level_active() and not _panel.visible and not get_tree().paused:
+		if key.keycode == KEY_ESCAPE or key.physical_keycode == KEY_ESCAPE:
+			if _panel.visible:
+				_close()
+				get_viewport().set_input_as_handled()
+			elif _is_level_active() and not get_tree().paused:
 				_open()
-			get_viewport().set_input_as_handled()
-		elif _panel.visible and (key.keycode == KEY_ESCAPE or key.physical_keycode == KEY_ESCAPE):
-			_close()
-			get_viewport().set_input_as_handled()
+				get_viewport().set_input_as_handled()
 
 
 func _is_level_active() -> bool:
