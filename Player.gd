@@ -180,6 +180,20 @@ func _apply_team_shape() -> void:
 			visual.set_shape(team_shape)
 			visual.set_shape_color(team_color)
 			add_child(visual)
+	# Issue #282: the ShapeVisual body was appended AFTER the Weapon node,
+	# so the held weapon/tool drew BEHIND the figure — keep the Weapon the
+	# last child; it draws in front of every body visual.
+	_keep_weapon_in_front()
+
+
+## Issue #282: the held weapon/tool must render IN FRONT of the character
+## body. All body visuals (scene ColorRect, ShapeVisual) stay BEFORE the
+## Weapon node in the child order — tree order decides which CanvasItem
+## draws on top among same-z siblings.
+func _keep_weapon_in_front() -> void:
+	var weapon := get_node_or_null("Weapon")
+	if weapon != null:
+		move_child(weapon, get_child_count() - 1)
 
 
 ## Issue #33: if no team member ended up controlled (fresh scene), the
