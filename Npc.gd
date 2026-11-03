@@ -383,6 +383,17 @@ func _die() -> void:
 	_dead = true
 	# Issue #252: action-log line — the figure left the field.
 	DebugInfo.log("%s died" % display_name)
+	# Issue #280: an NPC may HOST the shared camera (LevelDuel authors it
+	# under an NPC figure) — rescue it exactly like Player._die does for
+	# the player team (issue #222): reparent it to the level and keep it
+	# enabled. Without this the death animation's queue_free() frees the
+	# camera together with its host, and after the match the view is
+	# blocked — no camera, no zoom, no drag-pan, no spectating.
+	for child in get_children():
+		if child is Camera2D and child.is_in_group("player_camera"):
+			child.reparent(get_parent())
+			child.enabled = true
+			break
 	# Tiny death puff: shrink out, then free.
 	set_physics_process(false)
 	var tween := create_tween()
