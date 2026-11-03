@@ -61,8 +61,24 @@ func _physics_process(delta: float) -> void:
 	if type == Type.GRENADE:
 		velocity.y += 1200.0 * delta
 	global_position += velocity * delta
-	if not get_viewport_rect().has_point(global_position):
+	if not _visible_world_rect().grow(100.0).has_point(global_position):
 		queue_free()
+
+
+## Issue #274: get_viewport_rect() is in CANVAS (screen) coordinates while
+## global_position is in WORLD coordinates — with the camera anywhere off
+## the world origin (it follows the figures) and figures beyond the first
+## screen of the map (the reworked levels put them at x up to ~2600), a
+## pellet failed that check on its very first frame: the shotgun's shot
+## was counted but no bullet ever became visible. The visible rect is
+## transformed into world space here, so only projectiles truly beyond
+## the camera's view (plus a small margin) are culled.
+func _visible_world_rect() -> Rect2:
+	var to_world := get_viewport().get_canvas_transform().affine_inverse()
+	var rect := get_viewport().get_visible_rect()
+	var corner_a := to_world * rect.position
+	var corner_b := to_world * (rect.position + rect.size)
+	return Rect2(corner_a, corner_b - corner_a)
 
 
 func _on_expire() -> void:
