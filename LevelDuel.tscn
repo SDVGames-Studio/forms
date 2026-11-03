@@ -25,9 +25,9 @@ color = Color(0.09, 0.05, 0.16, 1)
 mouse_filter = 2
 
 [node name="Ground" type="StaticBody2D" parent="."]
-position = Vector2(576, 588)
+position = Vector2(576, 752)
 script = ExtResource("10_indestr")
-rect_size = Vector2(1152, 120)
+rect_size = Vector2(1152, 448)
 
 [node name="Soil" type="StaticBody2D" parent="."]
 position = Vector2(576, 498)
