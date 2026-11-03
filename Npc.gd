@@ -255,6 +255,9 @@ func _build_health_bar() -> void:
 	add_child(name_label)
 
 	var background := ColorRect.new()
+	# Issue #270: named so FigurePose (and any pose/HUD pass, like
+	# Player.gd's) can tell the health bar from the BODY visual rect.
+	background.name = "HealthBarBackground"
 	background.offset_left = -BAR_WIDTH / 2.0
 	background.offset_top = -44.0
 	background.offset_right = BAR_WIDTH / 2.0
@@ -355,6 +358,10 @@ func _physics_process(delta: float) -> void:
 			dir = -1.0
 		grav = Vector2.DOWN if dir > 0.0 else Vector2.UP
 	up_direction = -grav
+	# Issue #270: rotate the BODY visual/collision so the figure's bottom
+	# faces the ground under any gravity direction (radial arenas included);
+	# HUD, weapon and camera keep the world frame (FigurePose for details).
+	FigurePose.align_to_gravity(self, grav)
 	# Issue #250 rework: NPC walking lives in the gravity frame's tangent,
 	# not on the world x axis — on the circular arena world-x movement
 	# launched figures off the curved surface into ballistic up-down
