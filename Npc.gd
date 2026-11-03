@@ -134,10 +134,32 @@ const VIEW_MAX := Stats.VIEW_MAX
 var _weapon: Node2D
 
 
-## Issue #66: aim direction — facing raised/lowered by view_angle and
-## oriented against the current gravity side (mirrors Player.aim_dir).
-func aim_dir(facing: float, dir: float) -> Vector2:
-	return Vector2(cos(view_angle) * facing, -sin(view_angle) * dir)
+## Issue #277: the gravity unit vector the last physics frame used — the
+## frame the aim/view lives in (see aim_dir). Mirrors Player.
+var _aim_grav := Vector2.DOWN
+
+## Issue #66/#277: aim direction — the gravity frame's surface tangent
+## (facing sign applied) raised/lowered by view_angle away from the floor,
+## mirroring Player.aim_dir. Flat and center-line levels keep exactly the
+## old formula; on radial gravity the aim rotates with the figure so the
+## indicated direction matches the character's stance. `dir` is kept for
+## call compatibility only.
+func aim_dir(facing: float, _dir: float) -> Vector2:
+	return _aim_tangent() * (cos(view_angle) * facing) \
+			- _aim_grav * sin(view_angle)
+
+## Issue #277: the current gravity frame — Weapon faces along the walking
+## surface; the AI measures targets in the same frame.
+func current_gravity() -> Vector2:
+	return _aim_grav
+
+## Issue #277: the gravity frame's walking tangent — +x on flat levels
+## (the legacy axis), along the surface on radial ones.
+func _aim_tangent() -> Vector2:
+	var tangent := Vector2(_aim_grav.y, -_aim_grav.x)
+	if tangent.x < 0.0:
+		tangent = -tangent
+	return tangent
 
 
 ## Issue #60: tint every ColorRect visual authored in the scene (captured
@@ -358,6 +380,8 @@ func _physics_process(delta: float) -> void:
 			dir = -1.0
 		grav = Vector2.DOWN if dir > 0.0 else Vector2.UP
 	up_direction = -grav
+	# Issue #277: the aim/view lives in the CURRENT gravity frame.
+	_aim_grav = grav
 	# Issue #270: rotate the BODY visual/collision so the figure's bottom
 	# faces the ground under any gravity direction (radial arenas included);
 	# HUD, weapon and camera keep the world frame (FigurePose for details).
@@ -417,10 +441,15 @@ func _physics_process(delta: float) -> void:
 
 	# Issue #66: slew the view angle toward the target so the weapon aims
 	# where the NPC looks (positive angle raises the muzzle).
-	var vertical := (_target.global_position.y - global_position.y) * dir
+	# Issue #277: measure the target in the CURRENT gravity frame — the aim
+	# rotates with radial gravity, so world-x/y deltas would slew the view
+	# toward an angle that no longer points at the target. Flat and
+	# center-line levels: identical to the old world-axis formula.
+	var aim_offset := _target.global_position - global_position
+	var vertical := aim_offset.dot(_aim_grav)
 	# Issue #147: slew the aim onto the ACTUAL target (not the flank goal)
 	# so the hold-fire gate below can actually converge.
-	var desired_angle := atan2(-vertical, maxf(absf(_target.global_position.x - global_position.x), 1.0))
+	var desired_angle := atan2(-vertical, maxf(absf(aim_offset.dot(_aim_tangent())), 1.0))
 	view_angle = move_toward(view_angle, clampf(desired_angle, -VIEW_MAX, VIEW_MAX), AIM_SPEED * AIM_SPEED_MULT[difficulty] * delta)
 
 	var direction := 0.0
@@ -571,13 +600,15 @@ func _aim_ready() -> bool:
 	if _target == null or not is_instance_valid(_target):
 		return false
 	var to_target := _target.global_position - global_position
-	# Facing: never fire away from the target.
+	# Facing: never fire away from the target (Issue #277: measured along
+	# the gravity tangent — the walking/aim axis — not the world x axis).
 	var facing: float = _weapon._facing if _weapon != null else 1.0
-	if signf(to_target.x) != 0.0 and signf(facing) != signf(to_target.x):
+	var along := to_target.dot(_aim_tangent())
+	if signf(along) != 0.0 and signf(facing) != signf(along):
 		return false
-	# Aim: the slewed view angle must be on the direct line to the target.
-	var dir := 1.0 if (center_line_y <= 0.0 or global_position.y < center_line_y) else -1.0
-	var desired := atan2(-(to_target.y * dir), maxf(absf(to_target.x), 1.0))
+	# Aim: the slewed view angle must be on the direct line to the target
+	# (Issue #277: measured in the current gravity frame).
+	var desired := atan2(-to_target.dot(_aim_grav), maxf(absf(along), 1.0))
 	return absf(view_angle - clampf(desired, -VIEW_MAX, VIEW_MAX)) <= AIM_TOLERANCE
 
 
