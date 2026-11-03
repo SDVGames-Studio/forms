@@ -34,6 +34,16 @@ extends Node
 ##     no longer launches the grenade 180° backwards, and facing right on
 ##     flat ground reproduces the exact legacy arc.
 ##
+## Rework-2 checks (issue #277 rework 2 — "the character is flying, but
+## it must be grounded"):
+##  8. NO SKY-HOPPING ON A DISC: an active NPC on a disc rim whose target
+##     is WORLD-above (the player team sits at the ring's top) but NOT
+##     above in the gravity frame must NOT jump at all — the old world-y
+##     trigger made every arriving NPC hop-spam into the sky.
+##  9. JUMP COOL-DOWN: with the target genuinely above IN FRAME (flat
+##     ground, target on a platform overhead), the NPC still jumps — but
+##     at most once per JUMP_COOLDOWN second, never on every landing tick.
+##
 ## Run headless: godot --headless res://tests/test_issue277.tscn
 ## Exit code 0 = pass.
 
@@ -176,6 +186,94 @@ func _check_lob(label: String) -> bool:
 	return left_ok and right_ok and part_ok
 
 
+## Rework-2 helper: run `ticks` physics frames with `npc` forced as the
+## active turn member (the AI branch only runs on the NPC's own turn) and
+## count REAL take-offs (air stretches longer than contact flicker).
+func _count_takeoffs(npc: CharacterBody2D, ticks: int) -> int:
+	var takeoffs := 0
+	var air := 0
+	var was_floor := true
+	for i in ticks:
+		TurnController.set("game_over", false)
+		TurnController.set("active_member", npc)
+		TurnController.set("active_team", TurnController.team_id_of(npc))
+		await get_tree().physics_frame
+		var fl := npc.is_on_floor()
+		if fl:
+			# Landed: count the air stretch just ended if it was a real arc
+			# (> 10 ticks); shorter stretches are contact flicker on bumpy
+			# ground, not jumps.
+			if not was_floor and air >= 10:
+				takeoffs += 1
+			air = 0
+		else:
+			air += 1
+		was_floor = fl
+	return takeoffs
+
+
+## Rework-2 check 8: disc rim — target world-above must NOT lift the NPC.
+func _check_disc_no_skyhop(label: String) -> bool:
+	var disc := Indestructible.new()
+	disc.radius = 300.0
+	add_child(disc)
+	var target := PlayerScript.new() as CharacterBody2D
+	target.set("display_name", "Target")
+	add_child(target)
+	target.global_position = Vector2(0.0, -332.0)
+	var npc := NpcScript.new() as CharacterBody2D
+	add_child(npc)
+	# 3 o'clock rim; the target at 12 o'clock is 332px WORLD-above — the
+	# old (target.y - y) * gravity_dir < -80 trigger fired here constantly.
+	npc.global_position = Vector2(332.0, 0.0)
+	npc.velocity = Vector2.ZERO
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	var takeoffs := await _count_takeoffs(npc, 120)
+	var grounded := npc.is_on_floor()
+	var ok := takeoffs <= 1 and grounded
+	print("ISSUE277 ", label, " disc no-skyhop: takeoffs=", takeoffs,
+			" grounded=", grounded, " -> ", ok)
+	npc.queue_free()
+	target.queue_free()
+	disc.queue_free()
+	await get_tree().physics_frame
+	return ok
+
+
+## Rework-2 check 9: target genuinely above IN FRAME — jumps, but cooled
+## down (at most one take-off per JUMP_COOLDOWN second, not per tick).
+func _check_jump_cooldown(label: String) -> bool:
+	var slab := StaticBody2D.new()
+	slab.set_script(Indestructible)
+	slab.rect_size = Vector2(400, 448)
+	slab.position = Vector2(0.0, 300.0)
+	add_child(slab)
+	var target := PlayerScript.new() as CharacterBody2D
+	target.set("display_name", "Target")
+	add_child(target)
+	var npc := NpcScript.new() as CharacterBody2D
+	add_child(npc)
+	# Slab top face at y=76; NPC standing on it, target 300px overhead —
+	# above in the gravity frame, so jumping stays allowed.
+	npc.global_position = Vector2(0.0, 44.0)
+	npc.velocity = Vector2.ZERO
+	target.global_position = Vector2(0.0, -256.0)
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	# 240 ticks = 4s: the old trigger jumped on nearly every landing
+	# (>15 take-offs); the cool-down must keep it to a handful.
+	var takeoffs := await _count_takeoffs(npc, 240)
+	var ok := takeoffs >= 1 and takeoffs <= 4
+	print("ISSUE277 ", label, " jump cooldown: takeoffs=", takeoffs,
+			" -> ", ok)
+	npc.queue_free()
+	target.queue_free()
+	slab.queue_free()
+	await get_tree().physics_frame
+	return ok
+
+
 func _ready() -> void:
 	var ok := true
 	ok = _check_script(PlayerScript, "Player") and ok
@@ -203,5 +301,8 @@ func _ready() -> void:
 	ok = await _check_rim_continuity("rework") and ok
 	ok = await _check_center_line_beats_corner("rework") and ok
 	ok = _check_lob("rework") and ok
+	# Rework-2 checks ("flying, must be grounded").
+	ok = await _check_disc_no_skyhop("rework2") and ok
+	ok = await _check_jump_cooldown("rework2") and ok
 	print("ISSUE277 ok=", ok)
 	get_tree().quit(0 if ok else 1)

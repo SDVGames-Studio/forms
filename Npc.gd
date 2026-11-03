@@ -75,6 +75,15 @@ var _shape_visual: Control
 var _dead := false
 var _target: Node2D
 var _cooldown_left := 0.0
+
+## Issue #277 rework 2 ("the character is flying, but it must be
+## grounded"): jump cool-down. The old trigger re-fired the jump on EVERY
+## tick an NPC touched ground, so an NPC blocked beside its target (or
+## with the target "above" it) hop-spammed ~2/s and spent half its turn
+## airborne — "flying". With the cool-down a blocked NPC hops at most
+## once a second and otherwise stays grounded, aims and shoots.
+const JUMP_COOLDOWN := 1.0
+var _jump_left := 0.0
 ## Issue #137: AI difficulty — 0 = easy, 1 = normal, 2 = hard. Scales
 ## aim slew speed and the pause between shots (set by the level
 ## configuration menu via GameConfig).
@@ -370,6 +379,7 @@ func _physics_process(delta: float) -> void:
 	if _dead:
 		return
 	_cooldown_left = maxf(0.0, _cooldown_left - delta)
+	_jump_left = maxf(0.0, _jump_left - delta)
 	var dir := 1.0
 	# Issue #190: gravity toward the nearest indestructible surface when the
 	# level authors gravity sources; legacy central-line / global-down rules
@@ -489,9 +499,23 @@ func _physics_process(delta: float) -> void:
 			+ grav * velocity.dot(grav)
 
 	# Jump when blocked or when the target is clearly above us.
-	if is_on_floor() and (is_on_wall() or (_target.global_position.y - global_position.y) * gravity_dir < -80.0):
+	# Issue #277 rework 2 ("the character is flying, but it must be
+	# grounded"): "clearly above" is measured in the CURRENT gravity frame
+	# (along the frame's up, -_aim_grav), not in world y — on the disc arena
+	# the player team sits world-above from most rim positions, so the old
+	# world-y test ((target.y - y) * gravity_dir < -80) made every arriving
+	# NPC jump for the sky instead of standing and fighting. Flat and
+	# center-line levels keep exactly the old trigger (the frame's up IS the
+	# world ±y axis there, gravity_dir included); plus the jump now cools
+	# down (JUMP_COOLDOWN) so a blocked NPC hops deliberately, not twice a
+	# second.
+	var target_above := (_target.global_position - global_position) \
+				.dot(_aim_grav) < -80.0
+	if _jump_left <= 0.0 and is_on_floor() \
+				and (is_on_wall() or target_above):
 		# Issue #202: jump must point AWAY from the floor (see Player.gd).
 		velocity = grav * JUMP_VELOCITY
+		_jump_left = JUMP_COOLDOWN
 
 	# Issue #66: pick the weapon by distance and take a shot when in range.
 	# Issue #147: hold fire until we actually face the target and the view
