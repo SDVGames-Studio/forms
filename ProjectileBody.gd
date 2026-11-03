@@ -44,6 +44,10 @@ const MINE_REST_SPEED := 30.0
 ## still leaves the "projectiles" group after this many seconds so the
 ## post-shot turn handover can never get stuck waiting for it.
 const MINE_SETTLE_WATCHDOG := 4.0
+## Issue #281: the mine is destructible — it has exactly ONE hit point,
+## so any weapon that damages it destroys it. A damaged mine skips its
+## fuse entirely and detonates the instant it is hit.
+const MINE_HP := 1
 
 ## Issue #227: rock crumble parameters. The created soil disk is a little
 ## larger than a grenade blast (GRENADE_BLAST = 100 in Weapon.gd); cells of
@@ -79,6 +83,8 @@ var _exploded := false
 var _settled := false
 var _armed := false
 var _fuse_left := 0.0
+## Issue #281: current mine health (MINE_HP while intact).
+var _hp := 0
 var _visual: ColorRect = null
 
 
@@ -99,9 +105,13 @@ func _ready() -> void:
 	# Issue #119: register with TurnController so the turn handover waits
 	# until every projectile has exploded/been freed.
 	add_to_group("projectiles")
-	# Layer 4 = projectiles; hit the world, both teams, and walls.
+	# Layer 4 = projectiles; hit the world, both teams, and walls. Issue
+	# #281: the ROCKET also sees layer-4 mines so a direct hit detonates
+	# on contact instead of flying through them.
 	collision_layer = 4
 	collision_mask = 1 | 2 | 8
+	if kind == Kind.ROCKET:
+		collision_mask |= 4
 	mass = _mass
 	# Issue #216: engine gravity is always OFF for projectiles — every
 	# kind gets the LEVEL's gravity in _integrate_forces instead
@@ -138,6 +148,10 @@ func _ready() -> void:
 	# projectile (turn handover waits, issue #119); the watchdog makes sure
 	# it leaves that group even if it never comes to rest.
 	if kind == Kind.MINE:
+		# Issue #281: mines are damageable targets — explosions and pellets
+		# find them through the "mines" group.
+		_hp = MINE_HP
+		add_to_group("mines")
 		get_tree().create_timer(MINE_SETTLE_WATCHDOG).timeout.connect(_on_mine_watchdog)
 	else:
 		get_tree().create_timer(lifetime).timeout.connect(_on_fuse)
@@ -225,6 +239,17 @@ func _on_fuse() -> void:
 	_explode()
 
 
+## Issue #281: the mine is destructible — MINE_HP (1) means a single hit
+## from ANY weapon destroys it, and a damaged mine explodes IMMEDIATELY:
+## no fuse, no arming delay.
+func take_damage(amount: int) -> void:
+	if kind != Kind.MINE or _exploded or amount <= 0:
+		return
+	_hp -= amount
+	if _hp <= 0:
+		_explode()
+
+
 func _explode() -> void:
 	if _exploded:
 		return
@@ -251,6 +276,15 @@ func _explode() -> void:
 		if body and body.has_method("take_damage") \
 				and body.global_position.distance_to(global_position) <= blast_radius:
 			body.take_damage(damage)
+	# Issue #281: the blast also hits other mines — each has 1 HP, so any
+	# damage inside the radius detonates it instantly (chain reactions
+	# included). Self is guarded by take_damage's _exploded check.
+	for node in get_tree().get_nodes_in_group("mines"):
+		var mine := node as ProjectileBody
+		if mine == null or mine == self or not is_instance_valid(mine):
+			continue
+		if mine.global_position.distance_to(global_position) <= blast_radius:
+			mine.take_damage(damage)
 	_spawn_blast_visual()
 	queue_free()
 
