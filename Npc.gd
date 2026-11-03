@@ -207,8 +207,23 @@ func _apply_team_shape() -> void:
 		_shape_visual.offset_right = 32.0
 		_shape_visual.offset_bottom = 32.0
 		add_child(_shape_visual)
-	_shape_visual.set_shape(team_shape)
-	_shape_visual.set_shape_color(team_color)
+		_shape_visual.set_shape(team_shape)
+		_shape_visual.set_shape_color(team_color)
+	# Issue #282: the ShapeVisual body is appended after the Weapon node
+	# (Npc._ready adds the weapon last, but GameConfig.apply calls
+	# set_team_shape AFTER _ready) — that drew the held weapon/tool BEHIND
+	# the figure. Keep the Weapon the last child; it draws in front.
+	_keep_weapon_in_front()
+
+
+## Issue #282: the held weapon/tool must render IN FRONT of the character
+## body — every body visual (ColorRect, ShapeVisual) stays BEFORE the
+## Weapon node in the child order (tree order decides which CanvasItem
+## draws on top among same-z siblings). Mirrors Player.gd.
+func _keep_weapon_in_front() -> void:
+	var weapon := get_node_or_null("Weapon")
+	if weapon != null:
+		move_child(weapon, get_child_count() - 1)
 
 
 ## Issue #226: tint whichever body visual is active (hit flash).
