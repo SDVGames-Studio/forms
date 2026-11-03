@@ -92,6 +92,29 @@ func _aim() -> Vector2:
 		return parent.aim_dir(_facing, _gravity_dir)
 	return Vector2(_facing, 0.0)
 
+## Issue #277 rework: the "up" of the wielder's current gravity frame —
+## lobbed throws arc away from the floor in the same frame the weapon
+## aims in.
+func _frame_up() -> Vector2:
+	var parent := get_parent() as CharacterBody2D
+	if parent != null and parent.has_method("current_gravity"):
+		var grav: Vector2 = parent.current_gravity()
+		if grav.length_squared() > 0.5:
+			return -grav
+	return Vector2.UP
+
+## Issue #277 rework: launch velocity of a LOBBED throw — straight along
+## the aim the weapon INDICATES plus the lob away from the floor. The old
+## construction mirrored the speed by the facing and rotated it by the
+## aim angle; with the aim pointing left (|angle| > 90°) that rotation
+## flipped the whole velocity 180°: the weapon indicated up-left while
+## the grenade/mine/rock launched down-right, into the ground beside the
+## shooter. Facing right on flat ground reproduces the exact legacy arc
+## (speed along the aim, 320·strength lob upward).
+static func lobbed_velocity(aim: Vector2, up: Vector2, speed: float,
+		strength: float) -> Vector2:
+	return aim * speed + up * 320.0 * strength
+
 ## Issue #68: visual of the weapon currently held "in hands".
 var _held: ColorRect
 var _held_style := -1
@@ -158,9 +181,14 @@ func _physics_process(delta: float) -> void:
 	# the tangent is vertical in world space and velocity.x never flipped
 	# the facing. Flat and center-line levels: the tangent IS the x axis,
 	# so the behavior there is unchanged.
+	# Issue #277 rework: the tangent comes from the FIGURE (current_tangent),
+	# which orients it by continuity — the local fallback stays only for
+	# parents that predate that accessor.
 	if parent != null:
 		var tangent := Vector2(1.0, 0.0)
-		if parent.has_method("current_gravity"):
+		if parent.has_method("current_tangent"):
+			tangent = parent.current_tangent()
+		elif parent.has_method("current_gravity"):
 			var grav: Vector2 = parent.current_gravity()
 			if grav.length_squared() > 0.5:
 				tangent = Vector2(grav.y, -grav.x)
@@ -393,10 +421,13 @@ func _fire_grenade(power := 1.0) -> void:
 		return
 	# Issue #114: player grenades are charged too — power scales the launch
 	# speed, the grenade itself is a bouncing rigid body under gravity.
+	# Issue #277 rework: the launch velocity follows the INDICATED aim plus
+	# the frame's lob — no more 180° flip when facing left (see
+	# lobbed_velocity).
 	var speed := GRENADE_SPEED * lerpf(MIN_SHOT_POWER, 1.0, power)
 	var aim := _aim()
-	var velocity := (Vector2(speed, -320.0 * lerpf(MIN_SHOT_POWER, 1.0, power)) \
-			* Vector2(_facing, 1.0)).rotated(aim.angle())
+	var velocity := lobbed_velocity(aim, _frame_up(), speed,
+			lerpf(MIN_SHOT_POWER, 1.0, power))
 	_spawn_body(ProjectileBody.Kind.GRENADE, velocity, GRENADE_DAMAGE,
 		GRENADE_FUSE, Vector2(14, 14), Color(0.3, 0.7, 0.3, 1),
 		GRENADE_BLAST, GRENADE_MASS)
@@ -409,8 +440,9 @@ func _fire_grenade(power := 1.0) -> void:
 func _throw_mine(power := 1.0) -> void:
 	var mine_aim := _aim()
 	var strength := lerpf(MIN_SHOT_POWER, 1.0, power)
-	var mine_velocity := (Vector2(MINE_SPEED, -320.0) * strength \
-			* Vector2(_facing, 1.0)).rotated(mine_aim.angle())
+	# Issue #277 rework: the indicated aim + frame lob (see lobbed_velocity).
+	var mine_velocity := lobbed_velocity(mine_aim, _frame_up(),
+			MINE_SPEED * strength, strength)
 	_spawn_body(ProjectileBody.Kind.MINE, mine_velocity, MINE_DAMAGE, 0.0,
 		Vector2(14, 14), Color(0.22, 0.24, 0.3, 1), MINE_BLAST, MINE_MASS)
 
@@ -426,8 +458,9 @@ func _throw_mine(power := 1.0) -> void:
 func throw_rock(power := 1.0) -> void:
 	var rock_aim := _aim()
 	var strength := lerpf(MIN_SHOT_POWER, 1.0, power)
-	var rock_velocity := (Vector2(GRENADE_SPEED, -320.0) * strength \
-			* Vector2(_facing, 1.0)).rotated(rock_aim.angle())
+	# Issue #277 rework: the indicated aim + frame lob (see lobbed_velocity).
+	var rock_velocity := lobbed_velocity(rock_aim, _frame_up(),
+			GRENADE_SPEED * strength, strength)
 	_spawn_body(ProjectileBody.Kind.ROCK, rock_velocity, 0, GRENADE_FUSE,
 		Vector2(16, 16), Color(0.55, 0.5, 0.45, 1),
 		ProjectileBody.ROCK_GROUND_RADIUS, ROCK_MASS)

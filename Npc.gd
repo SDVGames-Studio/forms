@@ -138,6 +138,13 @@ var _weapon: Node2D
 ## frame the aim/view lives in (see aim_dir). Mirrors Player.
 var _aim_grav := Vector2.DOWN
 
+## Issue #277 rework: the frame's walking/aiming tangent, oriented by
+## CONTINUITY with the previous frame instead of the world-x pin — the
+## old "flip while tangent.x < 0" rule flipped 180° at a disc's 3/9
+## o'clock rims (vertical tangent) and reversed the NPC's walk/aim there.
+## Mirrors Player._aim_tangent; starts at the legacy flat-frame axis.
+var _aim_tangent := Vector2.RIGHT
+
 ## Issue #66/#277: aim direction — the gravity frame's surface tangent
 ## (facing sign applied) raised/lowered by view_angle away from the floor,
 ## mirroring Player.aim_dir. Flat and center-line levels keep exactly the
@@ -145,7 +152,7 @@ var _aim_grav := Vector2.DOWN
 ## indicated direction matches the character's stance. `dir` is kept for
 ## call compatibility only.
 func aim_dir(facing: float, _dir: float) -> Vector2:
-	return _aim_tangent() * (cos(view_angle) * facing) \
+	return _aim_tangent * (cos(view_angle) * facing) \
 			- _aim_grav * sin(view_angle)
 
 ## Issue #277: the current gravity frame — Weapon faces along the walking
@@ -153,13 +160,12 @@ func aim_dir(facing: float, _dir: float) -> Vector2:
 func current_gravity() -> Vector2:
 	return _aim_grav
 
-## Issue #277: the gravity frame's walking tangent — +x on flat levels
-## (the legacy axis), along the surface on radial ones.
-func _aim_tangent() -> Vector2:
-	var tangent := Vector2(_aim_grav.y, -_aim_grav.x)
-	if tangent.x < 0.0:
-		tangent = -tangent
-	return tangent
+## Issue #277 rework: the gravity frame's walking tangent — +x on flat
+## levels (the legacy axis), along the surface on radial ones. Oriented by
+## continuity with the previous frame (see _aim_tangent); public so the
+## Weapon faces along the same continuous axis the NPC walks and aims on.
+func current_tangent() -> Vector2:
+	return _aim_tangent
 
 
 ## Issue #60: tint every ColorRect visual authored in the scene (captured
@@ -368,20 +374,28 @@ func _physics_process(delta: float) -> void:
 	# Issue #190: gravity toward the nearest indestructible surface when the
 	# level authors gravity sources; legacy central-line / global-down rules
 	# otherwise. Destructible ground never causes gravity.
+	# Issue #277 rework: an AUTHORED central line is the level's gravity
+	# contract and BEATS terrain surface gravity (see Player.gd for the
+	# full story: base-slab corners used to bend the frame on the
+	# center-line levels); disc arenas author no line and keep terrain pull.
 	var grav := Vector2.DOWN
-	if LevelTerrain.has_sources(self):
+	if center_line_y > 0.0:
+		dir = 1.0 if global_position.y < center_line_y else -1.0
+		grav = Vector2.DOWN if dir > 0.0 else Vector2.UP
+	elif LevelTerrain.has_sources(self):
 		grav = LevelTerrain.gravity_vector(self)
 		dir = 1.0 if grav.y >= 0.0 else -1.0
-	else:
-		if center_line_y > 0.0:
-			dir = 1.0 if global_position.y < center_line_y else -1.0
-			up_direction = Vector2.UP if dir > 0.0 else Vector2.DOWN
-		elif gravity_dir < 0.0:
-			dir = -1.0
-		grav = Vector2.DOWN if dir > 0.0 else Vector2.UP
+	elif gravity_dir < 0.0:
+		dir = -1.0
+		grav = Vector2.UP
 	up_direction = -grav
 	# Issue #277: the aim/view lives in the CURRENT gravity frame.
 	_aim_grav = grav
+	# Issue #277 rework: re-orient the tangent by continuity (see _aim_tangent).
+	var tangent := Vector2(grav.y, -grav.x)
+	if tangent.dot(_aim_tangent) < 0.0:
+		tangent = -tangent
+	_aim_tangent = tangent
 	# Issue #270: rotate the BODY visual/collision so the figure's bottom
 	# faces the ground under any gravity direction (radial arenas included);
 	# HUD, weapon and camera keep the world frame (FigurePose for details).
@@ -389,11 +403,8 @@ func _physics_process(delta: float) -> void:
 	# Issue #250 rework: NPC walking lives in the gravity frame's tangent,
 	# not on the world x axis — on the circular arena world-x movement
 	# launched figures off the curved surface into ballistic up-down
-	# flights. On flat levels the tangent IS the x axis (kept facing +x so
-	# behaviour there is unchanged, flipped gravity included).
-	var tangent := Vector2(grav.y, -grav.x)
-	if tangent.x < 0.0:
-		tangent = -tangent
+	# flights. The tangent itself (_aim_tangent, updated above) is oriented
+	# by continuity, so the walk never flips 180° around a disc rim.
 	if not is_on_floor():
 		velocity += grav * GRAVITY * delta
 
@@ -449,7 +460,7 @@ func _physics_process(delta: float) -> void:
 	var vertical := aim_offset.dot(_aim_grav)
 	# Issue #147: slew the aim onto the ACTUAL target (not the flank goal)
 	# so the hold-fire gate below can actually converge.
-	var desired_angle := atan2(-vertical, maxf(absf(aim_offset.dot(_aim_tangent())), 1.0))
+	var desired_angle := atan2(-vertical, maxf(absf(aim_offset.dot(_aim_tangent)), 1.0))
 	view_angle = move_toward(view_angle, clampf(desired_angle, -VIEW_MAX, VIEW_MAX), AIM_SPEED * AIM_SPEED_MULT[difficulty] * delta)
 
 	var direction := 0.0
@@ -474,7 +485,7 @@ func _physics_process(delta: float) -> void:
 	# Issue #250 rework: walk in the gravity frame's tangent (see above) —
 	# the AI keeps its world-x heuristics, but the step itself follows the
 	# surface instead of launching the figure off it.
-	velocity = tangent * clampf(direction, -1.0, 1.0) * SPEED \
+	velocity = _aim_tangent * clampf(direction, -1.0, 1.0) * SPEED \
 			+ grav * velocity.dot(grav)
 
 	# Jump when blocked or when the target is clearly above us.
@@ -603,7 +614,7 @@ func _aim_ready() -> bool:
 	# Facing: never fire away from the target (Issue #277: measured along
 	# the gravity tangent — the walking/aim axis — not the world x axis).
 	var facing: float = _weapon._facing if _weapon != null else 1.0
-	var along := to_target.dot(_aim_tangent())
+	var along := to_target.dot(_aim_tangent)
 	if signf(along) != 0.0 and signf(facing) != signf(along):
 		return false
 	# Aim: the slewed view angle must be on the direct line to the target
