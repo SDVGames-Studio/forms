@@ -199,11 +199,15 @@ func _integrate_forces(state: PhysicsDirectBodyState2D) -> void:
 
 
 ## Unit gravity direction at the grenade's position (issue #216).
+## Issue #277 rework: the wielder's AUTHORED central line is the level's
+## gravity contract and beats terrain surface gravity (see Player.gd —
+## base-slab corners used to bend grenade arcs on the center-line
+## levels); disc arenas keep the radial terrain pull.
 func _level_gravity() -> Vector2:
-	if LevelTerrain.has_sources(self):
-		return LevelTerrain.gravity_vector(self)
 	if _center_line_y > 0.0:
 		return Vector2.DOWN if global_position.y < _center_line_y else Vector2.UP
+	if LevelTerrain.has_sources(self):
+		return LevelTerrain.gravity_vector(self)
 	return Vector2.UP if _shoot_gravity_dir < 0.0 else Vector2.DOWN
 
 
