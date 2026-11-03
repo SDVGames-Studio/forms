@@ -37,7 +37,9 @@ func _ready() -> void:
 	add_to_group("projectiles")
 	# Layers 1|2 = world + enemy team; issue #57 adds layer 8 (player team)
 	# so shots can also hit the shooter's own teammates — friendly fire.
-	collision_mask = 1 | 2 | 8
+	# Issue #281: layer 4 (projectiles) so pellets reach the mines — a
+	# pellet that hits a mine detonates it instantly via take_damage.
+	collision_mask = 1 | 2 | 8 | 4
 	var shape := CollisionShape2D.new()
 	var rect := RectangleShape2D.new()
 	rect.size = _size
@@ -113,4 +115,11 @@ func _explode() -> void:
 		if body and body.has_method("take_damage") \
 				and body.global_position.distance_to(global_position) <= blast_radius:
 			body.take_damage(damage)
+	# Issue #281: the blast also destroys mines within the radius — each
+	# has 1 HP and detonates instantly when damaged.
+	for node in get_tree().get_nodes_in_group("mines"):
+		var mine := node as ProjectileBody
+		if mine != null and is_instance_valid(mine) \
+				and mine.global_position.distance_to(global_position) <= blast_radius:
+			mine.take_damage(damage)
 	queue_free()
