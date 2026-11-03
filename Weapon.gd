@@ -153,8 +153,22 @@ func _physics_process(delta: float) -> void:
 	var parent := get_parent() as CharacterBody2D
 	var new_facing := _facing
 	var new_dir := _gravity_dir
-	if parent and parent.velocity.x != 0.0:
-		new_facing = signf(parent.velocity.x)
+	# Issue #277: facing follows the walk direction ALONG THE SURFACE (the
+	# gravity frame's tangent), not the world x axis — beside a disc's rim
+	# the tangent is vertical in world space and velocity.x never flipped
+	# the facing. Flat and center-line levels: the tangent IS the x axis,
+	# so the behavior there is unchanged.
+	if parent != null:
+		var tangent := Vector2(1.0, 0.0)
+		if parent.has_method("current_gravity"):
+			var grav: Vector2 = parent.current_gravity()
+			if grav.length_squared() > 0.5:
+				tangent = Vector2(grav.y, -grav.x)
+				if tangent.x < 0.0:
+					tangent = -tangent
+		var walk := parent.velocity.dot(tangent)
+		if walk != 0.0:
+			new_facing = signf(walk)
 	if parent != null:
 		var line_y = parent.get("center_line_y")
 		if line_y != null and line_y > 0.0:

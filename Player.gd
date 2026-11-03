@@ -60,10 +60,31 @@ const VIEW_SPEED := Stats.VIEW_SPEED
 const VIEW_MAX := Stats.VIEW_MAX
 var view_angle := 0.0
 
-## Issue #67: direction the character looks/aims in — facing direction
-## raised/lowered by view_angle, oriented against the current gravity side.
-func aim_dir(facing: float, dir: float) -> Vector2:
-	return Vector2(cos(view_angle) * facing, -sin(view_angle) * dir)
+## Issue #277: the gravity unit vector the last physics frame used — the
+## frame the aim/view lives in (see aim_dir). DOWN until the first tick
+## (the legacy default).
+var _aim_grav := Vector2.DOWN
+
+## Issue #67/#277: direction the character looks/aims in — the gravity
+## frame's surface tangent (facing sign applied) raised/lowered by
+## view_angle AWAY from the floor. Issue #270 rotated the figure body to
+## the level's real gravity (radial arenas included), but the aim kept the
+## world-vertical frame with only the legacy center-line flip — the weapon
+## then indicated a direction that didn't correspond to the character's
+## stance. With the real gravity vector, flat and center-line levels keep
+## EXACTLY the old formula (the tangent is the world x axis there); on
+## radial gravity the aim rotates with the figure. `dir` (the legacy
+## gravity sign) is kept for call compatibility only.
+func aim_dir(facing: float, _dir: float) -> Vector2:
+	var tangent := Vector2(_aim_grav.y, -_aim_grav.x)
+	if tangent.x < 0.0:
+		tangent = -tangent
+	return tangent * (cos(view_angle) * facing) - _aim_grav * sin(view_angle)
+
+## Issue #277: the current gravity frame — Weapon uses it to face along
+## the walking surface instead of the world x axis.
+func current_gravity() -> Vector2:
+	return _aim_grav
 var _bar_fill: ColorRect
 var _camera: Camera2D
 
@@ -372,6 +393,8 @@ func _physics_process(delta: float) -> void:
 		grav = Vector2.DOWN \
 				if global_position.y < center_line_y else Vector2.UP
 	up_direction = -grav
+	# Issue #277: the aim/view lives in the CURRENT gravity frame.
+	_aim_grav = grav
 	# Issue #270: rotate the BODY visual/collision so the figure's bottom
 	# faces the ground under any gravity direction (radial arenas included);
 	# HUD, weapon and camera keep the world frame (FigurePose for details).
