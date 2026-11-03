@@ -20,3 +20,8 @@ const VIEW_MAX := 1.2
 ## Health bar geometry (identical for both teams).
 const BAR_WIDTH := 64.0
 const BAR_HEIGHT := 8.0
+
+## Issue #270: the figure's footprint — the square shape visual and the
+## capsule are 64 px wide/tall, so ONE character width is 64 px. The level
+## terrain rules are expressed as multiples of it.
+const BODY_SIZE := 64.0

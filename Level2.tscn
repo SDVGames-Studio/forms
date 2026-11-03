@@ -39,9 +39,9 @@ color = Color(0.09, 0.05, 0.16, 1)
 mouse_filter = 2
 
 [node name="Ground" type="StaticBody2D" parent="."]
-position = Vector2(1152, 588)
+position = Vector2(1152, 752)
 script = ExtResource("10_indestr")
-rect_size = Vector2(2304, 120)
+rect_size = Vector2(2304, 448)
 
 [node name="SoilLeft" type="StaticBody2D" parent="."]
 position = Vector2(235, 498)
@@ -62,17 +62,17 @@ color = Color(0.09, 0.05, 0.16, 1)
 
 [node name="Platform1" type="StaticBody2D" parent="."]
 position = Vector2(600, 124)
-script = ExtResource("10_indestr")
+script = ExtResource("11_destr")
 rect_size = Vector2(260, 40)
 
 [node name="Platform2" type="StaticBody2D" parent="."]
 position = Vector2(1244, 124)
-script = ExtResource("10_indestr")
+script = ExtResource("11_destr")
 rect_size = Vector2(260, 40)
 
 [node name="Platform3" type="StaticBody2D" parent="."]
 position = Vector2(1888, 124)
-script = ExtResource("10_indestr")
+script = ExtResource("11_destr")
 rect_size = Vector2(260, 40)
 
 [node name="Player" type="CharacterBody2D" parent="."]
