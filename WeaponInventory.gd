@@ -83,6 +83,13 @@ const ICONS: Array = [
 	{"shape": "circle", "radius": 8.0, "color": Color(0.22, 0.24, 0.3, 1)},
 ]
 
+## Issue #271: hover hints. The scripts are preloaded (not the autoload
+## singletons — ToolInventory may not exist yet while THIS autoload
+## builds its slots) so the damage numbers and tool names are read from
+## the live constants and can never drift stale after a balance tweak.
+const WeaponFire := preload("res://Weapon.gd")
+const ToolState := preload("res://ToolInventory.gd")
+
 
 func _ready() -> void:
 	layer = 10
@@ -129,6 +136,8 @@ func _ready() -> void:
 		slot.focus_mode = Control.FOCUS_NONE
 		slot.pressed.connect(set_selected.bind(i))
 		slot.add_child(_make_icon(ICONS[i]))
+		# Issue #271: hover hint — name + damage (engine tooltip).
+		slot.tooltip_text = _weapon_hint(i)
 		_slots.append(slot)
 		grid.add_child(slot)
 
@@ -140,6 +149,8 @@ func _ready() -> void:
 		slot.focus_mode = Control.FOCUS_NONE
 		slot.pressed.connect(_on_tool_slot_pressed.bind(i))
 		slot.add_child(_make_icon(TOOL_ICONS[i]))
+		# Issue #271: tools deal no damage — the hint is the name only.
+		slot.tooltip_text = ToolState.TOOLS[i]
 		_tool_slots.append(slot)
 		grid.add_child(slot)
 
@@ -189,6 +200,26 @@ func _make_icon(icon_def: Dictionary) -> Control:
 	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	icon.set_anchors_preset(Control.PRESET_FULL_RECT)
 	return icon
+
+
+## Issue #271: a weapon slot's hover hint — the weapon name plus its
+## damage. Numbers come straight from the Weapon.gd firing constants;
+## the shotgun shows its 5-pellet spread as a volley (mirrors the spread
+## loop in _fire_shotgun).
+func _weapon_hint(i: int) -> String:
+	var damage := ""
+	match WEAPONS[i]:
+		"Shotgun":
+			damage = "5 × %d" % WeaponFire.PELLET_DAMAGE
+		"Rocket":
+			damage = str(WeaponFire.ROCKET_DAMAGE)
+		"Grenade":
+			damage = str(WeaponFire.GRENADE_DAMAGE)
+		"Spear":
+			damage = str(WeaponFire.SPEAR_DAMAGE)
+		"Mine":
+			damage = str(WeaponFire.MINE_DAMAGE)
+	return "%s\nDamage: %s" % [WEAPONS[i], damage]
 
 
 func _process(_delta: float) -> void:
