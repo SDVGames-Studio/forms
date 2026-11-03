@@ -372,6 +372,10 @@ func _physics_process(delta: float) -> void:
 		grav = Vector2.DOWN \
 				if global_position.y < center_line_y else Vector2.UP
 	up_direction = -grav
+	# Issue #270: rotate the BODY visual/collision so the figure's bottom
+	# faces the ground under any gravity direction (radial arenas included);
+	# HUD, weapon and camera keep the world frame (FigurePose for details).
+	FigurePose.align_to_gravity(self, grav)
 
 	if not is_on_floor():
 		velocity += grav * GRAVITY * delta
