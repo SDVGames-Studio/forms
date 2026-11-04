@@ -9,7 +9,9 @@ extends Node
 ## or the active character dying. Issue #244: however the turn ends, the
 ## acting character is blocked first and the next turn begins only after
 ## every effect is done — flying projectiles AND explosions — even when
-## the timer finished first.
+## the timer finished first. Issue #312: a TRIGGERED mine counts as a
+## pending effect too — once armed, the handover waits until it has
+## exploded before the next turn begins.
 ## The game runs until only one team is alive.
 
 ## Issue #192: default fallback; the configured value lives in
@@ -231,6 +233,9 @@ func is_input_frozen() -> bool:
 
 ## Issue #244: everything the handover waits for — live projectiles
 ## (issue #119) AND live explosion effects (blast rings still fading).
+## Issue #312: an ARMED mine is a live projectile again — a triggered
+## mine re-joins the "projectiles" group until it has exploded, so the
+## handover holds the turn change for its fuse.
 func _pending_effects() -> int:
 	var count := _live_projectiles()
 	for node in get_tree().get_nodes_in_group(EFFECT_GROUP):
