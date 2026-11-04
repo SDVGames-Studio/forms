@@ -20,14 +20,21 @@ static func has_sources(figure: Node2D) -> bool:
 ## Unit gravity direction at the figure's position — toward the nearest
 ## indestructible surface. Defaults to straight down.
 static func gravity_vector(figure: Node2D) -> Vector2:
+	return gravity_at(figure.get_tree(), figure.global_position)
+
+
+## Issue #290: the same unit gravity at an ARBITRARY world position —
+## the debug gravity vector field samples a whole GRID of points, not
+## only where a figure stands. Identical rules to gravity_vector.
+static func gravity_at(tree: SceneTree, world_pos: Vector2) -> Vector2:
 	var best_dir := Vector2.DOWN
 	var best_dist := INF
-	for source in figure.get_tree().get_nodes_in_group("gravity_source"):
+	for source in tree.get_nodes_in_group("gravity_source"):
 		var body := source as Node2D
 		var shape_node: Node2D = body.get_node_or_null("Shape")
 		if shape_node == null:
 			continue
-		var local := body.to_local(figure.global_position)
+		var local := body.to_local(world_pos)
 		var dir: Vector2
 		var dist: float
 		var circle_shape := shape_node as CollisionShape2D

@@ -75,6 +75,14 @@ func _ready() -> void:
 	add_child(load("res://OSD.gd").new())
 	# Issue #289: the camera-type switch button (bottom-left corner).
 	add_child(load("res://CameraSwitch.gd").new())
+	# Issue #290: debug gravity vector field overlay — created only while
+	# the setting is on (levels never re-read it mid-game: the settings
+	# menu sits in the main menu, like the debug mode). The overlay itself
+	# deduplicates, so a second camera cannot double the field.
+	if GameConfig.debug_gravity_field:
+		var field: Node2D = load("res://scripts/GravityFieldDebug.gd").new()
+		field.name = "GravityFieldDebug"
+		add_child(field)
 
 func _process(delta: float) -> void:
 	var member := _controlled_member()
