@@ -417,6 +417,11 @@ func _fire(power := 1.0) -> void:
 	# tool OR weapon per character per turn, never both.
 	if ToolInventory.has_used_tool(get_parent()):
 		return
+	# Issue #305: the team's use budget for this weapon is spent — the
+	# weapon no longer fires (the spear is the exception: infinite uses).
+	var team_id := TurnController.team_id_of(get_parent())
+	if not WeaponInventory.can_spend_weapon(team_id, selected_weapon):
+		return
 	# Issue #131, reworked in #143: the FIRST shot of the turn locks the
 	# weapon selection — for THIS character only (the constraint is per
 	# character, not per player).
@@ -428,6 +433,8 @@ func _fire(power := 1.0) -> void:
 		WeaponInventory.lock_for(get_parent())
 	_cooldown_left = COOLDOWN
 	_shots_used[clampi(selected_weapon, 0, _shots_used.size() - 1)] += 1
+	# Issue #305: one use of this weapon leaves the team's budget.
+	WeaponInventory.spend_weapon(team_id, selected_weapon)
 	# Issue #101: 3-second pause before the next shot of the same turn.
 	_shot_delay_left = SHOT_DELAY
 	# Issue #252: debug action log — every shot names its wielder.

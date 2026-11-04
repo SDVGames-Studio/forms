@@ -350,6 +350,9 @@ func _start_round() -> void:
 	_roll_wait = 0.0
 	# Issue #191: discover all teams and shuffle the turn order.
 	_scan_teams()
+	# Issue #305: fresh budgets — every team starts the round with 5 uses
+	# of each weapon and each tool (the spear is infinite).
+	WeaponInventory.reset_uses()
 	# Visual random generator: the banner flickers between team colors,
 	# then settles on a random team — that team moves first.
 	# Kill any leftover roll tween before starting a new one (issue #85).
