@@ -125,14 +125,22 @@ func _refresh_all() -> void:
 ## handled, so the pressed key never leaks into the focused button (a
 ## Space press must rebind, not activate the GUI).
 func _input(event: InputEvent) -> void:
+	# Issue #303: Escape is always the cancel button — while a rebinding
+	# listen is running it aborts the listen; otherwise it acts as Back.
+	if event is InputEventKey and event.pressed and not event.echo:
+		var key := event as InputEventKey
+		if key.physical_keycode == KEY_ESCAPE or key.keycode == KEY_ESCAPE:
+			get_viewport().set_input_as_handled()
+			if _listening != "":
+				_stop_listen()
+			else:
+				_on_back_pressed()
+			return
 	if _listening == "":
 		return
 	if event is InputEventKey and event.pressed and not event.echo:
 		var key := event as InputEventKey
 		get_viewport().set_input_as_handled()
-		if key.physical_keycode == KEY_ESCAPE or key.keycode == KEY_ESCAPE:
-			_stop_listen()
-			return
 		if key.physical_keycode != KEY_NONE:
 			GameConfig.set_hotkey(_listening, key.physical_keycode)
 			_stop_listen()
