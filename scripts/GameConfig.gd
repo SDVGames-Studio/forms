@@ -52,6 +52,13 @@ static var member_names: Array[String] = ["Player 1", "Player 2", "Player 3"]
 ## action log are shown; while off the game plays exactly as before.
 static var debug_mode := true
 
+## Issue #290: debug gravity vector field — OFF by default, switched in
+## the settings menu NEXT TO the debug mode. While on, the camera shows
+## the level's gravity field as arrows on a world-space grid whose cell
+## is two character widths wide: at every grid point an arrow points
+## where gravity pulls a figure there (see scripts/GravityFieldDebug.gd).
+static var debug_gravity_field := false
+
 ## Issue #252: the debug-mode switch persists in its own settings file,
 ## separate from the team customisation (team.cfg).
 const SETTINGS_PATH := "user://settings.cfg"
@@ -213,6 +220,7 @@ static func load_settings() -> void:
 	if cfg.load(SETTINGS_PATH) != OK:
 		return
 	debug_mode = cfg.get_value("settings", "debug_mode", true)
+	debug_gravity_field = cfg.get_value("settings", "gravity_field", false)
 
 
 ## Issue #252: persist the debug-mode setting.
@@ -220,6 +228,7 @@ static func save_settings() -> void:
 	var cfg := ConfigFile.new()
 	cfg.load(SETTINGS_PATH)  # keep any other keys; missing file is fine
 	cfg.set_value("settings", "debug_mode", debug_mode)
+	cfg.set_value("settings", "gravity_field", debug_gravity_field)
 	cfg.save(SETTINGS_PATH)
 
 

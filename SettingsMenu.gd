@@ -10,6 +10,7 @@ extends Control
 
 @onready var _team_button: Button = %TeamButton
 @onready var _debug_check: CheckButton = %DebugCheck
+@onready var _gravity_field_check: CheckButton = %GravityFieldCheck
 @onready var _back_button: Button = %BackButton
 
 
@@ -20,6 +21,10 @@ func _ready() -> void:
 	# at once so the choice survives a restart.
 	_debug_check.button_pressed = GameConfig.debug_mode
 	_debug_check.toggled.connect(_on_debug_toggled)
+	# Issue #290: the gravity vector field switch, right below the debug
+	# mode — same persist-on-flip behaviour.
+	_gravity_field_check.button_pressed = GameConfig.debug_gravity_field
+	_gravity_field_check.toggled.connect(_on_gravity_field_toggled)
 	_team_button.grab_focus()
 
 
@@ -32,6 +37,13 @@ func _on_team_pressed() -> void:
 ## (the settings menu sits in the main menu, never over a running game).
 func _on_debug_toggled(pressed: bool) -> void:
 	GameConfig.debug_mode = pressed
+	GameConfig.save_settings()
+
+
+## Issue #290: flip and persist the gravity vector field switch; the
+## camera of the NEXT level reads it when it builds the overlay.
+func _on_gravity_field_toggled(pressed: bool) -> void:
+	GameConfig.debug_gravity_field = pressed
 	GameConfig.save_settings()
 
 
