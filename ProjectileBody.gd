@@ -22,8 +22,11 @@ extends RigidBody2D
 ##             group once it comes to rest, so the turn handover never
 ##             waits for it) until some character steps within
 ##             MINE_TRIGGER (1.2 of the figure width — doubled in issue
-##             #262). Then it arms, beeps/
-##             blinks for MINE_FUSE seconds and explodes.
+##             #262). Then it arms, beeps/blinks for MINE_FUSE seconds
+##             and explodes. Issue #312: the moment it arms, the mine is a
+##             live turn effect again — it re-joins the "projectiles"
+##             group, so the turn handover waits until it has exploded
+##             before the next turn begins.
 ## Visuals are plain rectangles built in code — no assets.
 
 enum Kind { ROCKET, GRENADE, ROCK, MINE }
@@ -173,6 +176,11 @@ func _physics_process(delta: float) -> void:
 						<= MINE_TRIGGER:
 					_armed = true
 					_fuse_left = MINE_FUSE
+					# Issue #312: an armed mine is a pending turn effect — re-join
+					# the "projectiles" group so the turn handover waits for the
+					# explosion before the next turn begins (it left the group
+					# when it settled, issue #246).
+					add_to_group("projectiles")
 					return
 	else:
 		# Armed: blink red while the fuse counts down, then explode.
@@ -186,7 +194,9 @@ func _physics_process(delta: float) -> void:
 
 ## Issue #246: the mine came to rest — it stops being a live projectile
 ## the turn handover waits for (issue #119) and lies dormant until someone
-## steps on it, however many turns that takes.
+## steps on it, however many turns that takes. Arming reverses this:
+## the triggered mine re-joins "projectiles" (issue #312) until it
+## explodes.
 func _settle() -> void:
 	_settled = true
 	remove_from_group("projectiles")
