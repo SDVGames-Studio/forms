@@ -20,6 +20,8 @@ const Stats := preload("res://scripts/CharacterStats.gd")
 
 const SPEED := Stats.SPEED
 const GRAVITY := Stats.GRAVITY
+## Issue #308: only the FOCUS-FIRE window (prefer the weakest figure this
+## close); targeting and firing themselves are level-wide now.
 const ATTACK_RANGE := 500.0
 const KEEP_DISTANCE := 140.0
 ## Issue #66: aim slew speed (rad/s) and per-weapon range bands.
@@ -539,8 +541,12 @@ func _physics_process(delta: float) -> void:
 	# angle has slewed onto it — no more blind flat shots while the aim is
 	# still turning (cooldown stays at 0, so the shot fires as soon as the
 	# aim lines up).
-	if distance <= ATTACK_RANGE and _cooldown_left == 0.0 and _aim_ready() \
-			and not _tool_used:
+	# Issue #308: the computer sees an enemy at ANY point of the level —
+	# the old `distance <= ATTACK_RANGE` cap left far figures untouchable,
+	# so the AI could only walk (and burned its turn standing when the way
+	# was blocked). _pick_weapon resolves EVERY distance — the ballistic
+	# grenade is the far band — so the gate is aim + cooldown only.
+	if _cooldown_left == 0.0 and _aim_ready() and not _tool_used:
 		_pick_weapon(distance, absf(_target.global_position.y - global_position.y))
 		_shoot()
 		_cooldown_left = FIRE_PAUSE[difficulty]
