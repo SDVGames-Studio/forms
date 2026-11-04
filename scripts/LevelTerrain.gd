@@ -4,8 +4,9 @@ extends RefCounted
 ##
 ## Indestructible ground is the only gravity source; gravity acceleration
 ## points along the normal of the NEAREST indestructible surface. Destructible
-## ground never contributes gravity. Levels without authored gravity sources
-## keep the legacy global-down / central-line behavior.
+## ground never contributes gravity. Issue #293: there is no separately
+## configured gravity field anymore — levels without any gravity source
+## simply fall straight down.
 ##
 ## Issue #270: slabs are now convex rounded-rect POLYGONS
 ## (CollisionPolygon2D) instead of RectangleShape2D — gravity toward one

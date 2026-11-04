@@ -6,10 +6,9 @@ class_name GravityFieldDebug
 ## cell width of TWO character widths (2 x 64 = 128 px): at every grid
 ## point an arrow shows the direction gravity pulls a figure standing
 ## there — the SAME contract the figures follow (Player/Npc
-## _physics_process): an authored central line is the level's gravity
-## contract and beats terrain surface gravity (down above the line, up
-## below it), otherwise the nearest indestructible surface bends gravity
-## (LevelTerrain.gravity_at), otherwise gravity is straight down.
+## _physics_process, issue #293): the nearest indestructible surface
+## bends gravity (LevelTerrain.gravity_at), otherwise gravity is straight
+## down. The separately configured central-line contract is gone.
 ##
 ## Switched by the "Gravity Field" entry in the settings menu, next to the
 ## debug mode (GameConfig.debug_gravity_field). The camera creates exactly
@@ -31,9 +30,6 @@ const HEAD_SPREAD := 6.0
 const FIELD_COLOR := Color(0.25, 0.85, 1.0, 0.6)
 const POINT_RADIUS := 2.0
 
-## The level's authored central line (y > 0), sampled from the figures
-## once they are in the tree; -1 = not authored (or not known yet).
-var _center_line_y := -1.0
 ## Last drawn world rect — the field is static, so redraw only when the
 ## visible region actually changes (camera move/zoom/rotate).
 var _last_rect := Rect2(0.0, 0.0, -1.0, -1.0)
@@ -56,7 +52,6 @@ func _process(_delta: float) -> void:
 	visible = GameConfig.debug_gravity_field
 	if not visible:
 		return
-	_sample_center_line()
 	var rect := _world_view_rect()
 	if rect.position.distance_squared_to(_last_rect.position) > 1.0 \
 			or rect.size.distance_squared_to(_last_rect.size) > 1.0:
@@ -64,25 +59,9 @@ func _process(_delta: float) -> void:
 		queue_redraw()
 
 
-## The central line is authored per FIGURE (Player/Npc export), so read it
-## from whichever team member is in the tree — the value is the same for
-## every figure of the level (Level3/Level4 stage it on all of them).
-func _sample_center_line() -> void:
-	if _center_line_y > 0.0:
-		return
-	for group in ["player_team", "enemy_team"]:
-		for fig in get_tree().get_nodes_in_group(group):
-			var line = fig.get("center_line_y")
-			if line != null and float(line) > 0.0:
-				_center_line_y = float(line)
-				return
-
-
 ## Unit gravity at an arbitrary world point — the figures' contract
-## (central line > nearest terrain source > straight down).
+## (issue #293): nearest terrain source, straight down without any.
 func _gravity_at(world_pos: Vector2) -> Vector2:
-	if _center_line_y > 0.0:
-		return Vector2.DOWN if world_pos.y < _center_line_y else Vector2.UP
 	if get_tree().get_first_node_in_group("gravity_source") != null:
 		return LevelTerrain.gravity_at(get_tree(), world_pos)
 	return Vector2.DOWN

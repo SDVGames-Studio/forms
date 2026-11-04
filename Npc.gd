@@ -57,14 +57,9 @@ const BAR_HEIGHT := Stats.BAR_HEIGHT
 ## level can stage a computer-vs-computer duel the user only spectates.
 @export var team: String = "enemy"
 
-## Issue #48: 1.0 = normal downward gravity, -1.0 = reversed (the figure
-## stands upside-down on the underside of a ceiling/line).
-@export var gravity_dir := 1.0
-
-## Issue #48 rework: y of the level's central line. When > 0, gravity side is
-## chosen every frame from the position relative to the line (normal above,
-## reversed below) instead of the static gravity_dir.
-@export var center_line_y := 0.0
+## Issue #293: gravity is no longer authored per figure — the level's
+## indestructible grounds are the ONLY gravity source (LevelTerrain), so
+## the old gravity_dir/center_line_y exports are gone.
 
 var health: int = MAX_HEALTH
 var _bar_fill: ColorRect
@@ -244,8 +239,6 @@ func _ready() -> void:
 	# Issue #155: characters are never platforms for each other (see
 	# Player.gd) — a walking figure cannot carry an enemy standing on it.
 	platform_floor_layers = 1
-	if gravity_dir < 0.0:
-		up_direction = Vector2.DOWN
 	if team == "enemy":
 		add_to_group("enemy")
 	add_to_group("enemy_team" if team == "enemy" else "player_team")
@@ -406,24 +399,16 @@ func _physics_process(delta: float) -> void:
 		return
 	_cooldown_left = maxf(0.0, _cooldown_left - delta)
 	_jump_left = maxf(0.0, _jump_left - delta)
-	var dir := 1.0
 	# Issue #190: gravity toward the nearest indestructible surface when the
 	# level authors gravity sources; legacy central-line / global-down rules
 	# otherwise. Destructible ground never causes gravity.
-	# Issue #277 rework: an AUTHORED central line is the level's gravity
-	# contract and BEATS terrain surface gravity (see Player.gd for the
-	# full story: base-slab corners used to bend the frame on the
-	# center-line levels); disc arenas author no line and keep terrain pull.
+	# Issue #293: the gravity field is no longer configured separately from
+	# the terrain — indestructible grounds are the ONLY gravity source, so
+	# the authored central-line/gravity_dir overrides are gone. A figure
+	# standing on the underside of a ceiling ground falls UP toward it.
 	var grav := Vector2.DOWN
-	if center_line_y > 0.0:
-		dir = 1.0 if global_position.y < center_line_y else -1.0
-		grav = Vector2.DOWN if dir > 0.0 else Vector2.UP
-	elif LevelTerrain.has_sources(self):
+	if LevelTerrain.has_sources(self):
 		grav = LevelTerrain.gravity_vector(self)
-		dir = 1.0 if grav.y >= 0.0 else -1.0
-	elif gravity_dir < 0.0:
-		dir = -1.0
-		grav = Vector2.UP
 	up_direction = -grav
 	# Issue #277: the aim/view lives in the CURRENT gravity frame.
 	_aim_grav = grav

@@ -3,10 +3,10 @@ extends Node
 ##
 ## The grenade is a ProjectileBody rigid body. Before #216 it used the
 ## engine's gravity_scale (straight down, world space) so on levels with
-## terrain gravity sources (curved hills, ceilings) or the inverted
-## central-line side, grenades fell the WRONG way — unlike the figures.
-## Now the grenade uses the figures' gravity ladder: terrain sources
-## first, then the center-line rule, then plain down.
+## terrain gravity sources (curved hills, ceilings) grenades fell the
+## WRONG way — unlike the figures. Now the grenade uses the figures'
+## gravity rule (issue #293): the level's indestructible grounds are the
+## only gravity source, otherwise plain down.
 ##
 ## Run headless: godot --headless res://tests/test_issue216.tscn
 ## Exit code 0 = pass.
@@ -55,16 +55,17 @@ func _ready() -> void:
 	ceiling.queue_free()
 	await get_tree().physics_frame
 
-	# --- No sources, grenade below the central line: gravity is UP. ---
+	# --- Issue #293: no separately configured gravity remains — with no
+	# terrain source the grenade falls DOWN even far below where a
+	# central line used to flip gravity. ---
 	var c := _spawn_grenade()
 	c.global_position = Vector2(0, 200)
-	c._center_line_y = 100.0
 	var c_start := c.global_position.y
 	for i in 20:
 		await get_tree().physics_frame
-	var inverted: bool = c.global_position.y < c_start - 10.0
-	print("ISSUE216 inverted=", inverted, " y=", c.global_position.y)
-	ok = ok and inverted
+	var no_flip: bool = c.global_position.y > c_start + 10.0
+	print("ISSUE216 no_flip_falls_down=", no_flip, " y=", c.global_position.y)
+	ok = ok and no_flip
 
 	print("ISSUE216 ok=", ok)
 	get_tree().quit(0 if ok else 1)

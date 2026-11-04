@@ -61,10 +61,9 @@ const ROCK_CHAR_CLEAR := 1.3 * 64.0
 ## Issue #216: grenade acceleration matches the figures (Stats.GRAVITY).
 const Stats := preload("res://scripts/CharacterStats.gd")
 const GRAVITY := Stats.GRAVITY
-## Issue #216: gravity context captured from the wielder — the center line
-## height and the static gravity direction of levels without terrain sources.
-var _center_line_y := 0.0
-var _shoot_gravity_dir := 1.0
+## Issue #293: no gravity context is captured from the wielder anymore —
+## gravity is sampled every step from the level's indestructible grounds
+## (the same terrain rule the figures follow).
 
 var kind: int = Kind.ROCKET
 ## Launch velocity applied once the body enters the tree.
@@ -117,9 +116,6 @@ func _ready() -> void:
 	# kind gets the LEVEL's gravity in _integrate_forces instead
 	# (issue #245: the rocket too — it has weight now).
 	gravity_scale = 0.0
-	if shooter != null:
-		_center_line_y = float(shooter.get("center_line_y") or 0.0)
-		_shoot_gravity_dir = float(shooter.get("gravity_dir") or 1.0)
 	var mat := PhysicsMaterial.new()
 	mat.bounce = BOUNCE[kind]
 	physics_material_override = mat
@@ -213,16 +209,14 @@ func _integrate_forces(state: PhysicsDirectBodyState2D) -> void:
 
 
 ## Unit gravity direction at the grenade's position (issue #216).
-## Issue #277 rework: the wielder's AUTHORED central line is the level's
-## gravity contract and beats terrain surface gravity (see Player.gd —
-## base-slab corners used to bend grenade arcs on the center-line
-## levels); disc arenas keep the radial terrain pull.
+## Issue #293: the level's indestructible grounds are the ONLY gravity
+## source — the same terrain rule the figures follow; the wielder's old
+## central-line/gravity_dir context is gone. Straight down without any
+## gravity source.
 func _level_gravity() -> Vector2:
-	if _center_line_y > 0.0:
-		return Vector2.DOWN if global_position.y < _center_line_y else Vector2.UP
 	if LevelTerrain.has_sources(self):
 		return LevelTerrain.gravity_vector(self)
-	return Vector2.UP if _shoot_gravity_dir < 0.0 else Vector2.DOWN
+	return Vector2.DOWN
 
 
 func _on_body_entered(body: Node2D) -> void:

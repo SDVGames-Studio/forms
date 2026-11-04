@@ -59,7 +59,6 @@ const GRENADE_MASS := 0.6
 const ROCK_MASS := 0.8
 
 var _facing := 1.0
-var _gravity_dir := 1.0
 var _cooldown_left := 0.0
 ## Issue #101: shots already made this turn by this member, per weapon
 ## (issue #116: the quota is per weapon so switching after a shot keeps
@@ -89,7 +88,9 @@ var npc_target: Node2D = null
 func _aim() -> Vector2:
 	var parent := get_parent() as CharacterBody2D
 	if parent != null and parent.has_method("aim_dir"):
-		return parent.aim_dir(_facing, _gravity_dir)
+		# Issue #293: the legacy gravity-sign argument is call compatibility
+		# only (aim_dir ignores it) — the authored gravity sign is gone.
+		return parent.aim_dir(_facing, 1.0)
 	return Vector2(_facing, 0.0)
 
 ## Issue #277 rework: the "up" of the wielder's current gravity frame —
@@ -175,7 +176,6 @@ func _physics_process(delta: float) -> void:
 
 	var parent := get_parent() as CharacterBody2D
 	var new_facing := _facing
-	var new_dir := _gravity_dir
 	# Issue #277: facing follows the walk direction ALONG THE SURFACE (the
 	# gravity frame's tangent), not the world x axis — beside a disc's rim
 	# the tangent is vertical in world space and velocity.x never flipped
@@ -197,13 +197,10 @@ func _physics_process(delta: float) -> void:
 		var walk := parent.velocity.dot(tangent)
 		if walk != 0.0:
 			new_facing = signf(walk)
-	if parent != null:
-		var line_y = parent.get("center_line_y")
-		if line_y != null and line_y > 0.0:
-			new_dir = 1.0 if parent.global_position.y < line_y else -1.0
-	if new_facing != _facing or new_dir != _gravity_dir:
+	# Issue #293: no authored gravity sign to track anymore — the aim frame
+	# itself (current_gravity/current_tangent) already follows the terrain.
+	if new_facing != _facing:
 		_facing = new_facing
-		_gravity_dir = new_dir
 		_update_held()
 
 	# Issue #33: only the controlled team member fires on input, and only
@@ -268,7 +265,7 @@ func _physics_process(delta: float) -> void:
 		_update_held()
 	# Issue #67: keep the held weapon aligned with the character's view.
 	if _held != null and parent != null and parent.has_method("aim_dir"):
-		var aim: Vector2 = parent.aim_dir(_facing, _gravity_dir)
+		var aim: Vector2 = parent.aim_dir(_facing, 1.0)
 		var style: Dictionary = HELD_STYLES[_held_style_index()]
 		_held.position = aim * 26.0 - style["size"] / 2.0
 		# Issue #133: the spear (and every held weapon) rotates to the aim

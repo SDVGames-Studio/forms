@@ -24,11 +24,10 @@ extends Node
 ##     position (where the tangent is vertical) keeps the aim rotating
 ##     smoothly — the old "flip while tangent.x < 0" rule snapped the aim
 ##     180° there with every wobble of the gravity vector.
-##  6. AUTHORED CENTER LINE BEATS TERRAIN: on a level that authors a
-##     central line AND sits an indestructible base slab under the soil,
-##     a figure standing flat above the slab's rounded corner region gets
-##     plain DOWN gravity — no corner lean, no tilted weapon (Level3/
-##     Level4 "with the horizontal line too").
+##  6. TERRAIN-ONLY GRAVITY (issue #293): the separately configured
+##     central line is gone — over a base slab's rounded corner region
+##     the frame now ALWAYS follows the terrain (the corner tilt is the
+##     honest, ground-derived gravity).
 ##  7. LOBBED THROWS FOLLOW THE INDICATED AIM: Weapon.lobbed_velocity
 ##     points along the weapon's aim plus the frame's lob — facing LEFT
 ##     no longer launches the grenade 180° backwards, and facing right on
@@ -130,38 +129,31 @@ func _check_rim_continuity(label: String) -> bool:
 	return ok
 
 
-## Rework check 6: an authored central line beats the base slab's corner —
-## flat gravity above a corner region that terrain rules would bend.
-func _check_center_line_beats_corner(label: String) -> bool:
+## Rework check 6 (issue #293): terrain-only gravity — over the base
+## slab's rounded corner the frame follows the ground tilt; no authored
+## central line exists anymore to flatten it.
+func _check_terrain_corner(label: String) -> bool:
 	var slab := StaticBody2D.new()
 	slab.set_script(Indestructible)
 	slab.rect_size = Vector2(400, 448)
 	slab.position = Vector2(0.0, 300.0)
 	add_child(slab)
 	var fig := PlayerScript.new() as CharacterBody2D
-	fig.set("center_line_y", 150.0)
 	add_child(fig)
-	# Above the slab, over its rounded left corner: terrain gravity would
-	# tilt; the authored line must keep it plain DOWN.
+	# Above the slab, over its rounded left corner: the ground's tilt is
+	# the gravity — no separate central-line contract to beat it (#293).
 	fig.global_position = Vector2(-180.0, 40.0)
 	fig.velocity = Vector2.ZERO
 	await get_tree().physics_frame
 	await get_tree().physics_frame
 	var grav: Vector2 = fig.get("_aim_grav")
-	var line_ok := grav.distance_to(Vector2.DOWN) < EPS
-	print("ISSUE277 ", label, " line-beats-corner: grav=", grav,
-			" -> ", line_ok)
-	fig.set("center_line_y", 0.0)
-	await get_tree().physics_frame
-	await get_tree().physics_frame
-	grav = fig.get("_aim_grav")
-	var terrain_ok := absf(grav.angle_to(Vector2.DOWN)) > 0.05
-	print("ISSUE277 ", label, " no-line terrain corner: grav=", grav,
-			" -> ", terrain_ok)
+	var corner_ok := absf(grav.angle_to(Vector2.DOWN)) > 0.05
+	print("ISSUE277 ", label, " terrain corner: grav=", grav,
+			" -> ", corner_ok)
 	fig.queue_free()
 	slab.queue_free()
 	await get_tree().physics_frame
-	return line_ok and terrain_ok
+	return corner_ok
 
 
 ## Rework check 7: lobbed throws follow the INDICATED aim.
@@ -299,7 +291,7 @@ func _ready() -> void:
 	await get_tree().physics_frame
 	# Rework checks.
 	ok = await _check_rim_continuity("rework") and ok
-	ok = await _check_center_line_beats_corner("rework") and ok
+	ok = await _check_terrain_corner("rework") and ok
 	ok = _check_lob("rework") and ok
 	# Rework-2 checks ("flying, must be grounded").
 	ok = await _check_disc_no_skyhop("rework2") and ok
