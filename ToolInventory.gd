@@ -43,13 +43,19 @@ func reset_turn() -> void:
 
 
 func _can_use(character: Node, tool: int) -> bool:
-	return character != null and not _used.get(character, []).has(tool)
+	if character == null or _used.get(character, []).has(tool):
+		return false
+	# Issue #305: the TEAM's budget for this tool must have a use left.
+	return WeaponInventory.can_spend_tool(TurnController.team_id_of(character), tool)
 
 
 func _mark_used(character: Node, tool: int) -> void:
 	if not _used.has(character):
 		_used[character] = []
 	_used[character].append(tool)
+	# Issue #305: every successful tool use (switch, teleport, shield,
+	# thrown rock) also spends one use of the TEAM's tool budget.
+	WeaponInventory.spend_tool(TurnController.team_id_of(character), tool)
 
 
 func is_switch_locked_by_move() -> bool:
@@ -178,6 +184,13 @@ func _unhandled_input(event: InputEvent) -> void:
 			# Issue #207: no teleporting away after firing — a character that
 			# used its weapon this turn can't use a tool too. Disarm instead.
 			if WeaponInventory.is_locked_for(member):
+				armed_tool = -1
+				refresh_slots()
+				get_viewport().set_input_as_handled()
+				return
+			# Issue #305: the click re-checks the team's teleport budget.
+			if not WeaponInventory.can_spend_tool(
+					TurnController.team_id_of(member), TOOL_TELEPORT):
 				armed_tool = -1
 				refresh_slots()
 				get_viewport().set_input_as_handled()

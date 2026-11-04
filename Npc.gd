@@ -757,6 +757,12 @@ func _pick_weapon(distance: float, height_diff: float = 0.0) -> void:
 		# straight rocket just hits the platform underside (or the blast
 		# catches the shooter's own team below instead of the target).
 		_weapon.selected_weapon = 2  # grenade
+	# Issue #305: the team's budget for the picked weapon may be spent —
+	# fall back to the spear, whose uses are infinite (there is always
+	# something left to fight with).
+	if not WeaponInventory.can_spend_weapon(
+			TurnController.team_id_of(self), _weapon.selected_weapon):
+		_weapon.selected_weapon = 3
 
 
 ## Issue #66: fire through the carried Weapon (it owns the cooldown, the
@@ -789,6 +795,11 @@ func _shoot() -> void:
 	if cares and _weapon.selected_weapon == 2 and _grenade_unsafe():
 		_weapon.selected_weapon = 3
 		return
+	# Issue #305: never hand the weapon a gun the team can't pay for —
+	# the grenade fallback above (and any stale pick) may be spent.
+	if not WeaponInventory.can_spend_weapon(
+			TurnController.team_id_of(self), _weapon.selected_weapon):
+		_weapon.selected_weapon = 3
 	_weapon.npc_fire()
 
 
