@@ -291,6 +291,7 @@ func _ready() -> void:
 
 func _build_health_bar() -> void:
 	var name_label := Label.new()
+	name_label.name = "NameLabel"
 	name_label.text = display_name
 	name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	name_label.offset_left = -70.0
@@ -421,6 +422,11 @@ func _physics_process(delta: float) -> void:
 	# faces the ground under any gravity direction (radial arenas included);
 	# HUD, weapon and camera keep the world frame (FigurePose for details).
 	FigurePose.align_to_gravity(self, grav)
+	# Issue #311: the HUD text (name, health bar, debug HP) must live in the
+	# coordinate system the view CURRENTLY shows — with the character camera
+	# (#289) the view itself rotates, so world-aligned text would render
+	# tilted/upside-down on screen. No-op for the world-aligned static view.
+	HudPose.align_to_view(self)
 	# Issue #250 rework: NPC walking lives in the gravity frame's tangent,
 	# not on the world x axis — on the circular arena world-x movement
 	# launched figures off the curved surface into ballistic up-down
