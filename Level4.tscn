@@ -70,7 +70,6 @@ collision_layer = 8
 collision_mask = 1
 script = ExtResource("1_player")
 display_name = "Player 1"
-center_line_y = 540.0
 
 [node name="Camera" type="Camera2D" parent="Player"]
 script = ExtResource("4_zoomcam")
@@ -97,7 +96,6 @@ collision_layer = 8
 collision_mask = 1
 script = ExtResource("1_player")
 display_name = "Player 2"
-center_line_y = 540.0
 
 [node name="Teammate1Visual" type="ColorRect" parent="Teammate1"]
 offset_left = -32.0
@@ -118,7 +116,6 @@ collision_layer = 8
 collision_mask = 1
 script = ExtResource("1_player")
 display_name = "Player 3"
-center_line_y = 540.0
 
 [node name="Teammate2Visual" type="ColorRect" parent="Teammate2"]
 offset_left = -32.0
@@ -140,8 +137,6 @@ collision_mask = 1
 script = ExtResource("3_npc")
 display_name = "Red 1"
 team_color = Color(0.85, 0.25, 0.25, 1)
-gravity_dir = -1.0
-center_line_y = 540.0
 
 [node name="NpcShape" type="CollisionShape2D" parent="Npc"]
 shape = SubResource("CircleShape2D_shape")
@@ -160,8 +155,6 @@ collision_mask = 1
 script = ExtResource("3_npc")
 display_name = "Red 2"
 team_color = Color(0.85, 0.25, 0.25, 1)
-gravity_dir = -1.0
-center_line_y = 540.0
 
 [node name="Npc2Shape" type="CollisionShape2D" parent="Npc2"]
 shape = SubResource("CircleShape2D_shape")
@@ -180,8 +173,6 @@ collision_mask = 1
 script = ExtResource("3_npc")
 display_name = "Red 3"
 team_color = Color(0.85, 0.25, 0.25, 1)
-gravity_dir = -1.0
-center_line_y = 540.0
 
 [node name="Npc3Shape" type="CollisionShape2D" parent="Npc3"]
 shape = SubResource("CircleShape2D_shape")
@@ -200,8 +191,6 @@ collision_mask = 1
 script = ExtResource("3_npc")
 display_name = "Green 1"
 team_color = Color(0.25, 0.75, 0.35, 1)
-gravity_dir = -1.0
-center_line_y = 540.0
 
 [node name="Npc4Shape" type="CollisionShape2D" parent="Npc4"]
 shape = SubResource("CircleShape2D_shape")
@@ -220,8 +209,6 @@ collision_mask = 1
 script = ExtResource("3_npc")
 display_name = "Green 2"
 team_color = Color(0.25, 0.75, 0.35, 1)
-gravity_dir = -1.0
-center_line_y = 540.0
 
 [node name="Npc5Shape" type="CollisionShape2D" parent="Npc5"]
 shape = SubResource("CircleShape2D_shape")
@@ -240,8 +227,6 @@ collision_mask = 1
 script = ExtResource("3_npc")
 display_name = "Green 3"
 team_color = Color(0.25, 0.75, 0.35, 1)
-gravity_dir = -1.0
-center_line_y = 540.0
 
 [node name="Npc6Shape" type="CollisionShape2D" parent="Npc6"]
 shape = SubResource("CircleShape2D_shape")
@@ -260,8 +245,6 @@ collision_mask = 1
 script = ExtResource("3_npc")
 display_name = "Blue 1"
 team_color = Color(0.25, 0.45, 0.9, 1)
-gravity_dir = -1.0
-center_line_y = 540.0
 
 [node name="Npc7Shape" type="CollisionShape2D" parent="Npc7"]
 shape = SubResource("CircleShape2D_shape")
@@ -280,8 +263,6 @@ collision_mask = 1
 script = ExtResource("3_npc")
 display_name = "Blue 2"
 team_color = Color(0.25, 0.45, 0.9, 1)
-gravity_dir = -1.0
-center_line_y = 540.0
 
 [node name="Npc8Shape" type="CollisionShape2D" parent="Npc8"]
 shape = SubResource("CircleShape2D_shape")
@@ -300,8 +281,6 @@ collision_mask = 1
 script = ExtResource("3_npc")
 display_name = "Blue 3"
 team_color = Color(0.25, 0.45, 0.9, 1)
-gravity_dir = -1.0
-center_line_y = 540.0
 
 [node name="Npc9Shape" type="CollisionShape2D" parent="Npc9"]
 shape = SubResource("CircleShape2D_shape")

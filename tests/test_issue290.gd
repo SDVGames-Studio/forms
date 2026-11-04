@@ -3,17 +3,17 @@ extends Node
 ## A settings switch ("Gravity Field", next to the debug mode) shows the
 ## level's gravity field as arrows on a world-space grid whose cell is
 ## two character widths (2 x 64 = 128 px) wide. The sampled gravity must
-## match the figures' own contract: an authored central line beats
-## terrain surface gravity (down above the line, up below it), otherwise
-## gravity bends toward the nearest indestructible surface.
+## match the figures' own contract (issue #293): gravity bends toward the
+## nearest indestructible surface — the separately configured central
+## line no longer exists.
 ##
-## Checks (Level3 authors a central line at y = 540 AND an indestructible
-## base slab; Level has a disc hill but no central line):
+## Checks (Level3 authors an indestructible base slab; Level has a disc
+## hill, also no authored gravity):
 ##  1. With the switch on, the level's camera hosts exactly ONE
 ##     GravityFieldDebug overlay (group "gravity_field_debug").
 ##  2. The grid cell equals two character widths (128 px).
-##  3. Level3: above the central line gravity points DOWN, below it UP —
-##     the authored line beats the terrain slab.
+##  3. Level3: above the slab gravity points DOWN, below the slab UP —
+##     both toward the ground, terrain-derived.
 ##  4. Level (terrain-only): near the disc hill gravity points toward the
 ##     disc centre — radially, including from the side (bent field).
 ##  5. A second overlay instance removes itself (dedup).
@@ -25,7 +25,6 @@ extends Node
 const FieldScript := preload("res://scripts/GravityFieldDebug.gd")
 const Stats := preload("res://scripts/CharacterStats.gd")
 
-const CENTER_LINE_Y := 540.0
 const HILL_POS := Vector2(120.0, 620.0)
 const HILL_RADIUS := 224.0
 
@@ -34,7 +33,7 @@ func _ready() -> void:
 	var ok := true
 	GameConfig.debug_gravity_field = true
 
-	# --- Level3: central line + terrain slab. ---
+	# --- Level3: terrain slab gravity. ---
 	var level3: Node = load("res://Level3.tscn").instantiate()
 	add_child(level3)
 	for i in 30:
@@ -53,17 +52,17 @@ func _ready() -> void:
 			" expected=", 2.0 * Stats.BODY_SIZE, " ok=", cell_ok)
 	ok = ok and cell_ok
 
-	# --- 3. The central line beats the terrain slab. ---
-	if field != null:
-		field._sample_center_line()
+	# --- 3. Level3: gravity always toward the slab (issue #293) — the
+	# slab spans y 480..928, so 200 is above it and 1000 below it. ---
 	var above: Vector2 = field._gravity_at(Vector2(400.0, 200.0)) \
 			if field != null else Vector2.ZERO
-	var below: Vector2 = field._gravity_at(Vector2(400.0, 800.0)) \
+	var below: Vector2 = field._gravity_at(Vector2(400.0, 1000.0)) \
 			if field != null else Vector2.ZERO
-	var line_ok: bool = above.dot(Vector2.DOWN) > 0.99 \
+	var slab_ok: bool = above.dot(Vector2.DOWN) > 0.99 \
 			and below.dot(Vector2.UP) > 0.99
-	print("ISSUE290 line_above=", above, " line_below=", below, " ok=", line_ok)
-	ok = ok and line_ok
+	print("ISSUE290 slab_above=", above, " slab_below=", below,
+			" ok=", slab_ok)
+	ok = ok and slab_ok
 
 	level3.free()
 	await get_tree().physics_frame
@@ -76,7 +75,6 @@ func _ready() -> void:
 	field = _overlay()
 	var terrain_ok := false
 	if field != null:
-		field._sample_center_line()
 		# Straight above the disc: toward its centre = DOWN.
 		var top: Vector2 = field._gravity_at(HILL_POS + Vector2(0.0,
 				-(HILL_RADIUS + 100.0)))

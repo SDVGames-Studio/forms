@@ -18,11 +18,9 @@ const SPEED := Stats.SPEED
 const JUMP_VELOCITY := Stats.JUMP_VELOCITY
 const GRAVITY := Stats.GRAVITY
 
-## Issue #48 rework: y of the level's central line. When > 0, gravity always
-## pulls toward the line — normal above it, reversed below it — so a figure
-## walking off an edge falls, but after crossing the middle of the level the
-## fall reverses and the figure lands back on the other side of the line.
-@export var center_line_y := 0.0
+## Issue #293: gravity is no longer authored per figure — the level's
+## indestructible grounds are the ONLY gravity source (LevelTerrain), so
+## the old center_line_y/gravity_dir exports are gone.
 
 ## Issue #40: non-controlled team members just stay where they are.
 
@@ -411,31 +409,15 @@ func _update_bar() -> void:
 
 
 func _physics_process(delta: float) -> void:
-	# Issue #48 rework: pick the gravity side from the position relative to
-	# the central line and orient the floor accordingly (upside-down below).
-	# Issue #190: gravity comes from the nearest indestructible terrain
-	# surface when the level authors gravity sources; otherwise the legacy
-	# central-line rule (global down) applies. Destructible ground never
-	# bends gravity.
+	# Issue #293: the gravity field is no longer configured separately
+	# from the terrain — the level's indestructible grounds are the ONLY
+	# gravity source (LevelTerrain): gravity always pulls toward the
+	# nearest ground surface, exactly what a player sees. Levels without
+	# any gravity source fall straight down. The old central-line/
+	# gravity_dir authored overrides are gone (the #277 center-line
+	# contract was the last consumer).
 	var grav := Vector2.DOWN
-	# Issue #48 rework: pick the gravity side from the position relative to
-	# the central line and orient the floor accordingly (upside-down below).
-	# Issue #190: gravity comes from the nearest indestructible terrain
-	# surface when the level authors gravity sources; otherwise the legacy
-	# central-line rule (global down) applies. Destructible ground never
-	# bends gravity.
-	# Issue #277 rework: an AUTHORED central line is the level's gravity
-	# contract — DOWN above the line, UP below it — and it now BEATS terrain
-	# surface gravity. Level3/Level4 author a line AND sit an indestructible
-	# base slab under the soil; with terrain gravity first, the slab's
-	# rounded corners bent the frame near the level's edges — a figure
-	# standing on flat soil leaned up to ~32° and the weapon indicated a
-	# direction that matched no stance. Disc arenas author no line and keep
-	# the radial terrain pull.
-	if center_line_y > 0.0:
-		grav = Vector2.DOWN \
-				if global_position.y < center_line_y else Vector2.UP
-	elif LevelTerrain.has_sources(self):
+	if LevelTerrain.has_sources(self):
 		grav = LevelTerrain.gravity_vector(self)
 	up_direction = -grav
 	# Issue #277: the aim/view lives in the CURRENT gravity frame.

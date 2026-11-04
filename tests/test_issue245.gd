@@ -3,14 +3,16 @@ extends Node
 ## by gravity, while keeping the launch speed the character gave it.
 ##
 ## Before #245 the rocket was the only ProjectileBody with gravity OFF —
-## it flew dead straight no matter the level. Now it obeys the same level
-## gravity ladder as the grenade (issue #216) and the figures, and its
-## launch velocity is still applied in full as the starting velocity.
+## it flew dead straight no matter the level. Now it obeys the same
+## terrain gravity rule as the grenade (issue #216) and the figures
+## (issue #293: indestructible grounds are the only gravity source), and
+## its launch velocity is still applied in full as the starting velocity.
 ##
 ## Run headless: godot --headless res://tests/test_issue245.tscn
 ## Exit code 0 = pass.
 
 const RocketScript := preload("res://ProjectileBody.gd")
+const GroundScript := preload("res://scripts/IndestructibleGround.gd")
 
 func _spawn_rocket(velocity: Vector2) -> RigidBody2D:
 	var body := RigidBody2D.new()
@@ -50,17 +52,27 @@ func _ready() -> void:
 	b.queue_free()
 	await get_tree().physics_frame
 
-	# --- Below the central line: the rocket's gravity is UP — the same
-	# ladder the figures and the grenade use (issue #216). ---
+	# --- Issue #293: an indestructible ceiling above inverts the rocket's
+	# gravity — terrain, not an authored central line, decides the side. ---
+	var ceiling := StaticBody2D.new()
+	ceiling.set_script(GroundScript)
+	ceiling.rect_size = Vector2(600, 40)
+	ceiling.position = Vector2(0, -200)
+	add_child(ceiling)
 	var c := _spawn_rocket(Vector2.ZERO)
-	c.global_position = Vector2(0, 200)
-	c._center_line_y = 100.0
+	# The #270 thickness guard extends the 40px ceiling down to 448px
+	# (slab y -220..228), so start clearly BELOW the solid: the rocket
+	# must rise toward the ground above it.
+	c.global_position = Vector2(0, 400)
 	var c_start := c.global_position.y
 	for i in 20:
 		await get_tree().physics_frame
 	var inverted: bool = c.global_position.y < c_start - 10.0
 	print("ISSUE245 inverted=", inverted, " y=", c.global_position.y)
 	ok = ok and inverted
+	c.queue_free()
+	ceiling.queue_free()
+	await get_tree().physics_frame
 
 	print("ISSUE245 ok=", ok)
 	get_tree().quit(0 if ok else 1)
