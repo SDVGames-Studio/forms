@@ -29,12 +29,15 @@ extends StaticBody2D
 
 const COLOR := Color(0.45, 0.32, 0.2, 1)
 ## Strips thinner than this are discarded (avoids sub-pixel slivers).
-const MIN_PIECE := 8.0
+## Issue #299: 2 px (was 8) so rect crater edges staircase at 2 px.
+const MIN_PIECE := 2.0
 ## Issue #250: sectors of a whole-ring authoring node, and the smallest
 ## arc span / radial band a blast may still split into halves.
+## Issue #299: 0.005 rad ≈ 3–6 px tangential (was 0.05) and 4 px bands
+## (was 24) so ring crater edges read as smooth curves, not chunk steps.
 const RING_SECTORS := 24
-const MIN_ARC_SPAN := 0.05
-const MIN_BAND := 24.0
+const MIN_ARC_SPAN := 0.005
+const MIN_BAND := 4.0
 
 @export var rect_size := Vector2(200, 60)
 
@@ -262,9 +265,15 @@ func _make_sector(inner: float, outer: float, center: float, span: float) -> Des
 
 ## Polygon of this sector: the outer arc traced start -> end, then the inner
 ## arc traced back (a closed band, no self intersections).
+## Issue #299: arcs are traced finely enough that the chord between sample
+## points bows less than half a pixel — the old 0.2 rad sampling left
+## wedge seams between adjacent sectors at large radii.
 func _sector_polygon() -> PackedVector2Array:
 	var points := PackedVector2Array()
-	var steps := maxi(2, int(ceil(arc_span / 0.2)))
+	var sample := 0.2
+	if ring_outer > 1.0:
+		sample = 2.0 * acos(clampf(1.0 - 0.5 / ring_outer, -1.0, 1.0))
+	var steps := maxi(2, int(ceil(arc_span / sample)))
 	for i in steps + 1:
 		var a := arc_center - arc_span / 2.0 + arc_span * float(i) / float(steps)
 		points.append(Vector2(cos(a), sin(a)) * ring_outer)
