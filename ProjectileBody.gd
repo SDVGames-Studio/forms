@@ -53,13 +53,18 @@ const MINE_SETTLE_WATCHDOG := 4.0
 const MINE_HP := 1
 
 ## Issue #227: rock crumble parameters. The created soil disk is a little
-## larger than a grenade blast (GRENADE_BLAST = 100 in Weapon.gd); cells of
-## a 25 px grid are kept only when their rect stays inside the disk, clears
-## every character by 1.3 x the figure shape size (ShapeVisual = 64 px) and
-## does not overlap solid terrain — so the fill hugs indestructible ground
-## with a common border instead of covering it.
+## larger than a grenade blast (GRENADE_BLAST = 100 in Weapon.gd); it
+## clears every character by 1.3 x the figure shape size (ShapeVisual =
+## 64 px) and never overlaps solid terrain — the fill hugs indestructible
+## ground with a common border instead of covering it.
 const ROCK_GROUND_RADIUS := 110.0
-const ROCK_CELL := 25.0
+## Issue #324: precision of the crumble disk. The disk is filled with
+## horizontal CHORD strips — each row spans the circle's exact half-width
+## at the row's centre — so the outline follows the arc. The old 25 px
+## cell grid kept whole cells by their centre and left a chunky staircase
+## that erred by up to ~18 px per axis; rows of 10 px keep every strip
+## corner within ~5 px of the true circle.
+const ROCK_ROW := 10.0
 const ROCK_CHAR_CLEAR := 1.3 * 64.0
 ## Issue #216: grenade acceleration matches the figures (Stats.GRAVITY).
 const Stats := preload("res://scripts/CharacterStats.gd")
@@ -294,24 +299,31 @@ func _explode() -> void:
 
 
 ## Issue #227: the rock's "explosion" — a disk of destructible ground
-## around the resting point. The disk is filled row by row with merged soil
-## strips (DestructibleGround chunks). A grid cell is kept only when it
-##  - lies inside ROCK_GROUND_RADIUS of the impact point,
+## around the resting point. Issue #324 rework: the disk is filled row by
+## row with CHORD strips — each row spans the circle's true half-width at
+## the row's centre, minus the x-ranges the exclusions bite out of that
+## row. A strip therefore always
+##  - lies inside ROCK_GROUND_RADIUS of the impact point (at the row's
+##    centre a strip ends exactly ON the circle),
 ##  - clears every character by ROCK_CHAR_CLEAR (1.3 x the figure's shape
 ##    size) — ground is created AROUND a figure, never on it, and
-##  - does not overlap indestructible ground (slab or disc) or existing
-##    soil — the fill borders them instead of covering them.
+##  - never overlaps indestructible ground (slab or disc) or existing
+##    soil — it borders them instead of covering them.
 func _create_ground() -> void:
 	var parent := get_parent()
 	if parent == null:
 		return
-	# Characters (both teams) to keep clear of.
-	var clear: Array[Vector2] = []
+	# All exclusions are collected in the IMPACT POINT's local space
+	# (row bands and chords below are relative to global_position).
+	var origin := global_position
+	# Characters (both teams): a clearance circle to keep out of.
+	var circles: Array[Vector3] = []
 	for group in ["player_team", "enemy_team"]:
 		for node in get_tree().get_nodes_in_group(group):
 			var body := node as Node2D
 			if body != null and is_instance_valid(body):
-				clear.append(body.global_position)
+				circles.append(Vector3(body.global_position.x - origin.x,
+						body.global_position.y - origin.y, ROCK_CHAR_CLEAR))
 	# Solid terrain the new soil must never overlap.
 	var solids: Array[Rect2] = []
 	var discs: Array[Vector3] = []
@@ -320,71 +332,76 @@ func _create_ground() -> void:
 		if ground == null or not is_instance_valid(ground):
 			continue
 		if ground.radius > 0.0:
-			discs.append(Vector3(ground.position.x, ground.position.y, ground.radius))
+			discs.append(Vector3(ground.position.x - origin.x,
+						ground.position.y - origin.y, ground.radius))
 		else:
-			solids.append(Rect2(ground.position - ground.rect_size / 2.0, ground.rect_size))
+			solids.append(Rect2(ground.position - ground.rect_size / 2.0
+						- origin, ground.rect_size))
 	for node in get_tree().get_nodes_in_group("destructible_ground"):
 		var soil := node as DestructibleGround
 		if soil != null and is_instance_valid(soil):
-			solids.append(Rect2(soil.position - soil.rect_size / 2.0, soil.rect_size))
-	# Fill the disk row by row; consecutive kept cells merge into one strip.
-	var steps := int(ceilf(ROCK_GROUND_RADIUS / ROCK_CELL))
-	for iy in range(-steps, steps):
-		var in_run := false
-		var run_start := 0
-		for ix in range(-steps, steps + 1):
-			var open := ix < steps and _cell_open(ix, iy, clear, solids, discs)
-			if open and not in_run:
-				in_run = true
-				run_start = ix
-			elif not open and in_run:
-				in_run = false
-				_spawn_soil_strip(parent, run_start, iy, ix - run_start)
+			solids.append(Rect2(soil.position - soil.rect_size / 2.0
+						- origin, soil.rect_size))
+	# Row by row: the true chord of the disk minus the x-intervals the
+	# exclusions ban from that row — one exact strip per remaining span.
+	var rows := int(ceilf(ROCK_GROUND_RADIUS / ROCK_ROW))
+	for iy in range(-rows, rows):
+		var y0 := iy * ROCK_ROW
+		var y1 := y0 + ROCK_ROW
+		var cy := y0 + ROCK_ROW / 2.0
+		var half := sqrt(maxf(0.0,
+				ROCK_GROUND_RADIUS * ROCK_GROUND_RADIUS - cy * cy))
+		if half <= 0.0:
+			continue
+		# X-intervals this row must not touch.
+		var bans: Array = []
+		for solid in solids:
+			# Bordering is fine (strict test, like Rect2.intersects): a
+			# slab sharing only the row's edge bans nothing.
+			if solid.position.y < y1 and solid.end.y > y0:
+				bans.append([solid.position.x, solid.end.x])
+		for circle in circles:
+			_ban_from_circle(circle, y0, y1, bans)
+		for disc in discs:
+			_ban_from_circle(disc, y0, y1, bans)
+		# Sweep the bans left to right and spawn the gaps that remain.
+		bans.sort_custom(func(a, b): return a[0] < b[0])
+		var cursor := -half
+		for ban in bans:
+			if ban[0] > cursor:
+				_spawn_soil_strip(parent, cursor, minf(ban[0], half), y0)
+			cursor = maxf(cursor, ban[1])
+			if cursor >= half:
+				break
+		if cursor < half:
+			_spawn_soil_strip(parent, cursor, half, y0)
 
 
-## True when the disk grid cell (ix, iy) may be filled with new soil.
-func _cell_open(ix: int, iy: int, clear: Array[Vector2], solids: Array[Rect2],
-			discs: Array[Vector3]) -> bool:
-	var rect := Rect2(global_position + Vector2(ix, iy) * ROCK_CELL,
-			Vector2(ROCK_CELL, ROCK_CELL))
-	var center := rect.get_center()
-	if center.distance_to(global_position) > ROCK_GROUND_RADIUS:
-		return false
-	# 1.3 x shape size of clearance around every character: the new ground
-	# may touch the edge of that zone but never reach inside it.
-	for pos in clear:
-		if _rect_distance(rect, pos) < ROCK_CHAR_CLEAR:
-			return false
-	# Indestructible slabs and existing soil: overlap is forbidden,
-	# bordering is fine (Rect2.intersects ignores exact edge contact).
-	for solid in solids:
-		if rect.intersects(solid):
-			return false
-	# Indestructible discs (hills): same rule against the circle.
-	for disc in discs:
-		if _rect_distance(rect, Vector2(disc.x, disc.y)) < disc.z:
-			return false
-	return true
+## Add to `bans` the x-interval a keep-out circle bites out of the row band
+## [y0, y1] (nothing when the circle never crosses the band). A strip
+## outside the interval keeps at least the circle's radius of distance to
+## its centre, so bordering the interval is safe.
+func _ban_from_circle(circle: Vector3, y0: float, y1: float,
+			bans: Array) -> void:
+	var dy := clampf(circle.y, y0, y1) - circle.y
+	var under := circle.z * circle.z - dy * dy
+	if under <= 0.0:
+		return
+	var half := sqrt(under)
+	bans.append([circle.x - half, circle.x + half])
 
 
-## Distance from `point` to the closest point of `rect` (0 when inside).
-func _rect_distance(rect: Rect2, point: Vector2) -> float:
-	var closest := Vector2(
-			clampf(point.x, rect.position.x, rect.end.x),
-			clampf(point.y, rect.position.y, rect.end.y))
-	return closest.distance_to(point)
-
-
-## One merged soil strip: `count` grid cells wide starting at column
-## `first`, on row `iy`, spawned as a single DestructibleGround chunk.
-func _spawn_soil_strip(parent: Node, first: int, iy: int, count: int) -> void:
-	var size := Vector2(count * ROCK_CELL, ROCK_CELL)
+## One exact soil strip on the row starting at `y0`: x from `x0` to `x1`,
+## spawned as a single DestructibleGround chunk (issue #324: strips span
+## the true chord instead of merged 25 px cells).
+func _spawn_soil_strip(parent: Node, x0: float, x1: float, y0: float) -> void:
+	var size := Vector2(x1 - x0, ROCK_ROW)
 	if size.x < DestructibleGround.MIN_PIECE or size.y < DestructibleGround.MIN_PIECE:
 		return
 	var piece := DestructibleGround.new()
 	piece.rect_size = size
 	piece.position = global_position + Vector2(
-			(first + count / 2.0) * ROCK_CELL, (iy + 0.5) * ROCK_CELL)
+			(x0 + x1) / 2.0, y0 + ROCK_ROW / 2.0)
 	parent.add_child(piece)
 
 
