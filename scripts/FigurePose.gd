@@ -10,10 +10,13 @@ extends RefCounted
 ##
 ## This helper rotates only the children that REPRESENT the figure's body
 ## — the body visual (authored ColorRect, the ShapeVisual replacement or
-## the collision capsule). Everything else (name label, health bar,
-## shield, debug labels/arrow, the weapon and the camera) keeps the
+## the collision capsule). The name label, health bar, shield, the debug
+## TEXT (HP number, damage popup), the weapon and the camera keep the
 ## world-aligned frame so text stays readable, the held weapon keeps
-## aiming in world space and the camera never tilts.
+## aiming in world space and the camera never tilts. The debug ARROW is
+## the one exception (issue #298): it points at the TOP of the figure, so
+## it rotates with the body — on the radial arena a sideways figure must
+## show a sideways arrow, not the old always-world-up one.
 ##
 ## Note: Control is NOT a Node2D in Godot 4 (both extend CanvasItem), so
 ## the two branches set the same `rotation` through their own type; a
@@ -34,6 +37,12 @@ static func align_to_gravity(figure: Node2D, grav: Vector2) -> void:
 		return
 	var target := grav.angle() - PI / 2.0
 	for child in figure.get_children():
+		# Issue #298: the debug arrow is a plain Node2D (not a body child)
+		# but must follow the same tilt — it points at the figure's TOP,
+		# which rotates with the body under tilted gravity.
+		var arrow := child as Node2D
+		if arrow != null and child.name == "DebugArrow":
+			arrow.rotation = target
 		if not is_body_child(child):
 			continue
 		var node2d := child as Node2D

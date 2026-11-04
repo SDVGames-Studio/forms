@@ -3,6 +3,10 @@ extends Node2D
 ## to the TOP of the figure, ending in a small arrowhead. Drawn in code
 ## (no assets) and only attached while the debug mode is on
 ## (DebugInfo.attach / GameConfig.debug_mode).
+## Issue #298: the arrow points at the figure's top, so FigurePose
+## align_to_gravity rotates this node with the body — under tilted gravity
+## (the radial arena, sloped grounds) the arrow tilts with the figure
+## instead of pointing world-up away from the figure's actual top.
 
 ## Centre (0,0) to the top of the figure including its health bar.
 const LENGTH := 64.0
