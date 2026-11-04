@@ -39,9 +39,9 @@ script = ExtResource("10_indestr")
 rect_size = Vector2(1152, 448)
 
 [node name="Soil" type="StaticBody2D" parent="."]
-position = Vector2(576, 498)
+position = Vector2(748, 498)
 script = ExtResource("11_destr")
-rect_size = Vector2(1152, 60)
+rect_size = Vector2(808, 60)
 
 [node name="SoilPlatform" type="StaticBody2D" parent="."]
 position = Vector2(950, 400)
