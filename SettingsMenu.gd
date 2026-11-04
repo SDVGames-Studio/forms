@@ -9,6 +9,7 @@ extends Control
 ## the main menu.
 
 @onready var _team_button: Button = %TeamButton
+@onready var _hotkeys_button: Button = %HotkeysButton
 @onready var _debug_check: CheckButton = %DebugCheck
 @onready var _gravity_field_check: CheckButton = %GravityFieldCheck
 @onready var _back_button: Button = %BackButton
@@ -16,6 +17,8 @@ extends Control
 
 func _ready() -> void:
 	_team_button.pressed.connect(_on_team_pressed)
+	# Issue #294: the hotkeys screen — rebindable, persisted key bindings.
+	_hotkeys_button.pressed.connect(_on_hotkeys_pressed)
 	_back_button.pressed.connect(_on_back_pressed)
 	# Issue #252: the check shows the persisted state; every flip is saved
 	# at once so the choice survives a restart.
@@ -30,6 +33,11 @@ func _ready() -> void:
 
 func _on_team_pressed() -> void:
 	get_tree().change_scene_to_file("res://TeamMenu.tscn")
+
+
+## Issue #294: open the hotkeys settings screen.
+func _on_hotkeys_pressed() -> void:
+	get_tree().change_scene_to_file("res://HotkeysMenu.tscn")
 
 
 ## Issue #252: flip and persist the debug mode. Levels read the flag when

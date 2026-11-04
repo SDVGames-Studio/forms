@@ -59,6 +59,27 @@ static var debug_mode := true
 ## where gravity pulls a figure there (see scripts/GravityFieldDebug.gd).
 static var debug_gravity_field := false
 
+## Issue #294: custom hotkeys — a PHYSICAL keycode per action name,
+## persisted under [hotkeys] in settings.cfg and applied over the project
+## defaults when the game starts (the hotkeys screen edits this map).
+## Physical keycodes follow the key POSITION, so a rebind keeps working
+## on any keyboard layout. An action missing here uses the project
+## defaults (which may hold several keys, e.g. move_left = A or Left).
+static var hotkeys: Dictionary = {}
+
+## Issue #294: the project's authored bindings, snapshotted ONCE before
+## any saved override is applied — "Reset to defaults" restores these
+## (action name -> Array of InputEvent).
+static var _hotkey_defaults: Dictionary = {}
+
+## Issue #294: the actions the hotkeys screen offers, in display order.
+const HOTKEY_ACTIONS: Array[String] = [
+	"move_left", "move_right", "jump", "view_up", "view_down", "shoot",
+	"camera_switch", "switch_next", "switch_prev",
+	"weapon_1", "weapon_2", "weapon_3", "weapon_4", "weapon_5",
+	"tool_1", "tool_2", "tool_3", "tool_4",
+]
+
 ## Issue #252: the debug-mode switch persists in its own settings file,
 ## separate from the team customisation (team.cfg).
 const SETTINGS_PATH := "user://settings.cfg"
@@ -218,10 +239,20 @@ static func save_team() -> void:
 static func load_settings() -> void:
 	var cfg := ConfigFile.new()
 	if cfg.load(SETTINGS_PATH) != OK:
+		# Issue #294: even without a settings file the authored hotkey
+		# defaults must be snapshotted, so a later Reset can restore them.
+		capture_hotkey_defaults()
 		return
 	debug_mode = cfg.get_value("settings", "debug_mode", true)
 	debug_gravity_field = cfg.get_value("settings", "gravity_field", false)
-
+	# Issue #294: custom hotkeys — snapshot the authored defaults FIRST,
+	# then apply whatever was saved over them.
+	capture_hotkey_defaults()
+	var saved: Dictionary = cfg.get_value("hotkeys", "bindings", {})
+	for action in saved:
+		if action is String and int(saved[action]) > 0:
+			hotkeys[action] = int(saved[action])
+	apply_hotkeys()
 
 ## Issue #252: persist the debug-mode setting.
 static func save_settings() -> void:
@@ -229,6 +260,64 @@ static func save_settings() -> void:
 	cfg.load(SETTINGS_PATH)  # keep any other keys; missing file is fine
 	cfg.set_value("settings", "debug_mode", debug_mode)
 	cfg.set_value("settings", "gravity_field", debug_gravity_field)
+	cfg.save(SETTINGS_PATH)
+
+
+## Issue #294: snapshot the project's authored bindings once, before any
+## saved override is applied (load_settings runs in the main menu, before
+## any level can read input).
+static func capture_hotkey_defaults() -> void:
+	if not _hotkey_defaults.is_empty():
+		return
+	for action in HOTKEY_ACTIONS:
+		if InputMap.has_action(action):
+			var events: Array[InputEvent] = []
+			for event in InputMap.action_get_events(action):
+				events.append(event)
+			_hotkey_defaults[action] = events
+
+
+## Issue #294: apply the saved custom bindings — exactly ONE physical key
+## per rebound action replaces every authored event (the hotkeys screen
+## shows one key per action; the authored alternates such as A / Left come
+## back with reset_hotkeys). Unknown actions or broken values are dropped.
+static func apply_hotkeys() -> void:
+	for action in hotkeys.keys():
+		if not (action is String) or not InputMap.has_action(action) \
+				or int(hotkeys[action]) <= 0:
+			hotkeys.erase(action)
+			continue
+		var event := InputEventKey.new()
+		event.physical_keycode = int(hotkeys[action]) as Key
+		InputMap.action_erase_events(action)
+		InputMap.action_add_event(action, event)
+
+
+## Issue #294: rebind one action (from the hotkeys screen) and persist it
+## at once, so the choice survives a restart.
+static func set_hotkey(action: String, physical_keycode: int) -> void:
+	hotkeys[action] = physical_keycode
+	apply_hotkeys()
+	save_hotkeys()
+
+
+## Issue #294: restore the authored project bindings and forget every
+## override.
+static func reset_hotkeys() -> void:
+	hotkeys = {}
+	for action in _hotkey_defaults:
+		InputMap.action_erase_events(action)
+		for event in _hotkey_defaults[action]:
+			InputMap.action_add_event(action, event)
+	save_hotkeys()
+
+
+## Issue #294: persist the custom hotkey bindings (own section in the
+## settings file, next to the debug switches).
+static func save_hotkeys() -> void:
+	var cfg := ConfigFile.new()
+	cfg.load(SETTINGS_PATH)  # keep any other keys; missing file is fine
+	cfg.set_value("hotkeys", "bindings", hotkeys)
 	cfg.save(SETTINGS_PATH)
 
 

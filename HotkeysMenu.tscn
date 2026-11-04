@@ -1,0 +1,80 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://HotkeysMenu.gd" id="1_hotkeysmenu"]
+
+[node name="HotkeysMenu" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_hotkeysmenu")
+
+[node name="Background" type="ColorRect" parent="."]
+layout_mode = 0
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color(0.09, 0.05, 0.16, 1)
+
+[node name="Menu" type="CenterContainer" parent="."]
+layout_mode = 0
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="Column" type="VBoxContainer" parent="Menu"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="Title" type="Label" parent="Menu/Column"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.84, 0.2, 1)
+theme_override_colors/font_outline_color = Color(0.16, 0.05, 0.1, 1)
+theme_override_constants/outline_size = 10
+theme_override_font_sizes/font_size = 56
+text = "HOTKEYS"
+horizontal_alignment = 1
+
+[node name="Scroll" type="ScrollContainer" parent="Menu/Column"]
+custom_minimum_size = Vector2(640, 560)
+layout_mode = 2
+horizontal_scroll_mode = 0
+
+[node name="Rows" type="VBoxContainer" parent="Menu/Column/Scroll"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 8
+
+[node name="Buttons" type="HBoxContainer" parent="Menu/Column"]
+layout_mode = 2
+alignment = 1
+theme_override_constants/separation = 24
+
+[node name="ResetButton" type="Button" parent="Menu/Column/Buttons"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(300, 60)
+layout_mode = 2
+size_flags_horizontal = 4
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_colors/font_focus_color = Color(1, 0.84, 0.2, 1)
+theme_override_colors/font_pressed_color = Color(1, 0.55, 0.15, 1)
+theme_override_colors/font_hover_color = Color(1, 0.84, 0.2, 1)
+theme_override_colors/font_outline_color = Color(0.1, 0.06, 0.14, 1)
+theme_override_constants/outline_size = 6
+theme_override_font_sizes/font_size = 32
+text = "Reset to Defaults"
+
+[node name="BackButton" type="Button" parent="Menu/Column/Buttons"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(300, 60)
+layout_mode = 2
+size_flags_horizontal = 4
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_colors/font_focus_color = Color(1, 0.84, 0.2, 1)
+theme_override_colors/font_pressed_color = Color(1, 0.55, 0.15, 1)
+theme_override_colors/font_hover_color = Color(1, 0.84, 0.2, 1)
+theme_override_colors/font_outline_color = Color(0.1, 0.06, 0.14, 1)
+theme_override_constants/outline_size = 6
+theme_override_font_sizes/font_size = 32
+text = "Back"

@@ -31,7 +31,9 @@ extends Camera2D
 ## rotates the body to), so a figure standing at an angle — the rim of a
 ## disc arena, below a level's central line — appears UPRIGHT, feet to
 ## screen-down. The type is per-VIEW, shared by every camera in the group
-## (like zoom), and is switched with the bottom-left button (CameraSwitch).
+## (like zoom), and is switched with the bottom-left button (CameraSwitch)
+## or the C key (issue #294: the "camera_switch" action, rebindable in the
+## settings hotkeys screen).
 
 const ZOOM_STEP := 1.25
 const MIN_ZOOM := 0.25
