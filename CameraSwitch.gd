@@ -43,6 +43,12 @@ func _ready() -> void:
 		_button.offset_top = -404.0
 		_button.offset_bottom = -340.0
 	_button.pressed.connect(_on_pressed)
+	# Issue #294: Space must NOT flip the camera. A clicked Button keeps
+	# keyboard focus, and Godot activates a focused button on Space — the
+	# JUMP key — so after one click on this button every jump also flipped
+	# the camera type. The switch is the mouse/touch click plus the C key
+	# ("camera_switch", see _unhandled_input below) only.
+	_button.focus_mode = Control.FOCUS_NONE
 	add_child(_button)
 
 
@@ -62,3 +68,12 @@ func _on_pressed() -> void:
 			"character frame" \
 			if ZoomCameraScript.camera_mode == ZoomCameraScript.MODE_CHARACTER \
 			else "static"])
+
+
+## Issue #294: the C key flips the camera type exactly like the button.
+## The action is rebindable in the settings hotkeys screen, so it is read
+## from the InputMap, never from a hardcoded keycode.
+func _unhandled_input(event: InputEvent) -> void:
+	if event.is_action_pressed("camera_switch"):
+		_on_pressed()
+		get_viewport().set_input_as_handled()
