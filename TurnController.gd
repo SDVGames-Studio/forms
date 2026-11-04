@@ -101,7 +101,7 @@ var _hint_label: Label
 var _roll_tween: Tween
 ## Issue #87: one-line hint of what the player should do right now.
 const HINT_ROLL := "Rolling for the first team..."
-const HINT_PLAYER := "Move: A/D or arrows • Jump: Space • Aim: W/S or Up/Down • Shoot: F • Camera: C • Tool: 5-8 • Weapon: 1-4, 9 (mine) • Skip turn: Tab"
+const HINT_PLAYER := "Move: A/D or arrows • Jump: Space • Aim: W/S or Up/Down • Shoot: F • Camera: C • Tool: 5-8 • Weapon: 1-4, 9 (mine), 0 (jackhammer) • Skip turn: Tab"
 const HINT_ENEMY := "Enemy turn — wait for your move..."
 const HINT_SWITCH := "Shot fired — waiting for the projectiles..."
 ## Issue #244: the timer ran out — the turn is over, the character is

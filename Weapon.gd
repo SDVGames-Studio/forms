@@ -14,6 +14,11 @@ extends Node2D
 ##  5 Mine (key 9)  — thrown like a grenade, then lies dormant until a
 ##                    character steps near it — 2-second fuse, boom
 ##                    (issue #246); it persists across turns
+##  6 Jackhammer (key 0) — hold F to charge, release to drill: the wielder
+##                    is pushed along the CURRENT gravity for 1–5 s
+##                    (scaled by the charge), carving destructible ground
+##                    below them and damaging every figure on the way
+##                    (issue #307)
 ## Visuals are plain rectangles built in code — no extra assets.
 
 const ProjectileScript := preload("res://Projectile.gd")
@@ -23,9 +28,9 @@ const ProjectileBodyScript := preload("res://ProjectileBody.gd")
 const COOLDOWN := 0.3
 
 ## Issue #101: shots each weapon allows during ONE turn (index = weapon:
-## shotgun 2, rocket 1, grenade 1, spear 2, mine 1) and the 3-second delay
-## after every shot during which the character cannot shoot again.
-const SHOTS_PER_TURN: Array = [2, 1, 1, 2, 1]
+## shotgun 2, rocket 1, grenade 1, spear 2, mine 1, jackhammer 1) and the
+## 3-second delay after every shot during which the character cannot shoot.
+const SHOTS_PER_TURN: Array = [2, 1, 1, 2, 1, 1]
 const SHOT_DELAY := 3.0
 
 const PELLET_SPEED := 900.0
@@ -57,13 +62,32 @@ const ROCKET_MASS := 1.0
 const GRENADE_MASS := 0.6
 ## Issue #227: the Rock tool projectile is a touch heavier than a grenade.
 const ROCK_MASS := 0.8
+## Issue #307: the jackhammer — hold F to charge (the shared charge
+## meter), release to drill. The wielder is pushed along the CURRENT
+## gravity (toward the centre of gravity at the current spot) for
+## MIN..MAX seconds scaled by the charge, carving destructible ground
+## below them in a tunnel of JACKHAMMER_RADIUS and damaging every other
+## character caught in the tunnel (once per drill). The drill follows the
+## level gravity at every tick, so on radial arenas the tunnel bends
+## around the core like a falling figure does.
+const JACKHAMMER_MIN_TIME := 1.0
+const JACKHAMMER_MAX_TIME := 5.0
+const JACKHAMMER_SPEED := 130.0
+const JACKHAMMER_RADIUS := 16.0
+## Carve a fresh tunnel circle only after the wielder advanced this many
+## pixels (bounds the recursive chunk splitting) — and a drill that made
+## no progress for JACKHAMMER_STALL_TIME seconds hit indestructible
+## ground: it grinds to a halt early.
+const JACKHAMMER_CARVE_STEP := 6.0
+const JACKHAMMER_STALL_TIME := 0.3
+const JACKHAMMER_DAMAGE := 30
 
 var _facing := 1.0
 var _cooldown_left := 0.0
 ## Issue #101: shots already made this turn by this member, per weapon
 ## (issue #116: the quota is per weapon so switching after a shot keeps
 ## the newly selected weapon's own quota).
-var _shots_used := [0, 0, 0, 0]
+var _shots_used := [0, 0, 0, 0, 0, 0]
 
 ## Issue #101: seconds left before the character may shoot again.
 var _shot_delay_left := 0.0
@@ -78,6 +102,18 @@ var _thrust_t := -1.0
 ## Issue #257: bodies already damaged by the CURRENT thrust — each target
 ## on the spearhead's path takes the spear hit at most once per thrust.
 var _thrust_hit: Array = []
+## Issue #307: jackhammer drill state — seconds left, gravity direction
+## (re-sampled every tick so the tunnel bends with the level gravity),
+## bodies already damaged by THIS drill, the last carve centre, the
+## stall probe position/timer, and the turn-effect gate node that keeps
+## the post-shot handover waiting while the drill runs.
+var _drill_left := 0.0
+var _drill_dir := Vector2.DOWN
+var _drill_hit: Array = []
+var _drill_carve_at := Vector2.INF
+var _drill_last_pos := Vector2.ZERO
+var _drill_stall := 0.0
+var _drill_effect: Node = null
 
 ## Issue #99: when an NPC fires a grenade, the weapon lobs it ballistically
 ## at this target (cleared after one shot). Player grenades keep the
@@ -135,8 +171,18 @@ func _rock_armed() -> bool:
 
 ## Issue #234: HELD_STYLES index shown in hands — the rock (4) while the
 ## rock tool is armed for this member, otherwise the selected weapon.
+## Issue #307: explicit mapping — the mine (weapon 4) and jackhammer
+## (weapon 5) sit AFTER the rock style in HELD_STYLES, and the old
+## `return selected_weapon` fallback showed the ROCK boulder for the
+## mine (style 5 was unreachable). Weapons 0-3 keep the identity map.
 func _held_style_index() -> int:
-	return 4 if _rock_armed() else selected_weapon
+	if _rock_armed():
+		return 4
+	if selected_weapon == 4:
+		return 5  # mine
+	if selected_weapon == 5:
+		return 6  # jackhammer
+	return selected_weapon
 
 ## Issue #68: size and color of the held weapon per selected weapon index.
 ## Issue #234: index 4 is the ROCK TOOL held in hands — a gray boulder,
@@ -148,9 +194,10 @@ const HELD_STYLES: Array = [
 	{"size": Vector2(40, 4), "color": Color(0.8, 0.8, 0.9, 1)},     # spear
 	{"size": Vector2(14, 14), "color": Color(0.55, 0.5, 0.45, 1)},  # rock (tool)
 	{"size": Vector2(14, 14), "color": Color(0.22, 0.24, 0.3, 1)},  # mine (#246)
+	{"size": Vector2(10, 18), "color": Color(0.85, 0.85, 0.95, 1)},  # jackhammer (#307)
 ]
 
-## Currently selected weapon index (0..3), shared through the inventory HUD.
+## Currently selected weapon index (0..5), shared through the inventory HUD.
 var selected_weapon := 0
 
 
@@ -173,6 +220,11 @@ func _physics_process(delta: float) -> void:
 	_cooldown_left = maxf(0.0, _cooldown_left - delta)
 	# Issue #101: tick the between-shots delay.
 	_shot_delay_left = maxf(0.0, _shot_delay_left - delta)
+	# Issue #307: an ACTIVE jackhammer drill ticks before the input logic —
+	# it must keep running while the post-shot handover freezes input (the
+	# drill IS the effect the handover waits for, see _drill_effect).
+	if _drill_left > 0.0:
+		_tick_jackhammer(delta)
 
 	var parent := get_parent() as CharacterBody2D
 	var new_facing := _facing
@@ -228,7 +280,7 @@ func _physics_process(delta: float) -> void:
 	var frozen: bool = TurnController.is_input_frozen()
 	var rock_armed := _rock_armed()
 	var charged := rock_armed or selected_weapon == 1 or selected_weapon == 2 \
-			or selected_weapon == 4
+			or selected_weapon == 4 or selected_weapon == 5
 	var can_act: bool = (rock_armed or can_shoot) and not frozen
 	if controlled and can_act and not _charging \
 			and Input.is_action_just_pressed("shoot"):
@@ -266,6 +318,10 @@ func _physics_process(delta: float) -> void:
 	# Issue #67: keep the held weapon aligned with the character's view.
 	if _held != null and parent != null and parent.has_method("aim_dir"):
 		var aim: Vector2 = parent.aim_dir(_facing, 1.0)
+		# Issue #307: while the drill runs the jackhammer points INTO the
+		# ground (along the current gravity) instead of along the aim.
+		if _drill_left > 0.0:
+			aim = _drill_dir
 		var style: Dictionary = HELD_STYLES[_held_style_index()]
 		_held.position = aim * 26.0 - style["size"] / 2.0
 		# Issue #133: the spear (and every held weapon) rotates to the aim
@@ -290,6 +346,9 @@ func _physics_process(delta: float) -> void:
 			if _thrust_t >= 0.0:
 				_spear_sweep_hit(26.0 + thrust + HELD_STYLES[3]["size"].x / 2.0)
 		_held.position += aim * thrust
+		# Issue #307: the drilling jackhammer shakes in the wielder's hands.
+		if _drill_left > 0.0:
+			_held.position += Vector2(randf_range(-2.0, 2.0), randf_range(-2.0, 2.0))
 
 
 ## Issue #68: draw the currently selected weapon in front of the wielder.
@@ -355,6 +414,7 @@ func _fire(power := 1.0) -> void:
 		2: _fire_grenade(power)
 		3: _thrust_spear()
 		4: _throw_mine(power)
+		5: _start_jackhammer(power)
 	# Issue #101+#65: only the LAST shot of the turn hands the turn over;
 	# with quota remaining the character keeps acting after the pause.
 	if _shots_used[clampi(selected_weapon, 0, _shots_used.size() - 1)] >= _shot_limit():
@@ -512,3 +572,110 @@ func _spear_sweep_hit(tip_forward: float) -> void:
 			if forward > 0.0 and forward <= tip_forward and lateral <= lateral_tolerance:
 				_thrust_hit.append(body)
 				body.take_damage(SPEAR_DAMAGE)
+
+
+## Issue #307: the gravity direction at the WIELDER's current spot — the
+## drill is pushed along it (toward the centre of gravity), straight DOWN
+## on flat levels, toward the core on radial arenas.
+func _gravity_dir() -> Vector2:
+	var parent := get_parent()
+	if parent != null and parent.has_method("current_gravity"):
+		var grav: Vector2 = parent.current_gravity()
+		if grav.length_squared() > 0.5:
+			return grav.normalized()
+	return Vector2.DOWN
+
+
+## Issue #307: start the jackhammer drill — `power` (0..1, the held-F
+## charge fraction) maps to JACKHAMMER_MIN..MAX seconds of drilling. The
+## wielder is pushed along the current gravity, carves destructible ground
+## below them and damages every other character on the way. A lightweight
+## node in the turn-effects group keeps the post-shot handover waiting
+## until the drill finishes (same gate as projectiles and blast rings).
+func _start_jackhammer(power: float = 1.0) -> void:
+	_drill_left = lerpf(JACKHAMMER_MIN_TIME, JACKHAMMER_MAX_TIME,
+			clampf(power, 0.0, 1.0))
+	_drill_dir = _gravity_dir()
+	_drill_hit.clear()
+	_drill_stall = 0.0
+	_drill_carve_at = Vector2.INF
+	var parent := get_parent()
+	_drill_last_pos = parent.global_position if parent != null else Vector2.ZERO
+	if _drill_effect == null or not is_instance_valid(_drill_effect):
+		_drill_effect = Node.new()
+		_drill_effect.name = "JackhammerDrill"
+		_drill_effect.add_to_group(TurnController.EFFECT_GROUP)
+		if parent != null and parent.get_parent() != null:
+			parent.get_parent().add_child(_drill_effect)
+
+
+## Issue #307: one physics tick of the drill — carve, damage, push, and
+## stop early when the wielder grinds against indestructible ground.
+func _tick_jackhammer(delta: float) -> void:
+	var parent := get_parent() as CharacterBody2D
+	if parent == null or not is_instance_valid(parent):
+		_end_jackhammer()
+		return
+	_drill_left -= delta
+	# The tunnel follows the level gravity at the CURRENT spot (radial
+	# arenas bend it around the core, exactly like a falling figure).
+	_drill_dir = _gravity_dir()
+	# Carve a fresh tunnel circle whenever the wielder advanced
+	# JACKHAMMER_CARVE_STEP px (bounds the recursive chunk splitting).
+	var carve_point := parent.global_position + _drill_dir * 12.0
+	if _drill_carve_at.distance_to(carve_point) >= JACKHAMMER_CARVE_STEP:
+		_drill_carve_at = carve_point
+		for ground in get_tree().get_nodes_in_group("destructible_ground"):
+				var chunk := ground as Node2D
+				if chunk != null and is_instance_valid(chunk) \
+						and chunk.has_method("apply_blast"):
+						chunk.apply_blast(carve_point, JACKHAMMER_RADIUS)
+	_jackhammer_sweep_hit(parent)
+	# Push the wielder along gravity. Player._physics_process keeps the
+	# along-gravity velocity component while the handover freezes input,
+	# so this lands in the next move_and_slide.
+	parent.velocity = _drill_dir * JACKHAMMER_SPEED
+	# No progress for JACKHAMMER_STALL_TIME seconds — the drill hit
+	# indestructible ground (or a wall): grind to a halt early.
+	if parent.global_position.distance_to(_drill_last_pos) < 0.5:
+		_drill_stall += delta
+		if _drill_stall >= JACKHAMMER_STALL_TIME:
+			_end_jackhammer()
+			return
+	else:
+		_drill_stall = 0.0
+	_drill_last_pos = parent.global_position
+	if _drill_left <= 0.0:
+		_end_jackhammer()
+
+
+## Issue #307: damage every OTHER character on the drill's way — the
+## tunnel corridor below the wielder (along gravity, within the tunnel
+## radius laterally), once per drill (same once-rule as the spear, #257).
+func _jackhammer_sweep_hit(parent: Node2D) -> void:
+	var perp := Vector2(-_drill_dir.y, _drill_dir.x)
+	for group in ["player_team", "enemy_team"]:
+		for node in get_tree().get_nodes_in_group(group):
+			var body := node as Node2D
+			if body == null or body == parent or not body.has_method("take_damage") \
+					or _drill_hit.has(body):
+				continue
+			var offset := body.global_position - parent.global_position
+			var along := offset.dot(_drill_dir)
+			var lateral := absf(offset.dot(perp))
+			if along > -10.0 and along < 40.0 and lateral <= JACKHAMMER_RADIUS:
+				_drill_hit.append(body)
+				body.take_damage(JACKHAMMER_DAMAGE)
+
+
+## Issue #307: finish the drill — hand the wielder back to normal physics
+## (the figure drops into the tunnel it carved) and release the turn-effect
+## gate so the handover can pass the turn.
+func _end_jackhammer() -> void:
+	_drill_left = 0.0
+	var parent := get_parent() as CharacterBody2D
+	if parent != null and is_instance_valid(parent):
+		parent.velocity = Vector2.ZERO
+	if _drill_effect != null and is_instance_valid(_drill_effect):
+		_drill_effect.queue_free()
+	_drill_effect = null

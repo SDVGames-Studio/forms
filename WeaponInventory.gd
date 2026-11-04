@@ -18,7 +18,8 @@ extends CanvasLayer
 
 ## Issue #179: tools joined the weapons in THIS panel — one unified
 ## inventory grid: weapons on keys 1-4 plus the mine on key 9 (issue
-## #246), tools on keys 5-8 (issue #227 added the fourth tool, Rock).
+## #246) and the jackhammer on key 0 (issue #307), tools on keys 5-8
+## (issue #227 added the fourth tool, Rock).
 ## The tool LOGIC stays in the ToolInventory autoload; this script only
 ## renders the shared slots.
 
@@ -60,7 +61,7 @@ var _toggle_button: Button
 var _mobile_open := false
 var _mobile_layout_applied := false
 
-const WEAPONS := ["Shotgun", "Rocket", "Grenade", "Spear", "Mine"]
+const WEAPONS := ["Shotgun", "Rocket", "Grenade", "Spear", "Mine", "Jackhammer"]
 
 ## Issue #179: per-tool icon shapes (mirrors the old ToolInventory
 ## panel): switch = yellow bar pair, teleport = cyan ring, shield =
@@ -74,13 +75,15 @@ const TOOL_ICONS: Array = [
 
 ## Issue #64: icon shapes per weapon, mirroring the held-weapon visuals
 ## in Weapon.gd (shotgun: wide yellow bar, rocket: orange bar, grenade:
-## green circle, spear: long thin bar; issue #246: mine = dark circle).
+## green circle, spear: long thin bar; issue #246: mine = dark circle;
+## issue #307: jackhammer = steel drill bar).
 const ICONS: Array = [
 	{"shape": "rect", "size": Vector2(26, 6), "color": Color(0.95, 0.85, 0.3, 1)},
 	{"shape": "rect", "size": Vector2(30, 8), "color": Color(0.9, 0.35, 0.15, 1)},
 	{"shape": "circle", "radius": 8.0, "color": Color(0.3, 0.7, 0.3, 1)},
 	{"shape": "rect", "size": Vector2(40, 4), "color": Color(0.8, 0.8, 0.9, 1)},
 	{"shape": "circle", "radius": 8.0, "color": Color(0.22, 0.24, 0.3, 1)},
+	{"shape": "rect", "size": Vector2(10, 18), "color": Color(0.85, 0.85, 0.95, 1)},
 ]
 
 ## Issue #271: hover hints. The scripts are preloaded (not the autoload
@@ -219,6 +222,8 @@ func _weapon_hint(i: int) -> String:
 			damage = str(WeaponFire.SPEAR_DAMAGE)
 		"Mine":
 			damage = str(WeaponFire.MINE_DAMAGE)
+		"Jackhammer":
+			damage = str(WeaponFire.JACKHAMMER_DAMAGE)
 	return "%s\nDamage: %s" % [WEAPONS[i], damage]
 
 
