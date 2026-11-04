@@ -315,6 +315,9 @@ func _physics_process(delta: float) -> void:
 			var charge_width := 40.0 + 30.0 * (_charge_time / MAX_CHARGE_TIME)
 			_charge_bar.offset_left = -charge_width / 2.0
 			_charge_bar.offset_right = charge_width / 2.0
+			# Issue #322: re-aim the bar into the view frame EVERY tick — the
+			# offsets (and the camera ease) move under it while it is up.
+			_align_charge_bar_to_view()
 	if not _charging and _charge_bar.visible:
 		_charge_bar.visible = false
 
@@ -356,6 +359,26 @@ func _physics_process(delta: float) -> void:
 		# Issue #307: the drilling jackhammer shakes in the wielder's hands.
 		if _drill_left > 0.0:
 			_held.position += Vector2(randf_range(-2.0, 2.0), randf_range(-2.0, 2.0))
+
+
+## Issue #322: the charge bar (the power indicator) is authored above
+## the wielder in the WEAPON's local frame, but the weapon rides the
+## figure's gravity frame — on a flipped level (or beside a disc rim)
+## the bar rendered BELOW the wielder, upside-down, while charging. Same
+## treatment as the figure HUD (HudPose, issue #311): rotate the bar
+## around the wielder's origin into the coordinate system the CURRENT
+## view shows, so it renders upright above the wielder in both camera
+## types. Called every physics tick the charge is up, so it rides the
+## camera ease like HudPose does.
+func _align_charge_bar_to_view() -> void:
+	var viewport := get_viewport()
+	var camera := viewport.get_camera_2d() if viewport != null else null
+	var view_rotation := camera.rotation if camera != null else 0.0
+	# A Control rotates around `pivot_offset`; with the pivot at
+	# -position the fixed point is the wielder's origin (the weapon node
+	# sits on it), so the bar orbits the figure exactly like the HUD.
+	_charge_bar.pivot_offset = -_charge_bar.position
+	_charge_bar.rotation = view_rotation - global_rotation
 
 
 ## Issue #68: draw the currently selected weapon in front of the wielder.
