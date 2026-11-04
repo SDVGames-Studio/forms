@@ -14,8 +14,13 @@ extends Node
 const WeaponFire := preload("res://Weapon.gd")
 const Dirt := preload("res://scripts/DestructibleGround.gd")
 
-## Stand-in wielder: keeps the along-gravity velocity component (exactly
-## Player.gd's frozen-input branch the drill relies on) and moves with it.
+## Stand-in wielder: a REAL-SIZE figure — capsule radius 24, height 64,
+## exactly Npc.gd / the Player scenes' body (48 px wide, 64 px tall).
+## Issue #307 rework: the original stand-in was a 24x24 box, so the old
+## 16 px tunnel (32 px wide) still fit it and the wedge bug — a 48 px
+## figure cannot enter its own 32 px tunnel — never reproduced. Keeps the
+## along-gravity velocity component (exactly Player.gd's frozen-input
+## branch the drill relies on) and moves with it.
 const WielderScript := "
 extends CharacterBody2D
 var view_angle := 0.0
@@ -46,9 +51,12 @@ func _make_wielder(at: Vector2) -> CharacterBody2D:
 	var wielder := CharacterBody2D.new()
 	wielder.set_script(script)
 	var shape := CollisionShape2D.new()
-	var rect := RectangleShape2D.new()
-	rect.size = Vector2(24, 24)
-	shape.shape = rect
+	# Issue #307 rework: real figure dimensions (Npc.gd builds the same
+	# capsule; the Player scenes author radius 24 too).
+	var capsule := CapsuleShape2D.new()
+	capsule.radius = 24.0
+	capsule.height = 64.0
+	shape.shape = capsule
 	wielder.add_child(shape)
 	var weapon := Node2D.new()
 	weapon.name = "Weapon"
@@ -111,8 +119,11 @@ func _ready() -> void:
 	charge_wielder.queue_free()
 
 	# --- The drill carves destructible ground and moves the wielder along
-	# the gravity; a figure inside the tunnel is damaged EXACTLY once. ---
-	var wielder := _make_wielder(Vector2(0, 0))
+	# the gravity; a figure inside the tunnel is damaged EXACTLY once.
+	# Issue #307 rework: start ABOVE the dirt — the capsule's front cap
+	# reaches center+32, so (0,-40) keeps the body clear of the top edge
+	# at y=10 exactly like a figure standing on the surface.
+	var wielder := _make_wielder(Vector2(0, -40))
 	level.add_child(wielder)
 	var dirt := Dirt.new()
 	dirt.rect_size = Vector2(240, 300)

@@ -73,7 +73,14 @@ const ROCK_MASS := 0.8
 const JACKHAMMER_MIN_TIME := 1.0
 const JACKHAMMER_MAX_TIME := 5.0
 const JACKHAMMER_SPEED := 130.0
-const JACKHAMMER_RADIUS := 16.0
+## Issue #307 rework: the tunnel radius must EXCEED the figure's
+## half-width — every figure is a capsule of radius 24 (Player scenes,
+## Npc.gd), 48 px wide. The original 16 px tunnel (32 px wide) was
+## NARROWER than the driller: the wielder wedged into their own fresh
+## tunnel, made no progress and the stall timer killed the drill almost
+## immediately — no real tunnel, no travelling, no damage. 32 px leaves
+## 8 px of clearance on each side of the body.
+const JACKHAMMER_RADIUS := 32.0
 ## Carve a fresh tunnel circle only after the wielder advanced this many
 ## pixels (bounds the recursive chunk splitting) — and a drill that made
 ## no progress for JACKHAMMER_STALL_TIME seconds hit indestructible
