@@ -4,9 +4,9 @@ extends StaticBody2D
 ##
 ## Characters can stand on it, but it is NOT a gravity source — only
 ## indestructible ground bends gravity. An explosion (Projectile._explode)
-## calls `apply_blast` and the rect chunk is subtracted with the blast's
-## circle bounding box; the leftover strips spawn as new chunks, so craters
-## grow chunk by chunk. Visual is drawn in code — no assets.
+## calls `apply_blast` and the chunk is carved with the actual blast
+## CIRCLE; the leftover pieces spawn as new chunks, so craters grow chunk
+## by chunk. Visual is drawn in code — no assets.
 ##
 ## Issue #250: annular-sector chunks. A node authored with `ring_outer > 0`
 ## and `arc_span <= 0` marks a WHOLE RING (an external dirt layer around a
@@ -86,23 +86,76 @@ func apply_blast(global_point: Vector2, radius: float) -> void:
 	if ring_outer > 0.0:
 		_carve_sector(to_local(global_point), radius)
 		return
+	_carve_rect(to_local(global_point), radius)
+
+
+## Issue #299: carve a rectangle chunk with the blast CIRCLE, not its
+## axis-aligned bounding box. Same recursion as the ring carver: pieces
+## disjoint from the circle survive untouched, fully covered pieces are
+## carved away, and the rest are halved (in x and/or y) until small enough
+## to decide by their centre — so a crater follows the round blast instead
+## of punching a square notch through the ground.
+func _carve_rect(point: Vector2, blast: float) -> void:
+	_blast_point = point
+	_blast_radius = blast
 	var rect := Rect2(-rect_size / 2.0, rect_size)
-	var box := Rect2(global_point - global_position - Vector2(radius, radius),
-			Vector2(radius, radius) * 2.0)
-	var cut := rect.intersection(box)
-	if cut.size.x <= 0.0 or cut.size.y <= 0.0:
+	if _circle_rect_disjoint(rect):
 		return
-	# Four remainder strips: left, right (full height) and top, bottom
-	# (between the cut edges).
-	_spawn(Vector2(rect.position.x, rect.position.y),
-			Vector2(cut.position.x - rect.position.x, rect.size.y))
-	_spawn(Vector2(cut.end.x, rect.position.y),
-			Vector2(rect.end.x - cut.end.x, rect.size.y))
-	_spawn(Vector2(cut.position.x, rect.position.y),
-			Vector2(cut.size.x, cut.position.y - rect.position.y))
-	_spawn(Vector2(cut.position.x, cut.end.y),
-			Vector2(cut.size.x, rect.end.y - cut.end.y))
 	queue_free()
+	_split_or_keep_rect(get_parent(), rect)
+
+
+## True when the blast circle cannot touch the rect at all — closest-point
+## distance from the blast centre to the rect exceeds the blast radius.
+func _circle_rect_disjoint(rect: Rect2) -> bool:
+	var nearest := Vector2(
+			clampf(_blast_point.x, rect.position.x, rect.end.x),
+			clampf(_blast_point.y, rect.position.y, rect.end.y))
+	return nearest.distance_to(_blast_point) > _blast_radius
+
+
+## True when all four rect corners sit inside the blast circle.
+func _circle_rect_covers(rect: Rect2) -> bool:
+	var corners: Array = [rect.position, rect.end,
+			Vector2(rect.position.x, rect.end.y),
+			Vector2(rect.end.x, rect.position.y)]
+	for corner in corners:
+		if corner.distance_to(_blast_point) > _blast_radius:
+			return false
+	return true
+
+
+## Recursive halving for rect pieces: keep disjoint ones, drop covered ones,
+## halve the rest (in x and/or y while both halves still clear MIN_PIECE);
+## a piece too small to halve is dropped when the blast circle swallows its
+## centre, kept otherwise — mirroring `_split_or_keep` for ring sectors.
+func _split_or_keep_rect(parent: Node, rect: Rect2) -> void:
+	if _circle_rect_disjoint(rect):
+		_spawn(rect.position, rect.size)
+		return
+	if _circle_rect_covers(rect):
+		return
+	var split_x := rect.size.x / 2.0 >= MIN_PIECE
+	var split_y := rect.size.y / 2.0 >= MIN_PIECE
+	if split_x or split_y:
+		var mid := rect.get_center()
+		var xs: Array = [rect.position.x]
+		var ws: Array = [rect.size.x]
+		if split_x:
+			xs = [rect.position.x, mid.x]
+			ws = [rect.size.x / 2.0, rect.size.x / 2.0]
+		var ys: Array = [rect.position.y]
+		var hs: Array = [rect.size.y]
+		if split_y:
+			ys = [rect.position.y, mid.y]
+			hs = [rect.size.y / 2.0, rect.size.y / 2.0]
+		for i in xs.size():
+			for j in ys.size():
+				_split_or_keep_rect(parent, Rect2(
+						Vector2(xs[i], ys[j]), Vector2(ws[i], hs[j])))
+		return
+	if rect.get_center().distance_to(_blast_point) > _blast_radius:
+		_spawn(rect.position, rect.size)
 
 
 ## Issue #250 rework: carve an annular-sector chunk with a blast CIRCLE.
