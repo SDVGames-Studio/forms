@@ -63,11 +63,24 @@ func _ready() -> void:
 	_friendly_fire.value_changed.connect(
 		func(value: float) -> void: _team()["friendly_fire"] = int(value))
 	_save_button.pressed.connect(_on_save_pressed)
-	_back_button.pressed.connect(
-		func() -> void: get_tree().change_scene_to_file("res://SettingsMenu.tscn"))
+	_back_button.pressed.connect(_on_back_pressed)
 	_delete_dialog.confirmed.connect(_on_delete_confirmed)
 	_build_shape_picker()
 	_refresh_all()
+
+
+func _on_back_pressed() -> void:
+	get_tree().change_scene_to_file("res://SettingsMenu.tscn")
+
+
+## Issue #303: Escape is the cancel button in every menu — it acts as
+## Back here, returning to the settings menu.
+func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventKey and event.pressed and not event.echo:
+		var key := event as InputEventKey
+		if key.keycode == KEY_ESCAPE or key.physical_keycode == KEY_ESCAPE:
+			get_viewport().set_input_as_handled()
+			_on_back_pressed()
 
 
 ## The team dictionary currently being edited.

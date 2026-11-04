@@ -29,3 +29,13 @@ func _on_settings_pressed() -> void:
 
 func _on_quit_pressed() -> void:
 	get_tree().quit()
+
+
+## Issue #303: Escape is the cancel button in every menu — on the root
+## menu cancel means leaving the game, same as the Quit button.
+func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventKey and event.pressed and not event.echo:
+		var key := event as InputEventKey
+		if key.keycode == KEY_ESCAPE or key.physical_keycode == KEY_ESCAPE:
+			get_viewport().set_input_as_handled()
+			_on_quit_pressed()
