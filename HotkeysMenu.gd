@@ -37,6 +37,15 @@ const ACTION_LABELS: Dictionary = {
 const LISTEN_TEXT := "Press a key…"
 const NO_KEY := "—"
 
+## Emitted instead of the scene change when Back/Esc is pressed while
+## the menu runs inside the in-game settings overlay (issue #304).
+signal back_requested
+
+## True while this menu is instanced into the in-game settings overlay
+## (issue #304); Back then returns to that overlay instead of changing
+## the scene, which would drop the running level.
+var in_game := false
+
 ## The action whose button is waiting for the next key press ("" = none).
 var _listening := ""
 ## action name -> its key Button (so every row can be refreshed).
@@ -153,4 +162,9 @@ func _on_reset_pressed() -> void:
 
 
 func _on_back_pressed() -> void:
+	# Issue #304: in overlay mode the host settings screen listens and
+	# frees this menu; standalone still changes the scene.
+	if in_game:
+		back_requested.emit()
+		return
 	get_tree().change_scene_to_file("res://SettingsMenu.tscn")

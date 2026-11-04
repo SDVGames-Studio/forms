@@ -7,12 +7,19 @@ extends CanvasLayer
 ## Issue #211: the menu only works during gameplay — every level scene's
 ## root is in the "level" group, so outside levels (main menu, submenus)
 ## Esc does nothing.
-## Buttons: Main Menu (return to the main menu), Settings (placeholder
-## until its screen exists), Cancel (close without leaving the level).
+## Buttons: Main Menu (return to the main menu), Settings (opens the
+## SAME settings screen as the main menu — issue #304 — instanced over
+## the paused game so the running level survives), Cancel (close without
+## leaving the level).
 ## The layer runs while the tree is paused so its buttons stay usable.
 
 var _panel: Control
 var _cancel_button: Button
+var _settings_button: Button
+
+## Issue #304: the settings screen instanced over the pause panel while
+## it is open (null = closed).
+var _settings_menu: Control = null
 
 
 func _init() -> void:
@@ -82,7 +89,8 @@ func _build_ui() -> void:
 	rows.add_child(title)
 
 	rows.add_child(_make_button("MainMenuButton", "Main Menu", _on_main_menu_pressed))
-	rows.add_child(_make_button("SettingsButton", "Settings", _on_settings_pressed))
+	_settings_button = _make_button("SettingsButton", "Settings", _on_settings_pressed)
+	rows.add_child(_settings_button)
 	_cancel_button = _make_button("CancelButton", "Cancel", _close)
 	rows.add_child(_cancel_button)
 
@@ -103,4 +111,24 @@ func _on_main_menu_pressed() -> void:
 
 
 func _on_settings_pressed() -> void:
-	print("Settings pressed") # TODO: open the settings screen.
+	## Issue #304: open the shared settings screen (the same one the main
+	## menu opens) over the paused game — a scene change would drop the
+	## running level. This layer runs while paused, so the overlay and its
+	## submenus stay usable.
+	if _settings_menu != null:
+		return
+	_panel.visible = false
+	_settings_menu = (load("res://SettingsMenu.tscn") as PackedScene).instantiate()
+	_settings_menu.in_game = true
+	_settings_menu.back_requested.connect(_on_settings_closed)
+	add_child(_settings_menu)
+
+
+func _on_settings_closed() -> void:
+	## Back/Esc from the settings screen returns to the pause panel; the
+	## game stays paused until Cancel/Esc resumes it.
+	if _settings_menu != null:
+		_settings_menu.queue_free()
+		_settings_menu = null
+	_panel.visible = true
+	_settings_button.grab_focus()

@@ -32,6 +32,15 @@ const TEAM_PALETTE: Array[Color] = [
 	Color(0.95, 0.6, 0.2), Color(0.65, 0.4, 0.95),
 ]
 
+## Emitted instead of the scene change when Back/Esc is pressed while
+## the menu runs inside the in-game settings overlay (issue #304).
+signal back_requested
+
+## True while this menu is instanced into the in-game settings overlay
+## (issue #304); Back then returns to that overlay instead of changing
+## the scene, which would drop the running level.
+var in_game := false
+
 @onready var _team_select: OptionButton = %TeamSelect
 @onready var _add_team_button: Button = %AddTeamButton
 @onready var _editing_label: Label = %EditingLabel
@@ -70,6 +79,11 @@ func _ready() -> void:
 
 
 func _on_back_pressed() -> void:
+	# Issue #304: in overlay mode the host settings screen listens and
+	# frees this menu; standalone still changes the scene.
+	if in_game:
+		back_requested.emit()
+		return
 	get_tree().change_scene_to_file("res://SettingsMenu.tscn")
 
 
