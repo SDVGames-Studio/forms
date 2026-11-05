@@ -294,6 +294,17 @@ func can_spend_weapon(team_id: String, weapon: int) -> bool:
 	return weapon == WEAPON_SPEAR or weapon_uses_left(team_id, weapon) > 0
 
 
+## Issue #327: the weapon a member of this team may actually TAKE
+## IN-HANDS — the panel selection while the team can still pay for it,
+## otherwise the infinite spear (there is always something to hold).
+## The hand sync in Weapon._physics_process resolves through this.
+func held_weapon_for(team_id: String) -> int:
+	if selected_weapon != WEAPON_SPEAR \
+			and not can_spend_weapon(team_id, selected_weapon):
+		return WEAPON_SPEAR
+	return selected_weapon
+
+
 ## Issue #305: true while the team may still use this tool.
 func can_spend_tool(team_id: String, tool: int) -> bool:
 	return tool_uses_left(team_id, tool) > 0
@@ -307,6 +318,16 @@ func spend_weapon(team_id: String, weapon: int) -> bool:
 	if weapon != WEAPON_SPEAR:
 		var w := clampi(weapon, 0, WEAPONS.size() - 1)
 		_budget(team_id)["weapons"][w] = maxi(0, weapon_uses_left(team_id, w) - 1)
+		# Issue #327: the last use is gone while the PANEL still points at
+		# this weapon — demote the selection to the infinite spear so no
+		# member takes the spent weapon in-hands on the next hand sync.
+		# The panel shows the PLAYER team's budget, so an enemy spend
+		# never touches the player's selection.
+		if team_id == TurnController.TEAM_PLAYER \
+				and selected_weapon == w and weapon_uses_left(team_id, w) == 0:
+			selected_weapon = WEAPON_SPEAR
+			_update_highlight()
+			refresh_tools()
 	refresh_counts()
 	return true
 
@@ -318,6 +339,13 @@ func spend_tool(team_id: String, tool: int) -> bool:
 		return false
 	var t := clampi(tool, 0, ToolState.TOOLS.size() - 1)
 	_budget(team_id)["tools"][t] = maxi(0, tool_uses_left(team_id, t) - 1)
+	# Issue #327: an armed tool whose last use just left the team budget
+	# can no longer be held in-hands — disarm it (the mirror of the
+	# weapon-selection demote in spend_weapon; player side only).
+	if team_id == TurnController.TEAM_PLAYER \
+			and ToolInventory.armed_tool == t \
+			and tool_uses_left(team_id, t) == 0:
+		ToolInventory.armed_tool = -1
 	refresh_counts()
 	return true
 
