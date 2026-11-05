@@ -54,9 +54,15 @@ var _key_buttons: Dictionary = {}
 @onready var _rows: VBoxContainer = %Rows
 @onready var _reset_button: Button = %ResetButton
 @onready var _back_button: Button = %BackButton
+@onready var _background: ColorRect = $Background
 
 
 func _ready() -> void:
+	# Issue #304 (rework): when opened on top of the in-game settings
+	# overlay the game stays visible behind a shadow — the same dim the
+	# pause panel casts — instead of the opaque standalone background.
+	if in_game:
+		_background.color = Color(0.05, 0.03, 0.1, 0.75)
 	# The main menu snapshots the authored defaults at startup; do it here
 	# too, so the screen also works when it is the first thing that runs
 	# (e.g. in a test). It is a no-op once the snapshot exists.
