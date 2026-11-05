@@ -267,7 +267,11 @@ func _physics_process(delta: float) -> void:
 	var controlled: bool = parent != null and parent.get("controlled") == true \
 			and TurnController.is_player_team(TurnController.active_team)
 	if controlled:
-		selected_weapon = WeaponInventory.selected_weapon
+		# Issue #327: a weapon with no uses left never enters the hand —
+		# the sync resolves the panel selection against the TEAM budget
+		# and falls back to the infinite spear.
+		selected_weapon = WeaponInventory.held_weapon_for(
+				TurnController.team_id_of(get_parent()))
 	# Issue #101 bugfix: ONLY the controlled member may fire on input —
 	# every character has a Weapon node, so an unguarded Input check made
 	# all characters holding the same weapon fire together.
