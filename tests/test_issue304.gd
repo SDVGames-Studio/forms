@@ -6,6 +6,9 @@ extends Node
 ## (Teams, Hotkeys) also open over the game and return to the settings
 ## screen; Settings Back returns to the pause panel with the game still
 ## paused. Standalone mode is unchanged: Back leaves for the main menu.
+## Rework (2026-11-05): in overlay mode the game stays VISIBLE behind a
+## shadow (the pause panel's dim) on Settings, Teams and Hotkeys; the
+## standalone screens keep their opaque background.
 ##
 ## Run headless: godot --headless res://tests/test_issue304.tscn
 ## Exit code 0 = pass.
@@ -62,6 +65,12 @@ class Issue304Driver extends Node:
 		print("ISSUE304 settings_open=", opened, " entries=", entries)
 		ok = ok and opened and entries
 
+		# --- Rework: the game shows through a shadow, not an opaque cover.
+		var settings_shadow: ColorRect = settings.get_node("Background")
+		var shadow_ok: bool = settings_shadow.color == Color(0.05, 0.03, 0.1, 0.75)
+		print("ISSUE304 settings_shadow=", shadow_ok)
+		ok = ok and shadow_ok
+
 		# --- The Teams submenu opens over the game, not as a scene change. ---
 		var scene_before: Node = get_tree().current_scene
 		settings._on_team_pressed()
@@ -73,6 +82,14 @@ class Issue304Driver extends Node:
 		print("ISSUE304 teams_overlay=", team_open)
 		ok = ok and team_open
 
+		# --- The submenu casts the shadow itself; the screen under it hides
+		# its own so the game is not dimmed twice. ---
+		var team_shadow: ColorRect = submenu.get_node("Background")
+		var shadow_single: bool = team_shadow.color == Color(0.05, 0.03, 0.1, 0.75) \
+			and not settings.get_node("Background").visible
+		print("ISSUE304 teams_shadow=", shadow_single)
+		ok = ok and shadow_single
+
 		# --- Its Back returns to the settings screen, game still paused. ---
 		submenu._on_back_pressed()
 		await get_tree().process_frame
@@ -83,6 +100,11 @@ class Issue304Driver extends Node:
 			and get_tree().paused
 		print("ISSUE304 teams_back=", team_closed)
 		ok = ok and team_closed
+
+		# --- Back from the submenu restores this screen's shadow. ---
+		var shadow_restored: bool = settings.get_node("Background").visible
+		print("ISSUE304 shadow_restored=", shadow_restored)
+		ok = ok and shadow_restored
 
 		# --- The Hotkeys submenu behaves the same. ---
 		settings = pause.get("_settings_menu")
@@ -116,6 +138,11 @@ class Issue304Driver extends Node:
 		var standalone: Node = load("res://SettingsMenu.tscn").instantiate()
 		add_child(standalone)
 		await get_tree().process_frame
+		# --- Standalone keeps the opaque background (main-menu look). ---
+		var opaque: bool = (standalone.get_node("Background") as ColorRect).color \
+			== Color(0.09, 0.05, 0.16, 1)
+		print("ISSUE304 standalone_opaque=", opaque)
+		ok = ok and opaque
 		standalone._on_back_pressed()
 		for i in 3:
 			await get_tree().process_frame

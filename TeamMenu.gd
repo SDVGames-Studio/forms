@@ -52,6 +52,7 @@ var in_game := false
 @onready var _save_button: Button = %SaveButton
 @onready var _back_button: Button = %BackButton
 @onready var _delete_dialog: ConfirmationDialog = %DeleteDialog
+@onready var _background: ColorRect = $Background
 
 ## Index into GameConfig.teams of the team being edited.
 var _selected := 0
@@ -61,6 +62,11 @@ var _pending_member := -1
 
 
 func _ready() -> void:
+	# Issue #304 (rework): when opened on top of the in-game settings
+	# overlay the game stays visible behind a shadow — the same dim the
+	# pause panel casts — instead of the opaque standalone background.
+	if in_game:
+		_background.color = Color(0.05, 0.03, 0.1, 0.75)
 	# Load the saved customisation before filling in the controls.
 	GameConfig.load_team()
 	GameConfig.load_teams()

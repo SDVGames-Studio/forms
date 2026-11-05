@@ -23,15 +23,25 @@ var in_game := false
 ## in overlay mode only.
 var _submenu: Control = null
 
+## The shadow the in-game overlay casts over the paused game — the
+## same color/alpha the pause panel uses (InGameMenu), so the dim is
+## identical on every screen of the overlay (issue #304).
+const SHADOW_COLOR := Color(0.05, 0.03, 0.1, 0.75)
+
 @onready var _team_button: Button = %TeamButton
 @onready var _hotkeys_button: Button = %HotkeysButton
 @onready var _debug_check: CheckButton = %DebugCheck
 @onready var _gravity_field_check: CheckButton = %GravityFieldCheck
 @onready var _back_button: Button = %BackButton
 @onready var _menu_box: Control = $Menu
+@onready var _background: ColorRect = $Background
 
 
 func _ready() -> void:
+	# Issue #304 (rework): inside the pause overlay the game stays visible
+	# behind a shadow instead of the opaque standalone background.
+	if in_game:
+		_background.color = SHADOW_COLOR
 	_team_button.pressed.connect(_on_team_pressed)
 	# Issue #294: the hotkeys screen — rebindable, persisted key bindings.
 	_hotkeys_button.pressed.connect(_on_hotkeys_pressed)
@@ -76,6 +86,9 @@ func _open_submenu(path: String) -> bool:
 	_submenu.back_requested.connect(_on_submenu_closed)
 	add_child(_submenu)
 	_menu_box.visible = false
+	# The submenu casts its own shadow over the game — hide this screen's
+	# one so the dim is not doubled (issue #304).
+	_background.visible = false
 	return true
 
 
@@ -86,6 +99,7 @@ func _on_submenu_closed() -> void:
 	_submenu.queue_free()
 	_submenu = null
 	_menu_box.visible = true
+	_background.visible = true
 	_team_button.grab_focus()
 
 
