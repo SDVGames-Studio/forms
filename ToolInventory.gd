@@ -196,7 +196,19 @@ func _unhandled_input(event: InputEvent) -> void:
 				get_viewport().set_input_as_handled()
 				return
 			var world: Vector2 = get_viewport().get_canvas_transform().affine_inverse() * event.position
-			member.global_position = world
+			# Issue #328: a destination buried in the ground never happens
+			# blindly — the click is resolved against the solid terrain: a
+			# point in the open is used as-is, a point NEAR open space (less
+			# than two character widths) snaps there, anything deeper is
+			# IGNORED (no move, no spent use; the tool stays armed so the
+			# player can simply click somewhere else).
+			var teleporter := member as Node2D
+			var destination: Variant = _resolve_teleport_destination(teleporter, world)
+			if destination == null:
+				refresh_slots()
+				get_viewport().set_input_as_handled()
+				return
+			teleporter.global_position = destination
 			member.velocity = Vector2.ZERO
 			_mark_used(member, TOOL_TELEPORT)
 			armed_tool = -1
@@ -208,3 +220,62 @@ func _unhandled_input(event: InputEvent) -> void:
 func refresh_slots() -> void:
 	if WeaponInventory != null and WeaponInventory.has_method("refresh_tools"):
 		WeaponInventory.refresh_tools()
+
+
+## Issue #328: resolve a clicked teleport destination against the solid
+## terrain: the point itself when it is in the open, otherwise the NEAREST
+## open spot within two character widths of the click ("near the open
+## space then target should move there"), otherwise null — the click is
+## buried too deep and the teleport is ignored.
+func _resolve_teleport_destination(member: Node2D, target: Vector2) -> Variant:
+	var space := member.get_world_2d().direct_space_state
+	if _teleport_spot_free(space, target):
+		return target
+	# Ring search around the buried click: rings of 12 px out to two
+	# character widths, samples spaced ~12 px apart on each ring — the
+	# first free sample is the nearest open space to the clicked point.
+	var max_snap := _character_width(member) * 2.0
+	const RING_STEP := 12.0
+	var ring := RING_STEP
+	while ring <= max_snap:
+		var samples := int(maxf(8.0, ceil(TAU * ring / RING_STEP)))
+		for i in samples:
+			var candidate := target \
+					+ Vector2.from_angle(TAU * i / samples) * ring
+			if _teleport_spot_free(space, candidate):
+				return candidate
+		ring += RING_STEP
+	return null
+
+
+## Issue #328: true when the point is clear of solid terrain (layer 1 =
+## indestructible + destructible ground, IndestructibleGround.gd /
+## DestructibleGround.gd). Characters are NOT probed — a teleport onto
+## a figure is legal, the physics body slides out of the overlap (the
+## same tolerance the NPC teleport uses, Npc.gd #221).
+func _teleport_spot_free(space: PhysicsDirectSpaceState2D, point: Vector2) -> bool:
+	var query := PhysicsPointQueryParameters2D.new()
+	query.position = point
+	query.collision_mask = 1
+	query.collide_with_areas = false
+	query.collide_with_bodies = true
+	return space.intersect_point(query, 1).is_empty()
+
+
+## Issue #328: the character's body width — how far a click buried in
+## the ground may slide to reach open space ("less than two character's
+## widths"). Read from the body's own collision shape when it has one,
+## else the standard figure capsule (radius 24, Level*.tscn) → 48 px.
+func _character_width(member: Node2D) -> float:
+	for child in member.get_children():
+		var shape_node := child as CollisionShape2D
+		if shape_node == null or shape_node.shape == null:
+			continue
+		var shape: Shape2D = shape_node.shape
+		if shape is CapsuleShape2D:
+			return (shape as CapsuleShape2D).radius * 2.0
+		if shape is CircleShape2D:
+			return (shape as CircleShape2D).radius * 2.0
+		if shape is RectangleShape2D:
+			return (shape as RectangleShape2D).size.x
+	return 48.0
