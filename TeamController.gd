@@ -7,6 +7,10 @@ extends Node
 ## Issue #215: the N/P keys work again as Switch-tool SHORTCUTS —
 ## ToolInventory maps them to the tool, so the once-per-turn economy
 ## and the move/aim lock of #170 still apply.
+## Issue #306: the N/P keys change the character only while the Switch
+## tool is CHOSEN (armed via slot/key 5); the use is spent when the
+## change is committed by an action — another switch, a move, an aim
+## or a shot.
 
 func _ready() -> void:
 	# Give control to the first team member once the scene is up.

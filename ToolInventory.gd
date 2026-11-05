@@ -2,9 +2,11 @@ extends Node
 ## Issue #170: TOOLS — inventory items that are not weapons: they do not
 ## deal damage but perform other tasks. Three tools exist, each usable
 ## ONCE PER TURN (per character):
-##  1 Switch   — hand control to the next team member (rework of N/P;
-##     issue #215: the N/P keys trigger the Switch tool directly —
-##     N next, P previous — with the same guards and quota)
+##  1 Switch   — hand control to another team member. Issue #306
+##     rework: the tool must be CHOSEN first (slot/key 5 ARMS it) —
+##     only then do the N/P keys change the character, and the use is
+##     spent when the change is COMMITTED by an action: another switch,
+##     a move, an aim or a shot (the free #215 N/P shortcut is gone).
 ##  2 Teleport — the next left click in the level moves the member there
 ##  3 Shield   — the member blocks ONE attack (the block consumes the
 ##     shield, issue #255) until its next turn begins
@@ -29,16 +31,28 @@ const TOOL_SHIELD := 2
 const TOOL_ROCK := 3
 const TOOLS := ["Switch", "Teleport", "Shield", "Rock"]
 
-## Tool armed for the next click (only teleport uses this).
+## Tool armed for the next click (teleport) or for the N/P character
+## change (switch, issue #306); the rock waits for the charged throw.
 var armed_tool := -1
 
 var _used: Dictionary = {}
+
+## Issue #306: one character change made with the armed Switch tool that
+## has not been PAID yet — the use is spent by the first subsequent
+## action (another switch, a move, an aim or a shot). _pending_from is
+## the member that handed control away: IT spent its turn-action on the
+## switch, so it pays the use and loses its own weapon right (#207) —
+## the newly controlled member may still act.
+var _pending_switch := false
+var _pending_from: Node = null
 
 
 ## TurnController, start of a fresh player turn: full tool quota back.
 func reset_turn() -> void:
 	_used.clear()
 	armed_tool = -1
+	_pending_switch = false
+	_pending_from = null
 	refresh_slots()
 
 
@@ -70,8 +84,9 @@ func has_used_tool(character: Node) -> bool:
 
 
 ## Use a tool with the currently controlled member. Returns true on success.
-## Issue #215: direction only affects TOOL_SWITCH — 1 hands control to
-## the next member (N), -1 to the previous one (P).
+## Issue #306: TOOL_SWITCH no longer switches at once — it ARMS the
+## tool (toggle); the character change happens with the N/P keys while
+## armed and is paid when the change is committed (see _switch_member).
 func use_tool(tool: int, direction := 1) -> bool:
 	if not _is_in_level():
 		return false
@@ -92,17 +107,12 @@ func use_tool(tool: int, direction := 1) -> bool:
 	var done := false
 	match tool:
 		TOOL_SWITCH:
-			# Same guard as the old N/P: no switching after moving/aiming.
-			if not TurnController.is_switch_locked():
-				# Issue #234: control moves to another member — an armed rock
-				# goes back (quota unspent, nobody holds it anymore).
-				if armed_tool == TOOL_ROCK:
-					armed_tool = -1
-				if direction < 0:
-					TeamController.switch_prev()
-				else:
-					TeamController.switch_next()
-				done = true
+			# Issue #306: choosing the Switch tool ARMS it, like the teleport
+			# or the rock — the change itself happens with the N/P keys while
+			# armed, and the use is spent only when the change is committed
+			# (another switch, a move, an aim or a shot).
+			armed_tool = TOOL_SWITCH if armed_tool != TOOL_SWITCH else -1
+			done = true
 		TOOL_TELEPORT:
 			# Arm the teleport: the next left click picks the destination.
 			armed_tool = TOOL_TELEPORT if armed_tool != TOOL_TELEPORT else -1
@@ -119,7 +129,8 @@ func use_tool(tool: int, direction := 1) -> bool:
 			# hand. Pressing the slot/key again puts the rock back.
 			armed_tool = TOOL_ROCK if armed_tool != TOOL_ROCK else -1
 			done = true
-	if done and tool != TOOL_TELEPORT and tool != TOOL_ROCK:
+	if done and tool != TOOL_TELEPORT and tool != TOOL_ROCK \
+			and tool != TOOL_SWITCH:
 		_mark_used(member, tool)
 		armed_tool = -1
 	refresh_slots()
@@ -133,6 +144,70 @@ func rock_thrown(character: Node) -> void:
 		_mark_used(character, TOOL_ROCK)
 	if armed_tool == TOOL_ROCK:
 		armed_tool = -1
+	refresh_slots()
+
+
+## Issue #306: change the character with the armed Switch tool — the
+## N/P handler below routes here. The guards mirror the old instant
+## switch (#170/#215): only on the player turn, never after a move/aim
+## action (#104), never after this member fired (#207), once per
+## character per turn, within the team budget (#305).
+func _switch_member(direction: int) -> void:
+	if not _is_in_level():
+		return
+	if not TurnController.is_player_team(TurnController.active_team) \
+			or _switching_or_over():
+		refresh_slots()
+		return
+	if TurnController.is_switch_locked():
+		refresh_slots()
+		return
+	var member: Node = TurnController.active_member
+	if member == null or not is_instance_valid(member):
+		return
+	if WeaponInventory.is_locked_for(member) \
+			or not _can_use(member, TOOL_SWITCH):
+		refresh_slots()
+		return
+	# Issue #306: a previous character change is committed by THIS
+	# switch — its use is paid before the new change becomes pending
+	# (the armed tool stays on for the change that follows).
+	if _pending_switch:
+		_commit_pending(true)
+	# Issue #234: control moves to another member — an armed rock goes
+	# back (quota unspent, nobody holds it anymore).
+	if armed_tool == TOOL_ROCK:
+		armed_tool = -1
+	if direction < 0:
+		TeamController.switch_prev()
+	else:
+		TeamController.switch_next()
+	_pending_switch = true
+	_pending_from = member
+	refresh_slots()
+
+
+## Issue #306: pay for one committed character change. keep_armed is
+## true only inside the switch chain, where the next change follows at
+## once and the tool must stay armed.
+func _commit_pending(keep_armed := false) -> void:
+	if not _pending_switch:
+		return
+	_pending_switch = false
+	var from: Node = _pending_from
+	_pending_from = null
+	if not keep_armed and armed_tool == TOOL_SWITCH:
+		armed_tool = -1
+	if from != null and is_instance_valid(from):
+		_mark_used(from, TOOL_SWITCH)
+
+
+## Issue #306: the player acted — moved, aimed or shot — so a pending
+## character change from the armed Switch tool is committed now and its
+## use is spent ("if the player has changed the character then switch
+## tool is decreased by one"). Called by TurnController.
+func commit_switch() -> void:
+	_commit_pending()
 	refresh_slots()
 
 
@@ -161,15 +236,15 @@ func can_use_now(tool: int) -> bool:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	# Issue #215: the N/P keys are Switch-tool shortcuts — same guards,
-	# same once-per-turn quota as the slot/keys 5-8 use of the tool.
-	if event.is_action_pressed("switch_next"):
+	# Issue #306 rework: the N/P keys change the character only while the
+	# Switch tool is CHOSEN (armed via slot/key 5) — without the tool
+	# the keys do nothing; with it, the guards and economy of
+	# _switch_member apply.
+	if event.is_action_pressed("switch_next") \
+			or event.is_action_pressed("switch_prev"):
 		get_viewport().set_input_as_handled()
-		use_tool(TOOL_SWITCH, 1)
-		return
-	if event.is_action_pressed("switch_prev"):
-		get_viewport().set_input_as_handled()
-		use_tool(TOOL_SWITCH, -1)
+		if armed_tool == TOOL_SWITCH:
+			_switch_member(-1 if event.is_action_pressed("switch_prev") else 1)
 		return
 	for i in TOOLS.size():
 		if event.is_action_pressed("tool_%d" % (i + 1)):

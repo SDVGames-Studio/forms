@@ -11,8 +11,10 @@ extends Node
 ##  - in the real Level scene an N key press hands control to the next
 ##    member and TurnController.active_member follows it (#183);
 ##  - a P key press hands control back to the previous member;
-##  - the #170 economy still applies to the keys: a second use by the
-##    same character this turn is refused, and after a move/aim action
+##  - issue #306 rework: the keys work only while the Switch tool is
+##    CHOSEN (armed via use_tool) — unarmed N does nothing; the switch
+##    spends nothing until committed, a second switch by the same
+##    member this turn is refused, and after a move/aim action
 ##    (switch lock, #104) the keys stop switching too.
 ##
 ## Run headless: godot --headless res://tests/test_issue215.tscn
@@ -94,29 +96,42 @@ func _ready() -> void:
 	var first := _controlled()
 	_check(first != null, "a member is controlled before switching")
 
-	# N: control hands over to another member, active_member follows (#183).
+	# Issue #306: without the Switch tool chosen the keys do nothing.
+	ToolInventory._unhandled_input(n_ev)
+	await get_tree().physics_frame
+	_check(_controlled() == first, "N without the armed Switch tool does nothing")
+
+	# Arm the Switch tool, then N hands control to another member —
+	# active_member follows (#183) — without spending a use yet (#306).
+	ToolInventory.use_tool(ToolInventory.TOOL_SWITCH)
 	ToolInventory._unhandled_input(n_ev)
 	await get_tree().physics_frame
 	var second := _controlled()
 	_check(second != first and second != null and is_instance_valid(second),
-			"N hands control to the next member")
+			"N hands control to the next member while the tool is armed")
 	_check(TurnController.active_member == second,
 			"TurnController.active_member follows the N switch")
+	_check(WeaponInventory.tool_uses_left("player", ToolInventory.TOOL_SWITCH) == 5,
+			"the change alone spends no use (#306 deferred commit)")
 
-	# P: control hands back to the previous member.
+	# P: control hands back to the previous member; the switch that
+	# handed control away is committed by THIS switch (#306).
 	ToolInventory._unhandled_input(p_ev)
 	await get_tree().physics_frame
 	_check(_controlled() == first, "P hands control back to the previous member")
+	_check(WeaponInventory.tool_uses_left("player", ToolInventory.TOOL_SWITCH) == 4,
+			"the second switch commits the first change (one use paid)")
 
-	# The first member already spent its Switch tool this turn — the N key
-	# (same quota as the slot, #170) must now be refused.
+	# The first member already handed control away once this turn — the
+	# N key (same quota as the slot, #170) must now be refused.
 	ToolInventory._unhandled_input(n_ev)
 	await get_tree().physics_frame
 	_check(_controlled() == first,
 			"second Switch use by the same member this turn is refused")
 
-	# Fresh turn quota: N works again, then the #104 move/aim lock stops it.
-	ToolInventory.reset_turn()
+	# Fresh turn: N works again, then the #104 move/aim lock stops it.
+	TurnController._begin_turn("player")
+	ToolInventory.use_tool(ToolInventory.TOOL_SWITCH)
 	ToolInventory._unhandled_input(n_ev)
 	await get_tree().physics_frame
 	_check(_controlled() != first, "N works again on a fresh turn quota")
@@ -127,7 +142,7 @@ func _ready() -> void:
 			"N after a move/aim action is refused (switch lock)")
 
 	if _failures.is_empty():
-		print("ISSUE215 OK: p/n keys switch team members again")
+		print("ISSUE215 OK: p/n keys switch team members via the armed Switch tool")
 		get_tree().quit(0)
 	else:
 		for f in _failures:
