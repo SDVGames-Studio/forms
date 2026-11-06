@@ -11,6 +11,7 @@ extends Control
 @onready var _level4_button: Button = %Level4Button
 @onready var _level5_button: Button = %Level5Button
 @onready var _duel_button: Button = %DuelButton
+@onready var _duel3_button: Button = %Duel3v3Button
 @onready var _back_button: Button = %BackButton
 
 
@@ -21,6 +22,7 @@ func _ready() -> void:
 	_level4_button.pressed.connect(_on_level4_pressed)
 	_level5_button.pressed.connect(_on_level5_pressed)
 	_duel_button.pressed.connect(_on_duel_pressed)
+	_duel3_button.pressed.connect(_on_duel3_pressed)
 	_back_button.pressed.connect(_on_back_pressed)
 	_level1_button.grab_focus()
 
@@ -69,3 +71,9 @@ func _unhandled_input(event: InputEvent) -> void:
 ## Issue #121: spectate a computer-vs-computer duel — no player team.
 func _on_duel_pressed() -> void:
 	get_tree().change_scene_to_file("res://LevelDuel.tscn")
+
+
+## Issue #366: the same spectated computer-vs-computer duel, but with
+## bigger teams — three AI figures per side on a wider battlefield.
+func _on_duel3_pressed() -> void:
+	get_tree().change_scene_to_file("res://LevelDuelBig.tscn")

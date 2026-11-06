@@ -98,6 +98,12 @@ custom_minimum_size = Vector2(340, 56)
 layout_mode = 2
 text = "Duel (spectate)"
 
+[node name="Duel3v3Button" type="Button" parent="Layout/Columns/Nav"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(340, 56)
+layout_mode = 2
+text = "Duel 3v3 (spectate)"
+
 [node name="BackButton" type="Button" parent="Layout/Columns/Nav"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(340, 56)
