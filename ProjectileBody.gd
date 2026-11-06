@@ -93,6 +93,8 @@ var _fuse_left := 0.0
 ## Issue #281: current mine health (MINE_HP while intact).
 var _hp := 0
 var _visual: ColorRect = null
+## Issue #368: the armed mine's red warning light (null while dormant).
+var _mine_light: ShotLight = null
 
 
 func setup(p_kind: int, p_velocity: Vector2, p_damage: int, p_lifetime: float,
@@ -147,6 +149,17 @@ func _ready() -> void:
 	add_child(visual)
 	_visual = visual
 
+	# Issue #368: lighting effect — the rocket's exhaust flickers bright
+	# orange, the grenade glows green; the thrown mine stays dark until
+	# its fuse arms (see _physics_process), the rock is a plain clod.
+	match kind:
+		Kind.ROCKET:
+			add_child(ShotLight.create(
+				Color(1.0, 0.55, 0.2), 150.0, 2.4, true, 0.3))
+		Kind.GRENADE:
+			add_child(ShotLight.create(
+				Color(0.4, 0.9, 0.4), 90.0, 1.6))
+
 	# Issue #246: the mine has NO fuse timer — it only explodes after a
 	# character stepped near it. While it flies it counts as a live
 	# projectile (turn handover waits, issue #119); the watchdog makes sure
@@ -186,6 +199,10 @@ func _physics_process(delta: float) -> void:
 					# explosion before the next turn begins (it left the group
 					# when it settled, issue #246).
 					add_to_group("projectiles")
+					# Issue #368: the armed fuse emits a red warning light.
+					_mine_light = ShotLight.create(
+						Color(1.0, 0.2, 0.1), 80.0, 1.2)
+					add_child(_mine_light)
 					return
 	else:
 		# Armed: blink red while the fuse counts down, then explode.
@@ -193,6 +210,9 @@ func _physics_process(delta: float) -> void:
 		if _visual != null:
 				_visual.color = Color(1.0, 0.15, 0.1, 1) \
 					if fmod(_fuse_left, 0.25) < 0.125 else _color
+		if _mine_light != null and is_instance_valid(_mine_light):
+				_mine_light.energy = 2.2 \
+					if fmod(_fuse_left, 0.25) < 0.125 else 0.5
 		if _fuse_left <= 0.0:
 				_explode()
 
@@ -304,6 +324,10 @@ func _explode() -> void:
 			continue
 		if item.global_position.distance_to(global_position) <= blast_radius:
 			item.take_damage(damage)
+	# Issue #368: the explosion flashes a big fading light.
+	if get_parent() != null:
+		ShotLight.flash(get_parent(), global_position,
+			Color(1.0, 0.8, 0.4), maxf(blast_radius, 60.0) * 1.6, 3.0, 0.4)
 	_spawn_blast_visual()
 	queue_free()
 
