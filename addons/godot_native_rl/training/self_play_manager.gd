@@ -1,0 +1,136 @@
+extends Node
+# League self-play coordinator (#29): owns the opponent pool + ELO ledger, swaps the ghost
+# agent's frozen ncnn snapshot at episode boundaries, and records match outcomes.
+# The ghost is an ordinary NCNN_INFERENCE controller — invisible to the trainer (NcnnSync's
+# n_agents counts only TRAINING agents), so any stock single-policy backend trains against it.
+# Spec: docs/superpowers/specs/2026-06-12-competitive-selfplay-design.md
+
+const OpponentPool = preload("res://addons/godot_native_rl/training/opponent_pool.gd")
+
+signal opponent_changed(name: String)
+signal ratings_updated(learner_rating: float)
+
+@export var pool_dir := "user://selfplay_pool"
+@export var ghost_agent_path: NodePath
+@export var pick_mode := "elo_proximity"  ## "elo_proximity" (near-rated sparring, #190) | "uniform" | "latest"
+@export var elo_k := 32.0
+@export var rng_seed := 0
+
+const BASELINE := "__baseline__"
+
+var _pool = OpponentPool.new()
+var _ghost: Node
+var _rng := RandomNumberGenerator.new()
+var _current := BASELINE
+# The ghost's scene-preconfigured model, remembered so a BASELINE pick can RESTORE it (#305):
+# without this, every BASELINE pick after a snapshot swap left the ghost playing the last
+# snapshot's weights while ELO recorded the match against __baseline__.
+var _baseline_param := ""
+var _baseline_bin := ""
+
+func _ready() -> void:
+	if not is_in_group("SELF_PLAY"):
+		add_to_group("SELF_PLAY")
+	_rng.seed = rng_seed
+	if _ghost == null:
+		_ghost = get_node_or_null(ghost_agent_path)
+	if _ghost == null:
+		push_error("SelfPlayManager: ghost_agent_path not set/invalid.")
+		return
+	if "model_param_path" in _ghost and "model_bin_path" in _ghost:
+		_baseline_param = String(_ghost.model_param_path)
+		_baseline_bin = String(_ghost.model_bin_path)
+	_load_ledger()
+	if _pool.is_empty():
+		# Rated placeholder for the ghost's preconfigured (scene-set) model.
+		_pool.add_member(BASELINE)
+		push_warning("SelfPlayManager: pool '%s' is empty — playing the ghost's preconfigured model as %s." % [pool_dir, BASELINE])
+	else:
+		_assign_next_opponent()
+
+func set_ghost_for_test(g: Node) -> void:
+	_ghost = g
+
+# Re-read the pool dir/ledger and (re)assign an opponent — for pools that grow after _ready
+# (e.g. the alternating-phase orchestrator registering fresh snapshots, or tests priming a
+# temp pool).
+func rescan_pool() -> void:
+	_load_ledger()
+	if not _pool.is_empty():
+		_assign_next_opponent()
+
+# Called by the TRAINING-side agent at each episode end (one line, null-guarded — same
+# integration pattern as the curriculum's record_episode).
+func report_match(learner_won: bool, draw := false) -> void:
+	if _pool.record_match(_current, learner_won, draw, elo_k):
+		print("SelfPlay: match vs %s -> learner %s | learner_rating=%.1f opp_rating=%.1f" % [
+			_current, ("draw" if draw else ("won" if learner_won else "lost")),
+			_pool.learner_rating(), _pool.member_rating(_current)])
+		_save_ledger()
+		ratings_updated.emit(_pool.learner_rating())
+	_assign_next_opponent()
+
+func learner_rating() -> float:
+	return _pool.learner_rating()
+
+func current_opponent() -> String:
+	return _current
+
+func _assign_next_opponent() -> void:
+	var pick: String = _pool.pick_opponent(_rng, pick_mode)
+	if pick == "" or pick == BASELINE:
+		# BASELINE means the ghost's SCENE model — restore it if a snapshot swap displaced it
+		# (#305). If the restore fails (or the ghost has no scene paths to restore — BOTH files
+		# are required, #338), keep recording against the snapshot actually playing rather than
+		# misattributing to __baseline__ and corrupting both ratings.
+		if _current == BASELINE:
+			return
+		if _baseline_param == "" or _baseline_bin == "" \
+				or not _swap_ghost_model(_baseline_param, _baseline_bin, BASELINE):
+			push_error("SelfPlayManager: BASELINE picked but the scene model could not be restored; keeping '%s' so ELO stays truthful." % _current)
+		return
+	_swap_ghost_model(pool_dir.path_join(pick + ".ncnn.param"), pool_dir.path_join(pick + ".ncnn.bin"), pick)
+
+
+## The ONE ghost-swap path (#338): both the snapshot pick and the BASELINE restore go through
+## here, so a change to reload semantics can never land on one branch and miss the other
+## (which would silently reintroduce the #305 misattribution on the un-updated path).
+func _swap_ghost_model(param: String, bin: String, label: String) -> bool:
+	if not (_ghost.has_method("reload_model") and _ghost.reload_model(param, bin)):
+		push_error("SelfPlayManager: could not load '%s'; keeping '%s'." % [label, _current])
+		return false
+	if label != _current:
+		if label == BASELINE:
+			print("SelfPlay: ghost restored to its scene model (%s)" % BASELINE)
+		else:
+			print("SelfPlay: ghost now plays snapshot '%s' (rating %.1f)" % [label, _pool.member_rating(label)])
+		opponent_changed.emit(label)
+	_current = label
+	return true
+
+func _ledger_path() -> String:
+	return pool_dir.path_join("pool.json")
+
+func _load_ledger() -> void:
+	var f := FileAccess.open(_ledger_path(), FileAccess.READ)
+	if f != null:
+		_pool.load_ledger(f.get_as_text())
+
+func _save_ledger() -> void:
+	# Atomic write (#371): serialize to a temp file, then rename over pool.json. The #189 mid-run
+	# freezer (Python) and a league run reading the pool can touch this file concurrently; a
+	# truncate-then-write here could hand a reader torn JSON (or lose the other writer's update).
+	# rename over the target is atomic on POSIX, so a reader always sees a complete ledger.
+	DirAccess.make_dir_recursive_absolute(pool_dir)
+	var final_path := _ledger_path()
+	var tmp_path := final_path + ".tmp"
+	var f := FileAccess.open(tmp_path, FileAccess.WRITE)
+	if f == null:
+		push_error("SelfPlayManager: cannot write ledger '%s'." % final_path)
+		return
+	f.store_string(_pool.ledger_to_json())
+	f.close()  # flush before the rename so the swapped-in file is complete
+	var err := DirAccess.rename_absolute(tmp_path, final_path)
+	if err != OK:
+		push_error("SelfPlayManager: could not atomically replace ledger '%s' (err %d)." % [final_path, err])
+		DirAccess.remove_absolute(tmp_path)
