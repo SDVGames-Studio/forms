@@ -51,7 +51,9 @@ func _ready() -> void:
 		failures.append("drop-down must start on the first team, got %d" % team_select.selected)
 	elif team_select.get_item_text(1) != "Team 2":
 		failures.append("drop-down items must be the team labels, got %s" % team_select.get_item_text(1))
-	var scroll: ScrollContainer = menu.get_node("Column/Scroll")
+	# Issue #348: the template moved the editing column under
+	# Layout/Columns (brand on the left, content on the right).
+	var scroll: ScrollContainer = menu.get_node("Layout/Columns/Column/Scroll")
 	if scroll == null:
 		failures.append("editing column must be inside a ScrollContainer")
 
