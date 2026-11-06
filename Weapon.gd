@@ -15,10 +15,11 @@ extends Node2D
 ##                    character steps near it — 2-second fuse, boom
 ##                    (issue #246); it persists across turns
 ##  6 Jackhammer (key 0) — hold F to charge, release to drill: the wielder
-##                    is pushed along the CURRENT gravity for 1–5 s
+##                    is pushed along the AIM direction for 1–3 s
 ##                    (scaled by the charge), carving destructible ground
-##                    below them and damaging every figure on the way
-##                    (issue #307)
+##                    ahead and damaging every figure on the way
+##                    (issue #307; issue #316: any aim direction, max 3 s,
+##                    steerable mid-drill with the aim keys, no cancel)
 ## Visuals are plain rectangles built in code — no extra assets.
 
 const ProjectileScript := preload("res://Projectile.gd")
@@ -63,15 +64,17 @@ const GRENADE_MASS := 0.6
 ## Issue #227: the Rock tool projectile is a touch heavier than a grenade.
 const ROCK_MASS := 0.8
 ## Issue #307: the jackhammer — hold F to charge (the shared charge
-## meter), release to drill. The wielder is pushed along the CURRENT
-## gravity (toward the centre of gravity at the current spot) for
-## MIN..MAX seconds scaled by the charge, carving destructible ground
-## below them in a tunnel of JACKHAMMER_RADIUS and damaging every other
-## character caught in the tunnel (once per drill). The drill follows the
-## level gravity at every tick, so on radial arenas the tunnel bends
-## around the core like a falling figure does.
+## meter), release to drill. Issue #316 rework: the wielder is pushed
+## along the AIM direction (any direction the character directs, not
+## just down) for MIN..MAX seconds scaled by the charge, carving
+## destructible ground ahead in a tunnel of JACKHAMMER_RADIUS and
+## damaging every other character caught in the tunnel (once per drill).
+## The drill direction is re-sampled from the LIVE aim at every tick:
+## the aim keys steer a running drill (it cannot be cancelled — it runs
+## its full time or stalls), and on radial arenas the aim frame rides
+## the level gravity, so the tunnel still bends around the core.
 const JACKHAMMER_MIN_TIME := 1.0
-const JACKHAMMER_MAX_TIME := 5.0
+const JACKHAMMER_MAX_TIME := 3.0
 const JACKHAMMER_SPEED := 130.0
 ## Issue #307 rework: the tunnel radius must EXCEED the figure's
 ## half-width — every figure is a capsule of radius 24 (Player scenes,
@@ -109,11 +112,12 @@ var _thrust_t := -1.0
 ## Issue #257: bodies already damaged by the CURRENT thrust — each target
 ## on the spearhead's path takes the spear hit at most once per thrust.
 var _thrust_hit: Array = []
-## Issue #307: jackhammer drill state — seconds left, gravity direction
-## (re-sampled every tick so the tunnel bends with the level gravity),
-## bodies already damaged by THIS drill, the last carve centre, the
-## stall probe position/timer, and the turn-effect gate node that keeps
-## the post-shot handover waiting while the drill runs.
+## Issue #307: jackhammer drill state — seconds left, drill direction
+## (re-sampled from the live aim every tick so the aim keys steer a
+## running drill, #316), bodies already damaged by THIS drill, the last
+## carve centre, the stall probe position/timer, and the turn-effect
+## gate node that keeps the post-shot handover waiting while the drill
+## runs.
 var _drill_left := 0.0
 var _drill_dir := Vector2.DOWN
 var _drill_hit: Array = []
@@ -332,8 +336,8 @@ func _physics_process(delta: float) -> void:
 	# Issue #67: keep the held weapon aligned with the character's view.
 	if _held != null and parent != null and parent.has_method("aim_dir"):
 		var aim: Vector2 = parent.aim_dir(_facing, 1.0)
-		# Issue #307: while the drill runs the jackhammer points INTO the
-		# ground (along the current gravity) instead of along the aim.
+		# Issue #307: while the drill runs the jackhammer points along the
+		# drill direction instead of along the aim.
 		if _drill_left > 0.0:
 			aim = _drill_dir
 		var style: Dictionary = HELD_STYLES[_held_style_index()]
@@ -414,6 +418,13 @@ func reset_shots() -> void:
 ## "nothing useful left to do" watchdog does not end a turn mid-reload.
 func is_busy() -> bool:
 	return _cooldown_left > 0.0 or _shot_delay_left > 0.0
+
+
+## Issue #316: true while this wielder's jackhammer drill is running —
+## Player.gd keeps the aim keys steering the drill (and the drill's
+## velocity intact) through the frozen-input handover.
+func is_drilling() -> bool:
+	return _drill_left > 0.0
 
 
 func _fire(power := 1.0) -> void:
@@ -628,15 +639,16 @@ func _gravity_dir() -> Vector2:
 
 
 ## Issue #307: start the jackhammer drill — `power` (0..1, the held-F
-## charge fraction) maps to JACKHAMMER_MIN..MAX seconds of drilling. The
-## wielder is pushed along the current gravity, carves destructible ground
-## below them and damages every other character on the way. A lightweight
+## charge fraction) maps to JACKHAMMER_MIN..MAX seconds of drilling.
+## Issue #316: the drill runs along the AIM direction (any direction the
+## character directs it — not just down), carves destructible ground
+## ahead and damages every other character on the way. A lightweight
 ## node in the turn-effects group keeps the post-shot handover waiting
 ## until the drill finishes (same gate as projectiles and blast rings).
 func _start_jackhammer(power: float = 1.0) -> void:
 	_drill_left = lerpf(JACKHAMMER_MIN_TIME, JACKHAMMER_MAX_TIME,
 			clampf(power, 0.0, 1.0))
-	_drill_dir = _gravity_dir()
+	_drill_dir = _aim().normalized()
 	_drill_hit.clear()
 	_drill_stall = 0.0
 	_drill_carve_at = Vector2.INF
@@ -651,16 +663,21 @@ func _start_jackhammer(power: float = 1.0) -> void:
 
 
 ## Issue #307: one physics tick of the drill — carve, damage, push, and
-## stop early when the wielder grinds against indestructible ground.
+## stop early when the wielder grinds against indestructible ground (the
+## only way a drill ends before its time — the player cannot cancel it).
 func _tick_jackhammer(delta: float) -> void:
 	var parent := get_parent() as CharacterBody2D
 	if parent == null or not is_instance_valid(parent):
 		_end_jackhammer()
 		return
 	_drill_left -= delta
-	# The tunnel follows the level gravity at the CURRENT spot (radial
-	# arenas bend it around the core, exactly like a falling figure).
-	_drill_dir = _gravity_dir()
+	# Issue #316: the drill follows the LIVE aim at every tick — steering
+	# the aim (W/S) turns a running drill, and there is no cancel: it runs
+	# until the time is up or it stalls. On radial arenas the aim frame
+	# rides the level gravity, so the tunnel still bends around the core.
+	var aimed := _aim()
+	if aimed.length_squared() > 0.01:
+		_drill_dir = aimed.normalized()
 	# Carve a fresh tunnel circle whenever the wielder advanced
 	# JACKHAMMER_CARVE_STEP px (bounds the recursive chunk splitting).
 	var carve_point := parent.global_position + _drill_dir * 12.0
@@ -672,9 +689,9 @@ func _tick_jackhammer(delta: float) -> void:
 						and chunk.has_method("apply_blast"):
 						chunk.apply_blast(carve_point, JACKHAMMER_RADIUS)
 	_jackhammer_sweep_hit(parent)
-	# Push the wielder along gravity. Player._physics_process keeps the
-	# along-gravity velocity component while the handover freezes input,
-	# so this lands in the next move_and_slide.
+	# Push the wielder along the drill direction. Player._physics_process
+	# keeps the velocity while the handover freezes input (#316), so this
+	# lands in the next move_and_slide.
 	parent.velocity = _drill_dir * JACKHAMMER_SPEED
 	# No progress for JACKHAMMER_STALL_TIME seconds — the drill hit
 	# indestructible ground (or a wall): grind to a halt early.

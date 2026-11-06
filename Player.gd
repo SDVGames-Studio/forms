@@ -483,10 +483,25 @@ func _physics_process(delta: float) -> void:
 		# Issue #67: raise/lower the view with W/S / Arrow Up/Down.
 		view_angle = clampf(view_angle + view_axis * VIEW_SPEED * delta, -VIEW_MAX, VIEW_MAX)
 	else:
-		# Issue #40/#58: uncontrolled team member just stays put (no glide
-		# along the surface — only the component along gravity survives,
-		# which on flat levels is exactly the old velocity.y).
-		velocity = grav * velocity.dot(grav)
+		# Issue #316: a DRILLING wielder is the one frozen-input exception —
+		# the aim keys (W/S) still steer the running jackhammer (the drill
+		# direction follows the live aim, see Weapon._tick_jackhammer), and
+		# the drill's velocity must survive the clamp below: Weapon owns it
+		# until the drill ends. There is no cancel — the drill runs its full
+		# aimed time or stalls against indestructible ground.
+		var drill := get_node_or_null("Weapon")
+		if controlled and TurnController.is_player_team(TurnController.active_team) \
+					and drill != null and drill.has_method("is_drilling") \
+					and drill.is_drilling():
+			var steer := Input.get_axis("view_down", "view_up")
+			if steer != 0.0:
+				view_angle = clampf(view_angle + steer * VIEW_SPEED * delta,
+						-VIEW_MAX, VIEW_MAX)
+		else:
+			# Issue #40/#58: uncontrolled team member just stays put (no glide
+			# along the surface — only the component along gravity survives,
+			# which on flat levels is exactly the old velocity.y).
+			velocity = grav * velocity.dot(grav)
 
 	move_and_slide()
 
