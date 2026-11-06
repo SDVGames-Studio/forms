@@ -451,7 +451,7 @@ func _weapon_hint(i: int) -> String:
 		"Mine":
 			damage = str(WeaponFire.MINE_DAMAGE)
 		"Jackhammer":
-			damage = str(WeaponFire.JACKHAMMER_DAMAGE)
+			damage = "%d/s while pushing" % int(WeaponFire.JACKHAMMER_PUSH_DPS)
 		"Railgun":
 			damage = "%d-%d" % [WeaponFire.RAILGUN_MIN_DAMAGE,
 				WeaponFire.RAILGUN_MAX_DAMAGE]
