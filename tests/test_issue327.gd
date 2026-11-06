@@ -1,10 +1,14 @@
 extends Node
 ## Regression check for issue #327: a weapon/tool with no uses left can
-## never be taken IN-HANDS. The panel selection demotes to the infinite
-## spear the moment its budget hits 0, the per-frame hand sync resolves
-## the selection against the team budget (spent -> spear in the hand),
-## a spent weapon cannot be re-selected, and an armed rock leaves the
-## hand when its budget runs dry.
+## never be taken IN-HANDS. Reworked with issue #316: the panel
+## selection KEEPS a weapon whose budget just hit 0 for the rest of its
+## turn (the wielding character keeps it in hands — an activated last
+## jackhammer must not morph into the spear mid-drill); only when the
+## next player turn begins (unlock_all) does the panel advance to the
+## next weapon with uses left. The per-frame hand sync still resolves
+## the selection against the team budget for everyone else (spent ->
+## spear in the hand), a spent weapon cannot be re-selected, and an
+## armed rock leaves the hand when its budget runs dry.
 ##
 ## Run headless: godot --headless res://tests/test_issue327.tscn
 ## Exit code 0 = pass.
@@ -49,24 +53,51 @@ func _ready() -> void:
 	_check("controlled member holds the shotgun",
 		weapon.selected_weapon == 0 and weapon._held_style_index() == 0)
 
-	# 2) The last use of the SELECTED weapon demotes the panel to the
-	# spear — the next hand sync cannot take the spent weapon in-hands.
+	# 2) The last use of the SELECTED weapon: the PANEL KEEPS pointing at
+	# it for the rest of the turn (#316 rework — no more instant demote
+	# to the spear), while the hand sync still never takes the spent
+	# weapon in-hands for an UNLOCKED member (spear fallback).
 	while inv.weapon_uses_left("player", 0) > 0:
 		inv.spend_weapon("player", 0)
 	_check("shotgun budget exhausted", inv.weapon_uses_left("player", 0) == 0)
-	_check("panel demotes the spent selection to the spear",
-		inv.selected_weapon == SPEAR)
+	_check("panel KEEPS the spent selection for the rest of the turn",
+		inv.selected_weapon == 0)
 	_check("held_weapon_for falls back to the spear",
 		inv.held_weapon_for("player") == SPEAR)
 	for i in 10:
 		await get_tree().physics_frame
-	_check("the spent shotgun never enters the hand — spear held",
+	_check("the unlocked member never holds the spent weapon — spear held",
 		weapon.selected_weapon == SPEAR and weapon._held_style_index() == SPEAR)
+
+	# 2b) Issue #316: a member LOCKED to its weapon (it already fired this
+	# turn — Weapon._fire locks on the first shot) KEEPS the spent weapon
+	# in hands, and the NEXT player turn (unlock_all) advances the panel
+	# to the next weapon the team can still pay for — the owner's
+	# algorithm: use the last jackhammer, budget drops to zero, turn
+	# ends, THEN the character changes to the next non-zero weapon.
+	inv.set_selected(5)  # jackhammer (budget intact)
+	for i in 10:
+		await get_tree().physics_frame
+	_check("jackhammer taken in hands", weapon.selected_weapon == 5)
+	inv.lock_for(member)  # what Weapon._fire does on the first shot
+	while inv.weapon_uses_left("player", 5) > 0:
+		inv.spend_weapon("player", 5)  # …and the shot spends the last use
+	for i in 10:
+		await get_tree().physics_frame
+	_check("locked member keeps the spent jackhammer in hands",
+		weapon.selected_weapon == 5 and weapon._held_style_index() == 6)
+	inv.unlock_all()  # the start of the next player turn
+	_check("panel advances off the spent jackhammer to the next payable weapon",
+		inv.selected_weapon == 1)  # shotgun is spent, so next is the rocket
+	for i in 10:
+		await get_tree().physics_frame
+	_check("hand follows the advanced selection — rocket held",
+		weapon.selected_weapon == 1 and weapon._held_style_index() == 1)
 
 	# 3) A spent weapon cannot be re-taken either (#305 gate, re-asserted).
 	inv.set_selected(0)
-	_check("re-selecting the spent weapon keeps the spear",
-		inv.selected_weapon == SPEAR)
+	_check("re-selecting the spent weapon changes nothing",
+		inv.selected_weapon == 1)
 
 	# 4) The rock tool: arming takes it in hand; the budget hitting 0
 	# takes it back out of the hand.
