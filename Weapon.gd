@@ -566,6 +566,15 @@ func npc_fire() -> void:
 	_fire()
 
 
+## Issue #368: brief muzzle flash where a shot leaves the barrel — a
+## hot point of light that fades in ~0.1 s.
+func _muzzle_flash(at: Vector2) -> void:
+	var level_root := get_parent().get_parent()
+	if level_root == null:
+		return
+	ShotLight.flash(level_root, at, Color(1.0, 0.85, 0.45), 110.0, 2.6, 0.12)
+
+
 func _spawn_projectile(type: int, velocity: Vector2, damage: int, lifetime: float,
 		size: Vector2, color: Color, blast_radius: float = 0.0) -> Area2D:
 	var projectile := Area2D.new()
@@ -575,6 +584,8 @@ func _spawn_projectile(type: int, velocity: Vector2, damage: int, lifetime: floa
 	projectile.shooter = get_parent()
 	projectile.global_position = global_position + _aim() * 36.0
 	get_parent().get_parent().add_child(projectile)
+	# Issue #368: muzzle flash where the shot leaves the barrel.
+	_muzzle_flash(projectile.global_position)
 	return projectile
 
 
@@ -670,6 +681,8 @@ func _spawn_body(kind: int, velocity: Vector2, damage: int, lifetime: float,
 	body.shooter = get_parent()
 	body.global_position = global_position + _aim() * 36.0
 	get_parent().get_parent().add_child(body)
+	# Issue #368: muzzle flash where the shot leaves the barrel.
+	_muzzle_flash(body.global_position)
 	return body
 
 
@@ -925,6 +938,8 @@ func _fire_railgun(power: float = 1.0) -> void:
 		if target != null and target.has_method("take_damage"):
 			target.take_damage(railgun_damage(power), wielder)
 	_railgun_beam(muzzle, beam_end, power)
+	# Issue #368: the railgun's shot flashes bright at the muzzle.
+	_muzzle_flash(muzzle)
 
 
 ## Issue #359: the railgun tracer — a thick Line2D from the muzzle to the
@@ -955,6 +970,10 @@ func _railgun_beam(muzzle: Vector2, beam_end: Vector2, power: float) -> void:
 	level_root.add_child(beam)
 	beam.global_position = muzzle
 	beam.points = PackedVector2Array([Vector2.ZERO, beam.to_local(beam_end)])
+	# Issue #368: a bright light at the muzzle fades with the beam.
+	var beam_light := ShotLight.create(Color(0.9, 0.9, 1.0), 130.0, 2.4)
+	beam.add_child(beam_light)
+	beam_light.fade(RAILGUN_BEAM_TIME)
 	var gate := Node.new()
 	gate.name = "RailgunBeamGate"
 	gate.add_to_group(TurnController.EFFECT_GROUP)

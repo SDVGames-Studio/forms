@@ -56,6 +56,12 @@ func _ready() -> void:
 	visual.color = _color
 	add_child(visual)
 
+	# Issue #368: lighting effect — every shot carries a soft light that
+	# travels with it (bigger for the explosive types).
+	add_child(ShotLight.create(_color,
+		110.0 if type != Type.PELLET else 70.0,
+		2.0 if type != Type.PELLET else 1.6))
+
 	get_tree().create_timer(lifetime).timeout.connect(_on_expire)
 
 
@@ -132,4 +138,8 @@ func _explode() -> void:
 		if item != null and is_instance_valid(item) \
 				and item.global_position.distance_to(global_position) <= blast_radius:
 			item.take_damage(damage)
+	# Issue #368: the explosion flashes a big fading light.
+	if blast_radius > 0.0 and get_parent() != null:
+		ShotLight.flash(get_parent(), global_position,
+			Color(1.0, 0.8, 0.4), blast_radius * 1.6, 3.0, 0.4)
 	queue_free()
