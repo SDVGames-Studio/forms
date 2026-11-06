@@ -1,0 +1,251 @@
+class_name NcnnControllerCore
+extends RefCounted
+
+# Node-agnostic episode + reward state machine shared by NcnnAIController2D/3D.
+# Holds no Node references; reset_after is passed into step() by the wrapper so the
+# wrapper stays the single source of truth for that exported value.
+
+const ActionDecode = preload("res://addons/godot_native_rl/controllers/action_decode.gd")
+const ObsNormalize = preload("res://addons/godot_native_rl/controllers/obs_normalize.gd")
+const RecurrentState = preload("res://addons/godot_native_rl/controllers/recurrent_state.gd")
+
+var done: bool = false
+# Gymnasium terminated/truncated split (#12): true when the episode ended by the reset_after
+# HORIZON (a truncation), false when the agent set `done` for a task-terminal state. Additive:
+# `done` stays = terminated OR truncated, so the godot_rl 0.8.2 wire semantics are unchanged.
+var truncated: bool = false
+var reward: float = 0.0
+var n_steps: int = 0
+var needs_reset: bool = false
+var heuristic: String = "human"
+var reward_source = null
+var obs_norm_stats: Dictionary = {}
+
+# Continuous DiagGaussian std sidecar (from ActionDist.to_typed of a <model>_action_dist.json).
+# Empty -> continuous actions are the mean (current behavior). Used only when
+# deterministic_inference=false; applied positionally across continuous action dims.
+var action_dist_stats: Dictionary = {}
+
+# Recurrent (LSTM/GRU) deploy: a typed contract (from RecurrentState.to_typed of a
+# <model>.recurrent.json sidecar). Empty -> feed-forward (current behavior, zero overhead).
+var recurrent_contract: Dictionary = {}
+var recurrent_state: Dictionary = {}  # blob_name -> PackedFloat32Array (carried across frames)
+var _warned_image_recurrent: bool = false  # one-shot guard so the image+recurrent warning isn't per-frame
+
+func init_recurrent_state() -> void:
+	if recurrent_contract.is_empty():
+		recurrent_state = {}
+		return
+	recurrent_state = RecurrentState.zero_state(recurrent_contract)
+
+# Stochastic deploy: when false, discrete actions are sampled from softmax(logits) via `rng`
+# instead of argmax, and continuous actions are sampled from a DiagGaussian when `action_dist_stats`
+# is set (else the mean). Set by the controller wrappers.
+var deterministic_inference: bool = true
+var rng: RandomNumberGenerator = RandomNumberGenerator.new()
+
+# seed_value < 0 -> randomize each run; >= 0 -> fixed seed for reproducible stochastic eval.
+func setup_rng(seed_value: int) -> void:
+	if seed_value < 0:
+		rng.randomize()
+	else:
+		rng.seed = seed_value
+
+func step(reset_after: int) -> void:
+	n_steps += 1
+	if n_steps > reset_after:
+		truncated = true  # horizon end, not a task-terminal state (#12)
+		# Signal episode termination (godot_rl convention): the trainer reads `done`,
+		# which gives proper episode boundaries and reward statistics.
+		needs_reset = true
+		done = true
+
+func reset() -> void:
+	n_steps = 0
+	needs_reset = false
+	# NOTE (#379): reset() deliberately does NOT clear `truncated`. Agents call reset() in the SAME
+	# frame the horizon fires (before the Sync reads the step), so clearing it here would make every
+	# horizon end reach the wire as terminated (truncated=false) — silently no-oping the #12 split.
+	# `truncated` follows `done`'s lifecycle: set at the horizon, cleared only by the Sync's paired
+	# set_done_false(). The only frame reset() runs with truncated=true is the horizon frame, where
+	# done=true too, and the Sync reads+clears both together — so nothing leaks into the next episode.
+	init_recurrent_state()  # recurrent policies must not carry memory across episodes
+
+func reset_if_done() -> void:
+	if done:
+		reset()
+
+func zero_reward() -> void:
+	reward = 0.0
+
+func set_done_false() -> void:
+	# Paired read-and-clear with get_done()/get_truncated(): the sync clears both after
+	# emitting a step, so a stale truncation can never leak into the next episode's flags.
+	done = false
+	truncated = false
+
+func get_done() -> bool:
+	return done
+
+
+func get_truncated() -> bool:
+	return truncated
+
+func set_heuristic(h: String) -> void:
+	heuristic = h
+
+func accumulate(adapters: Array, ctx) -> void:
+	if reward_source != null:
+		reward += reward_source.evaluate(ctx)
+	for adapter in adapters:
+		reward += adapter.drain()
+
+# Run native ncnn inference and apply the decoded action(s) to the agent. Uses the image path
+# when the agent supplies a live frame (get_inference_image()), else the float-vector path.
+# The raw output is decoded against agent.get_action_space() via ActionDecode, so discrete,
+# continuous, multi-discrete, and multiple simultaneous action keys all deploy. No-op when the
+# runner is missing/unloaded. The agent Node is passed in, never stored (core stays node-agnostic).
+func choose_and_apply_action(agent, runner) -> void:
+	if runner == null or not runner.is_model_loaded():
+		return
+	var output: PackedFloat32Array
+	var debug_obs := PackedFloat32Array()
+	var debug_img := {}
+	var img: Image = agent.get_inference_image()
+	if img != null:
+		# The recurrent path is float-obs only. If a recurrent contract is configured but the agent
+		# also supplies a live frame, hidden state is NOT used or advanced on the image path — warn
+		# once so this misconfiguration is loud instead of silently producing zero-context inference.
+		if not recurrent_contract.is_empty() and not _warned_image_recurrent:
+			push_warning("NcnnControllerCore: a recurrent contract is set but get_inference_image() returned a frame — recurrent hidden state is NOT used on the image path (float-obs only).")
+			_warned_image_recurrent = true
+		# Auto-detect grayscale (#36): a grayscale CameraSensor captures FORMAT_L8, so a 1-channel
+		# policy deploys correctly without any extra flag — RGB frames stay the 3-channel default.
+		var is_gray: bool = img.get_format() == Image.FORMAT_L8
+		output = runner.run_inference_image(img, true, is_gray)
+		debug_img = {"w": img.get_width(), "h": img.get_height(), "c": 1 if is_gray else 3}
+	else:
+		var obs_dict: Dictionary = agent.get_obs()
+		assert("obs" in obs_dict, "get_obs() must return a dictionary with an 'obs' key")
+		var obs_vec := PackedFloat32Array(obs_dict["obs"])
+		if not obs_norm_stats.is_empty():
+			obs_vec = ObsNormalize.normalize(obs_vec, obs_norm_stats["mean"], obs_norm_stats["var"],
+				obs_norm_stats["epsilon"], obs_norm_stats["clip_obs"])
+			if obs_vec.is_empty():
+				push_error("NcnnControllerCore.choose_and_apply_action: obs normalization failed (size mismatch); skipping action.")
+				return
+		if recurrent_contract.is_empty():
+			output = runner.run_inference(obs_vec)
+		else:
+			output = _run_recurrent_and_advance(runner, obs_vec)
+		debug_obs = obs_vec
+	var action_space: Dictionary = agent.get_action_space()
+	var action: Dictionary = ActionDecode.decode_actions(output, action_space, deterministic_inference, rng, action_dist_stats)
+	if action.is_empty():
+		push_error("NcnnControllerCore.choose_and_apply_action: action decode failed (empty/mismatched output); skipping action.")
+		return
+	_emit_debug(agent, debug_obs, debug_img, output, action, action_space)
+	agent.set_action(action)
+
+# Emit the immutable debug payload through the agent (the node owns the signal; the core is
+# node-agnostic). Inert when nothing declares/listens for the signal — only the small Dictionary
+# is built, at decision cadence. See PolicyDebugOverlay for the consumer.
+func _emit_debug(agent, obs_vec: PackedFloat32Array, obs_image: Dictionary, logits: PackedFloat32Array, action: Dictionary, action_space: Dictionary) -> void:
+	if not agent.has_signal("inference_step"):
+		return
+	agent.emit_signal("inference_step", {
+		"agent_name": String(agent.name),
+		"obs": obs_vec,
+		"obs_image": obs_image,
+		"logits": logits,
+		"action_space": action_space,
+		"action": action,
+		"deterministic": deterministic_inference,
+	})
+
+# Build the godot_rl observation_space from a sample get_obs() dict. Numeric-vector values
+# become {"size": [len], "space": "box"}. String values are image (hex) obs whose shape can't
+# be inferred from the value — the agent merges those from the sensor's get_obs_space_entry().
+static func obs_space_from_obs(obs: Dictionary) -> Dictionary:
+	var space := {}
+	for key in obs.keys():
+		var value = obs[key]
+		if value is String:
+			continue
+		space[key] = {"size": [value.size()], "space": "box"}
+	return space
+
+# Recursively gather flat sensors under `root` (duck-typed) in stable scene-tree order and
+# concatenate their observations into one flat Array. An obs-producing node (has both
+# get_observation() and obs_size()) is treated as a LEAF: its subtree is NOT recursed, so
+# wrapper sensors can hold an inner sensor child without double-counting. Nodes that have
+# get_observation() but NO obs_size() (e.g. CameraSensor, hex String obs) are skipped —
+# compose those manually. Depth-first pre-order over get_children() -> deterministic obs layout.
+static func collect_sensors(root: Node) -> Array:
+	var out: Array = []
+	_gather_sensor_obs(root, out)
+	return out
+
+static func _gather_sensor_obs(node: Node, out: Array) -> void:
+	for child in node.get_children():
+		if child.has_method("get_observation") and child.has_method("obs_size"):
+			out.append_array(child.get_observation())
+			continue  # leaf: an obs-producing node owns its subtree (wrappers hold an inner sensor)
+		_gather_sensor_obs(child, out)
+
+# Discover the obs-producing leaf sensor NODES under `root` (same leaf rule as collect_sensors).
+# Used to propagate lifecycle calls (e.g. reset()) to stateful sensor wrappers.
+static func collect_sensors_nodes(root: Node) -> Array:
+	var out: Array = []
+	_gather_sensor_nodes(root, out)
+	return out
+
+static func _gather_sensor_nodes(node: Node, out: Array) -> void:
+	for child in node.get_children():
+		if child.has_method("get_observation") and child.has_method("obs_size"):
+			out.append(child)
+			continue  # leaf: owns its subtree
+		_gather_sensor_nodes(child, out)
+
+# Recurrent inference: feed obs + the carried state blobs into run_inference_multi, store the
+# returned next-state blobs for the following frame, and return the action_output blob to decode.
+# On any failure (empty result, or a result missing an expected blob) it push_errors and returns
+# an empty array WITHOUT advancing state, so the caller skips set_action.
+func _run_recurrent_and_advance(runner, obs_vec: PackedFloat32Array) -> PackedFloat32Array:
+	if recurrent_state.is_empty():
+		init_recurrent_state()
+	# Validate the obs against the sidecar shape here (GDScript side), so a sensor/sidecar drift
+	# names the sidecar as the cause rather than surfacing as a generic C++ Mat size error.
+	var obs_expected: int = RecurrentState.shape_product(recurrent_contract["obs_shape"])
+	if obs_vec.size() != obs_expected:
+		push_error("NcnnControllerCore: obs size %d does not match recurrent sidecar obs_shape product %d; skipping action." % [obs_vec.size(), obs_expected])
+		return PackedFloat32Array()
+	var inputs: Array = [{
+		"name": recurrent_contract["obs_input"],
+		"data": obs_vec,
+		"shape": recurrent_contract["obs_shape"],
+	}]
+	var out_names := PackedStringArray([recurrent_contract["action_output"]])
+	for pair in recurrent_contract["state_pairs"]:
+		inputs.append({"name": pair["in"], "data": recurrent_state[pair["in"]], "shape": pair["shape"]})
+		out_names.append(pair["out"])
+	var result: Dictionary = runner.run_inference_multi(inputs, out_names)
+	if result.is_empty():
+		push_error("NcnnControllerCore: recurrent inference returned empty result.")
+		return PackedFloat32Array()
+	for name in out_names:
+		if not result.has(name):
+			push_error("NcnnControllerCore: recurrent result missing expected blob '%s'; skipping action." % name)
+			return PackedFloat32Array()
+	# Validate every returned state blob's size against the sidecar BEFORE storing any, so a
+	# mismatch is caught on this frame (naming the blob) instead of leaving state half-advanced and
+	# surfacing a misdirected C++ Mat error on the next frame.
+	for pair in recurrent_contract["state_pairs"]:
+		var expected: int = RecurrentState.shape_product(pair["shape"])
+		var got: int = (result[pair["out"]] as PackedFloat32Array).size()
+		if got != expected:
+			push_error("NcnnControllerCore: state blob '%s' returned %d values, expected %d (sidecar shape); skipping action." % [pair["out"], got, expected])
+			return PackedFloat32Array()
+	for pair in recurrent_contract["state_pairs"]:
+		recurrent_state[pair["in"]] = result[pair["out"]]
+	return result[recurrent_contract["action_output"]]
