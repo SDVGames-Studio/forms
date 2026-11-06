@@ -67,6 +67,10 @@ var _teams: Array[String] = []
 var _color_to_id := {}
 var _turn_order: Array[String] = []
 var _turn_index := 0
+## Issue #343: per-team member rotation — the member that acted a team's
+## last turn is remembered (team id -> figure) so the team's NEXT turn
+## begins with the NEXT member, never the same figure twice in a row.
+var _last_active := {}
 ## True while the post-shot delay runs — input is frozen.
 var _switching := false
 ## Bumped on every shot; stale post-shot timers carry an old serial and
@@ -289,6 +293,7 @@ func _on_level_changed() -> void:
 		_teams = []
 		_color_to_id = {}
 		_turn_order = []
+		_last_active = {}
 		return
 	_start_round()
 
@@ -339,6 +344,29 @@ func _alive_of(id: String) -> Array:
 	return result
 
 
+## Issue #343: the member AFTER the one that acted this team's last turn
+## (members = the team's alive figures in stable scene order). With no
+## remembered member (the team's first turn) or a dead/freed one, the
+## first alive member starts the cycle.
+func _next_member(team: String, members: Array) -> Node:
+	if members.is_empty():
+		return null
+	if is_player_team(team):
+		# Only CONTROLLABLE figures rotate for the player team — AI allies
+		# (Npc.gd) have no input to receive (issue #121).
+		var controllable: Array = []
+		for member in members:
+			if member.has_method("set_controlled"):
+				controllable.append(member)
+		if not controllable.is_empty():
+			members = controllable
+	var last: Node = _last_active.get(team)
+	var index := -1
+	if last != null and is_instance_valid(last):
+		index = members.find(last)
+	return members[(index + 1) % members.size()]
+
+
 ## Issue #191: next team in the repeating order that still has figures.
 func _next_alive_team() -> String:
 	if _turn_order.is_empty():
@@ -364,6 +392,8 @@ func _start_round() -> void:
 	_roll_wait = 0.0
 	# Issue #191: discover all teams and shuffle the turn order.
 	_scan_teams()
+	# Issue #343: fresh member rotation for the new round.
+	_last_active = {}
 	# Issue #305: fresh budgets — every team starts the round with 5 uses
 	# of each weapon and each tool (the spear is infinite).
 	WeaponInventory.reset_uses()
@@ -482,14 +512,22 @@ func _begin_turn(team: String) -> void:
 		var weapon: Node = member.get_node_or_null("Weapon")
 		if weapon != null and weapon.has_method("reset_shots"):
 			weapon.reset_shots()
-	if team == TEAM_PLAYER:
-		# The player keeps whichever character is currently controlled…
-		for member in members:
-			if member.get("controlled") == true:
-				active_member = member
-				break
+	# Issue #343: teams ROTATE their members — each new turn of a team
+	# begins with the member AFTER the one that acted last time, never the
+	# same figure again (player and AI teams alike, like Worms).
+	if is_player_team(team):
+		var chosen: Node = _next_member(team, members)
+		# TeamController hands the input over and keeps active_member in
+		# sync (issue #183); the direct fallback covers teams whose only
+		# survivors are AI allies nobody can control (issue #121).
+		var group := get_tree().get_nodes_in_group("player_team")
+		var index := group.find(chosen)
+		if index != -1:
+			TeamController.set_active_index(index)
+		if active_member != chosen:
+			active_member = chosen
 	else:
-		active_member = members.pick_random()
+		active_member = _next_member(team, members)
 	if active_member == null:
 		active_member = members[0]
 		# …but if the controlled member died, hand control to a survivor,
@@ -512,6 +550,11 @@ func _end_turn(from_serial: int = -1) -> void:
 		return
 	_switch_wait = 0.0
 	_switching = false
+	# Issue #343: remember who acted this team's turn (a mid-turn Switch
+	# kept active_member current, issue #183) — the team's next turn
+	# begins with the NEXT member.
+	if active_member != null:
+		_last_active[active_team] = active_member
 	_check_win()
 	if not game_over:
 		# Issue #191: advance along the repeating multi-team order.
