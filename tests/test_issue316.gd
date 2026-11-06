@@ -8,6 +8,9 @@ extends Node
 ##    the aim (the W/S view keys in the real game) turns a running
 ##    drill, and there is no cancel — over open ground the drill always
 ##    runs out its full aimed time.
+## 4. Rework: the damage corridor REACHES a touching figure (contact at
+##    48 px, the new reach is 64) — a drill aimed at an adjacent enemy
+##    damages them instead of grinding against their body harmlessly.
 ##
 ## Run headless: godot --headless res://tests/test_issue316.tscn
 ## Exit code 0 = pass.
@@ -36,6 +39,28 @@ func _physics_process(delta: float) -> void:
 		velocity = Vector2(0.0, velocity.y)
 	move_and_slide()
 "
+
+
+## Stand-in victim (issue #316 rework): records take_damage calls.
+const VictimScript := "
+extends Node2D
+var hits := 0
+var damage := 0
+func take_damage(amount: int) -> void:
+	hits += 1
+	damage += amount
+"
+
+
+func _make_victim(at: Vector2, group := "enemy_team") -> Node2D:
+	var script := GDScript.new()
+	script.source_code = VictimScript
+	script.reload()
+	var victim := Node2D.new()
+	victim.set_script(script)
+	victim.add_to_group(group)
+	victim.global_position = at
+	return victim
 
 
 func _make_wielder(at: Vector2) -> CharacterBody2D:
@@ -111,6 +136,32 @@ func _ready() -> void:
 		printerr("FAIL: a level-aimed drill must not drift along the gravity")
 		failures += 1
 	side_wielder.queue_free()
+
+	# --- Issue #316 rework: the damage corridor REACHES a touching
+	# figure. Two figure capsules (radius 24) touch at 48 px, so the old
+	# forward window (< 40 px) ended before body contact — a drill aimed
+	# at a nearby enemy (not into the ground) ground against them and
+	# dealt NO damage. A victim 60 px along a LEVEL aim (beyond the old
+	# 40 px window, inside body contact + the new JACKHAMMER_REACH) must
+	# take the drill damage within the first ticks. ---
+	var reach_wielder := _make_wielder(Vector2(0, 0))
+	level.add_child(reach_wielder)
+	await get_tree().process_frame
+	var reach_weapon: Node2D = reach_wielder.get_node("Weapon")
+	var reach_victim := _make_victim(Vector2(60, 0))
+	level.add_child(reach_victim)
+	reach_weapon.call("_start_jackhammer", 0.0)
+	for i in 3:  # the hit must land on the very first ticks
+		await get_tree().physics_frame
+	reach_weapon.call("_end_jackhammer")
+	var reach_hit: bool = reach_victim.get("hits") == 1 \
+			and reach_victim.get("damage") == WeaponFire.JACKHAMMER_DAMAGE
+	print("ISSUE316 reach hits=", reach_victim.get("hits"))
+	if not reach_hit:
+		printerr("FAIL: a touching figure ahead of the drill must take its damage")
+		failures += 1
+	reach_wielder.queue_free()
+	reach_victim.queue_free()
 
 	# --- Steering: the drill direction follows the LIVE aim mid-run —
 	# the running drill turns upward while `steer` raises the view. ---

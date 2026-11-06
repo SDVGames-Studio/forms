@@ -50,8 +50,35 @@ func is_locked_for(character: Node) -> bool:
 
 
 ## Issue #143: start of a fresh player turn — every character unlocked.
+## Issue #316 rework: this is also the moment a spent weapon releases the
+## panel selection — the turn is over, so the character now changes to
+## the NEXT weapon the team can still pay for (the owner's algorithm:
+## use the weapon, the budget drops (to zero on the last use), the turn
+## ends, THEN the character switches — never mid-attack).
 func unlock_all() -> void:
 	_locked_characters.clear()
+	_advance_off_spent_weapon()
+
+
+## Issue #316 rework: while the panel points at a weapon whose team
+## budget is gone (e.g. the last jackhammer was just drilled), advance
+## the selection FORWARD through the list (wrapping) to the next weapon
+## with uses left — the spear always qualifies (infinite uses), so the
+## scan always terminates. Called only from unlock_all, i.e. at the
+## start of a fresh PLAYER turn; during the spent weapon's own turn the
+## selection keeps highlighting it (grayed out, unselectable) so the
+## wielding character never sees its active weapon morph mid-run.
+func _advance_off_spent_weapon() -> void:
+	if selected_weapon == WEAPON_SPEAR \
+			or can_spend_weapon(TurnController.TEAM_PLAYER, selected_weapon):
+		return
+	for i in range(1, WEAPONS.size() + 1):
+		var idx := (selected_weapon + i) % WEAPONS.size()
+		if can_spend_weapon(TurnController.TEAM_PLAYER, idx):
+			selected_weapon = idx
+			break
+	_update_highlight()
+	refresh_tools()
 
 var _slots: Array = []
 var _tool_slots: Array = []
@@ -324,16 +351,18 @@ func spend_weapon(team_id: String, weapon: int) -> bool:
 	if weapon != WEAPON_SPEAR:
 		var w := clampi(weapon, 0, WEAPONS.size() - 1)
 		_budget(team_id)["weapons"][w] = maxi(0, weapon_uses_left(team_id, w) - 1)
-		# Issue #327: the last use is gone while the PANEL still points at
-		# this weapon — demote the selection to the infinite spear so no
-		# member takes the spent weapon in-hands on the next hand sync.
-		# The panel shows the PLAYER team's budget, so an enemy spend
-		# never touches the player's selection.
-		if team_id == TurnController.TEAM_PLAYER \
-				and selected_weapon == w and weapon_uses_left(team_id, w) == 0:
-			selected_weapon = WEAPON_SPEAR
-			_update_highlight()
-			refresh_tools()
+		# Issue #327 reworked for #316: the last use is gone while the
+		# PANEL still points at this weapon — the selection now STAYS on
+		# the spent weapon for the rest of the turn (the wielding
+		# character keeps it in hands, see Weapon's lock-aware hand sync;
+		# held_weapon_for still refuses it for everyone else). Only when
+		# the next player turn begins does unlock_all advance the panel to
+		# the next weapon with uses left — demoting to the spear here, on
+		# the spend, made an activated last jackhammer instantly morph
+		# into the spear mid-drill. The panel shows the PLAYER team's
+		# budget, so an enemy spend never touches the player's selection.
+		# The spent slot grays out via refresh_tools below.
+		refresh_tools()
 	refresh_counts()
 	return true
 

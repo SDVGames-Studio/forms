@@ -91,6 +91,14 @@ const JACKHAMMER_RADIUS := 32.0
 const JACKHAMMER_CARVE_STEP := 6.0
 const JACKHAMMER_STALL_TIME := 0.3
 const JACKHAMMER_DAMAGE := 30
+## Issue #316 rework: how far AHEAD of the wielder the drill's damage
+## corridor reaches. Two figure capsules (radius 24) TOUCH at 48 px
+## centre-to-centre — the old forward window (`along < 40`) ended
+## BEFORE body contact, so a drill aimed at an adjacent enemy (any aim
+## that is not into the ground) ground against their body and dealt NO
+## damage. The reach covers the farthest touching pair (pole to pole,
+## 32 + 32 = 64) so every figure the drill presses against is hit.
+const JACKHAMMER_REACH := 64.0
 
 var _facing := 1.0
 var _cooldown_left := 0.0
@@ -274,8 +282,16 @@ func _physics_process(delta: float) -> void:
 		# Issue #327: a weapon with no uses left never enters the hand —
 		# the sync resolves the panel selection against the TEAM budget
 		# and falls back to the infinite spear.
-		selected_weapon = WeaponInventory.held_weapon_for(
-				TurnController.team_id_of(get_parent()))
+		# Issue #316 rework: a member LOCKED to its weapon (it already fired
+		# this turn) KEEPS that weapon in hands — even when the shot just
+		# spent the team's LAST use of it. The jackhammer drill must not
+		# morph into the spear mid-run: the wielder drills with the
+		# jackhammer it activated, and only when the next player turn begins
+		# does the panel advance to the next weapon the team can still pay
+		# for (WeaponInventory.unlock_all).
+		if not WeaponInventory.is_locked_for(get_parent()):
+			selected_weapon = WeaponInventory.held_weapon_for(
+					TurnController.team_id_of(get_parent()))
 	# Issue #101 bugfix: ONLY the controlled member may fire on input —
 	# every character has a Weapon node, so an unguarded Input check made
 	# all characters holding the same weapon fire together.
@@ -721,7 +737,13 @@ func _jackhammer_sweep_hit(parent: Node2D) -> void:
 			var offset := body.global_position - parent.global_position
 			var along := offset.dot(_drill_dir)
 			var lateral := absf(offset.dot(perp))
-			if along > -10.0 and along < 40.0 and lateral <= JACKHAMMER_RADIUS:
+			# Issue #316 rework: the forward window reaches JACKHAMMER_REACH —
+			# far enough to catch a TOUCHING figure (see the constant) — so a
+			# drill aimed at a nearby enemy (not into the ground) damages them
+			# the moment the bodies press together, instead of grinding
+			# harmlessly against them.
+			if along > -10.0 and along < JACKHAMMER_REACH \
+					and lateral <= JACKHAMMER_RADIUS:
 				_drill_hit.append(body)
 				body.take_damage(JACKHAMMER_DAMAGE)
 
