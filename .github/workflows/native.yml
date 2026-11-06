@@ -1,28 +1,20 @@
-name: build
+
+name: Native platform builds
 
 on:
-  push:
-    branches:
-      - dev
-      - main
-  workflow_dispatch:
+  workflow_call:
 
 permissions:
-  contents: write
-  pages: write
-  id-token: write
-
-concurrency:
-  group: build-${{ github.ref }}
-  cancel-in-progress: true
+  contents: read
 
 env:
   GODOT_VERSION: 4.7-stable
 
 jobs:
   export:
-    name: Export builds
+    name: Export Native Builds
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -107,13 +99,7 @@ jobs:
           godot --headless --export-release "Windows" build/windows/Forms.exe
           test -s build/windows/Forms.exe
 
-      - name: Export Web
-        run: |
-          mkdir -p build/web
-          godot --headless --export-release "Web" build/web/index.html
-          test -s build/web/index.html
-
-      - name: Upload build artifacts
+      - name: Upload native build artifacts
         uses: actions/upload-artifact@v7
         with:
           name: forms-builds
@@ -123,68 +109,4 @@ jobs:
             build/windows/Forms.exe
             build/android/Forms.apk
           if-no-files-found: error
-
-      - name: Upload web build artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: forms-web
-          path: build/web
-          if-no-files-found: error
-
-  release:
-    name: Create release
-    needs: export
-    if: github.ref == 'refs/heads/dev'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Download builds
-        uses: actions/download-artifact@v8
-        with:
-          name: forms-builds
-          path: dist
-
-      - name: Create latest release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh release delete latest \
-            --repo "$GITHUB_REPOSITORY" \
-            --cleanup-tag \
-            --yes 2>/dev/null || true
-
-          gh release create latest \
-            dist/linux/Forms.x86_64 \
-            dist/linux/Forms.pck \
-            dist/windows/Forms.exe \
-            dist/android/Forms.apk \
-            --repo "$GITHUB_REPOSITORY" \
-            --title "Latest build" \
-            --notes "Automated build from dev branch ($GITHUB_SHA)." \
-            --target "$GITHUB_SHA"
-
-  pages:
-    name: Deploy web game to GitHub Pages
-    needs: export
-    if: github.ref == 'refs/heads/dev'
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - name: Download web build
-        uses: actions/download-artifact@v8
-        with:
-          name: forms-web
-          path: site
-
-      - name: Setup Pages
-        uses: actions/configure-pages@v6
-
-      - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v5
-        with:
-          path: site
-
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v5
+          retention-days: 30

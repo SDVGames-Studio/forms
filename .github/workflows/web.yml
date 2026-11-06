@@ -1,0 +1,83 @@
+
+name: Web build and deployment
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+env:
+  GODOT_VERSION: 4.7-stable
+
+jobs:
+  export:
+    name: Export Web
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install Godot and export templates
+        run: |
+          set -e
+          curl -L --retry 3 -o /tmp/godot.zip \
+            "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}/Godot_v${GODOT_VERSION}_linux.x86_64.zip"
+          unzip -o /tmp/godot.zip -d /tmp/godot
+          sudo install /tmp/godot/Godot_v${GODOT_VERSION}_linux.x86_64 /usr/local/bin/godot
+
+          curl -L --retry 3 -o /tmp/templates.tpz \
+            "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}/Godot_v${GODOT_VERSION}_export_templates.tpz"
+          mkdir -p ~/.local/share/godot/export_templates/${GODOT_VERSION%-stable}.stable
+          unzip -o /tmp/templates.tpz -d /tmp/tpz
+          mv /tmp/tpz/templates/* ~/.local/share/godot/export_templates/${GODOT_VERSION%-stable}.stable/
+
+      - name: Disable Godot MCP for CI
+        run: python3 scripts/disable_godot_mcp.py
+
+      - name: Import project assets
+        run: godot --headless --editor --import --path .
+
+      - name: Export Web
+        run: |
+          mkdir -p build/web
+          godot --headless --export-release "Web" build/web/index.html
+          test -s build/web/index.html
+
+      - name: Upload web build artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: forms-web
+          path: build/web
+          if-no-files-found: error
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: export
+    runs-on: ubuntu-latest
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Download web build
+        uses: actions/download-artifact@v8
+        with:
+          name: forms-web
+          path: site
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v6
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5

@@ -1,0 +1,49 @@
+
+name: Publish versioned release
+
+on:
+  workflow_call:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download native builds
+        uses: actions/download-artifact@v8
+        with:
+          name: forms-builds
+          path: dist
+
+      - name: Create versioned release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          if gh release view "$GITHUB_REF_NAME" \
+            --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+
+            echo "Release $GITHUB_REF_NAME already exists."
+            gh release upload "$GITHUB_REF_NAME" \
+              dist/linux/Forms.x86_64 \
+              dist/linux/Forms.pck \
+              dist/windows/Forms.exe \
+              dist/android/Forms.apk \
+              --repo "$GITHUB_REPOSITORY" \
+              --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" \
+              dist/linux/Forms.x86_64 \
+              dist/linux/Forms.pck \
+              dist/windows/Forms.exe \
+              dist/android/Forms.apk \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "Forms $GITHUB_REF_NAME" \
+              --generate-notes \
+              --verify-tag
+          fi
