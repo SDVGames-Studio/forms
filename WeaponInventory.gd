@@ -111,6 +111,12 @@ const ToolState := preload("res://ToolInventory.gd")
 
 func _ready() -> void:
 	layer = 10
+	# Issue #353: this autoload is added AFTER InGameMenu, so inside layer
+	# 10 it draws ABOVE the pause dim — its toggle button and weapon slots
+	# stayed clickable while the game was paused (GUI input is not blocked
+	# by SceneTree pause). The layer keeps processing during the pause so
+	# it can hide itself (see _process).
+	process_mode = Node.PROCESS_MODE_ALWAYS
 	visible = false
 	_panel = PanelContainer.new()
 	# Issue #64: bottom-right corner instead of center-right.
@@ -395,6 +401,12 @@ func _weapon_hint(i: int) -> String:
 func _process(_delta: float) -> void:
 	if _panel == null:
 		return
+	# Issue #353: while the in-game menu has the game paused, the whole
+	# layer hides (inventory button + slots) so nothing of it is clickable
+	# above the pause dim. The next unpaused frame restores the layout.
+	if get_tree().paused:
+		visible = false
+		return
 	var in_level := _is_in_level()
 	# Issue #125: the layer must stay visible on mobile, otherwise the
 	# toggle button itself disappears — only the PANEL is toggled.
@@ -420,6 +432,9 @@ func _on_toggle_pressed() -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	# Issue #353: no weapon reselection from behind the pause menu.
+	if get_tree().paused:
+		return
 	for i in WEAPONS.size():
 		if event.is_action_pressed("weapon_%d" % (i + 1)):
 			set_selected(i)

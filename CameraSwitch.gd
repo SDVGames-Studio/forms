@@ -25,6 +25,11 @@ var _button: Button
 
 func _ready() -> void:
 	layer = 12
+	# Issue #353: GUI input is NOT blocked by SceneTree pause, so this
+	# layer (12) floats above the in-game menu's dim (layer 10) and its
+	# button stayed clickable while the game was paused. The layer keeps
+	# processing during the pause so it can hide itself (see _process).
+	process_mode = Node.PROCESS_MODE_ALWAYS
 	_button = Button.new()
 	_button.name = "CameraSwitch"
 	_button.text = TEXT_STATIC
@@ -53,6 +58,10 @@ func _ready() -> void:
 
 
 func _process(_delta: float) -> void:
+	# Issue #353: while the in-game menu has the game paused, the whole
+	# layer hides — the camera button must not hover above the pause dim
+	# and stay clickable. The next unpaused frame brings it back.
+	visible = not get_tree().paused
 	_button.text = TEXT_CHARACTER \
 			if ZoomCameraScript.camera_mode == ZoomCameraScript.MODE_CHARACTER \
 			else TEXT_STATIC
@@ -74,6 +83,9 @@ func _on_pressed() -> void:
 ## The action is rebindable in the settings hotkeys screen, so it is read
 ## from the InputMap, never from a hardcoded keycode.
 func _unhandled_input(event: InputEvent) -> void:
+	# Issue #353: no camera flips from behind the pause menu.
+	if get_tree().paused:
+		return
 	if event.is_action_pressed("camera_switch"):
 		_on_pressed()
 		get_viewport().set_input_as_handled()
