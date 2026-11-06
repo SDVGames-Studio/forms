@@ -202,6 +202,22 @@ static func lobbed_velocity(aim: Vector2, up: Vector2, speed: float,
 var _held: ColorRect
 var _held_style := -1
 
+## Issue #354: true while THIS member is the one acting — the active
+## member of the currently running turn. Only that figure takes a
+## weapon in hands; idle characters (waiting teammates, the enemy team
+## between its turns, every figure during the first-team roll and after
+## the game ends — TurnController clears active_team/active_member then)
+## stand empty-handed. The check deliberately covers the post-shot
+## handover too: TurnController keeps active_member until the next turn
+## begins, so the shooter keeps the weapon while its projectile flies
+## and a running jackhammer drill (#316) or spear thrust keeps its
+## visual until the effect finishes.
+func _is_acting() -> bool:
+	var parent := get_parent()
+	return TurnController.active_team != "" \
+			and parent != null and TurnController.active_member == parent
+
+
 ## Issue #234: true while THIS member carries the armed rock tool — the
 ## rock replaces the weapon in hands and the shoot input throws it with
 ## the grenade's aiming mechanics instead of firing the weapon. Only
@@ -263,6 +279,9 @@ func _ready() -> void:
 	_charge_bar.offset_bottom = -52.0
 	add_child(_charge_bar)
 	_update_held()
+	# Issue #354: start EMPTY-HANDED — the weapon enters the hands only
+	# when this member becomes the acting one (see _is_acting).
+	_held.visible = _is_acting()
 
 
 func _physics_process(delta: float) -> void:
@@ -380,6 +399,10 @@ func _physics_process(delta: float) -> void:
 	# Issue #234: an armed rock replaces the held weapon visual.
 	if _held_style_index() != _held_style:
 		_update_held()
+	# Issue #354: an IDLE character carries no weapon — only the acting
+	# member holds one in hands (see _is_acting); everyone else stands
+	# empty-handed until their own turn comes.
+	_held.visible = _is_acting()
 	# Issue #67: keep the held weapon aligned with the character's view.
 	if _held != null and parent != null and parent.has_method("aim_dir"):
 		var aim: Vector2 = parent.aim_dir(_facing, 1.0)
