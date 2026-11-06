@@ -54,15 +54,23 @@ var _key_buttons: Dictionary = {}
 @onready var _rows: VBoxContainer = %Rows
 @onready var _reset_button: Button = %ResetButton
 @onready var _back_button: Button = %BackButton
-@onready var _background: ColorRect = $Background
+## Issue #348: the screen follows the main-menu template (MenuBackground
+## artwork + MenuTheme); in overlay mode the artwork and footer hide and
+## the shared shadow dim shows the paused game through instead.
+@onready var _background: Control = $Background
+@onready var _shadow: ColorRect = $Shadow
+@onready var _footer: Control = $Footer
 
 
 func _ready() -> void:
-	# Issue #304 (rework): when opened on top of the in-game settings
-	# overlay the game stays visible behind a shadow — the same dim the
-	# pause panel casts — instead of the opaque standalone background.
+	# Issue #304 (rework, #348 template): when opened on top of the in-game
+	# settings overlay the game stays visible behind the shared shadow dim
+	# — the same dim the pause panel casts — instead of the standalone
+	# background artwork.
 	if in_game:
-		_background.color = Color(0.05, 0.03, 0.1, 0.75)
+		_background.visible = false
+		_shadow.visible = true
+		_footer.visible = false
 	# The main menu snapshots the authored defaults at startup; do it here
 	# too, so the screen also works when it is the first thing that runs
 	# (e.g. in a test). It is a no-op once the snapshot exists.

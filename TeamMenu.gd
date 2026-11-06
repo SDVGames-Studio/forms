@@ -52,7 +52,12 @@ var in_game := false
 @onready var _save_button: Button = %SaveButton
 @onready var _back_button: Button = %BackButton
 @onready var _delete_dialog: ConfirmationDialog = %DeleteDialog
-@onready var _background: ColorRect = $Background
+## Issue #348: the menu follows the main-menu template (MenuBackground
+## artwork + MenuTheme); in overlay mode the artwork and footer hide and
+## the shared shadow dim shows the paused game through instead.
+@onready var _background: Control = $Background
+@onready var _shadow: ColorRect = $Shadow
+@onready var _footer: Control = $Footer
 
 ## Index into GameConfig.teams of the team being edited.
 var _selected := 0
@@ -62,11 +67,14 @@ var _pending_member := -1
 
 
 func _ready() -> void:
-	# Issue #304 (rework): when opened on top of the in-game settings
-	# overlay the game stays visible behind a shadow — the same dim the
-	# pause panel casts — instead of the opaque standalone background.
+	# Issue #304 (rework, #348 template): when opened on top of the in-game
+	# settings overlay the game stays visible behind the shared shadow dim
+	# — the same dim the pause panel casts — instead of the standalone
+	# background artwork.
 	if in_game:
-		_background.color = Color(0.05, 0.03, 0.1, 0.75)
+		_background.visible = false
+		_shadow.visible = true
+		_footer.visible = false
 	# Load the saved customisation before filling in the controls.
 	GameConfig.load_team()
 	GameConfig.load_teams()

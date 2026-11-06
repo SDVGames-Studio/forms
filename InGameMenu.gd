@@ -17,6 +17,14 @@ var _panel: Control
 var _cancel_button: Button
 var _settings_button: Button
 
+## Issue #348: the in-game menu follows the main-menu template but with a
+## TRANSPARENT background — the paused game stays visible behind the same
+## dim color the settings overlay screens use.
+const SHADOW_COLOR := Color(0.05, 0.03, 0.1, 0.75)
+const MENU_THEME := preload("res://MenuTheme.tres")
+const DIM_TEXT := Color(0.467, 0.49, 0.545, 1)
+const ACCENT := Color(0.655, 0.545, 0.98, 1)
+
 ## Issue #304: the settings screen instanced over the pause panel while
 ## it is open (null = closed).
 var _settings_menu: Control = null
@@ -67,40 +75,103 @@ func _close() -> void:
 
 
 func _build_ui() -> void:
+	# Issue #348: same composition as the main menu — dim over the game,
+	# margin layout, brand column (title + subtitle + accent rule), nav
+	# buttons on the right, footer bottom-left — just transparent.
 	_panel = ColorRect.new()
 	_panel.name = "Panel"
 	_panel.set_anchors_preset(Control.PRESET_FULL_RECT)
-	(_panel as ColorRect).color = Color(0.05, 0.03, 0.1, 0.75)
+	(_panel as ColorRect).color = SHADOW_COLOR
+	_panel.theme = MENU_THEME
 	add_child(_panel)
 
-	var center := CenterContainer.new()
-	center.set_anchors_preset(Control.PRESET_FULL_RECT)
-	_panel.add_child(center)
+	var layout := MarginContainer.new()
+	layout.name = "Layout"
+	layout.set_anchors_preset(Control.PRESET_FULL_RECT)
+	layout.add_theme_constant_override("margin_left", 72)
+	layout.add_theme_constant_override("margin_top", 56)
+	layout.add_theme_constant_override("margin_right", 72)
+	layout.add_theme_constant_override("margin_bottom", 72)
+	_panel.add_child(layout)
 
-	var rows := VBoxContainer.new()
-	rows.add_theme_constant_override("separation", 12)
-	center.add_child(rows)
+	var columns := HBoxContainer.new()
+	columns.name = "Columns"
+	columns.add_theme_constant_override("separation", 64)
+	layout.add_child(columns)
+
+	var brand := VBoxContainer.new()
+	brand.name = "Brand"
+	brand.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	brand.add_theme_constant_override("separation", 10)
+	columns.add_child(brand)
 
 	var title := Label.new()
+	title.name = "Title"
 	title.text = "PAUSED"
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title.add_theme_font_size_override("font_size", 48)
-	title.add_theme_color_override("font_color", Color(1, 0.84, 0.2))
-	rows.add_child(title)
+	title.add_theme_font_size_override("font_size", 56)
+	brand.add_child(title)
 
-	rows.add_child(_make_button("MainMenuButton", "Main Menu", _on_main_menu_pressed))
+	var subtitle := Label.new()
+	subtitle.name = "Subtitle"
+	subtitle.text = "ESC RETURNS TO THE GAME"
+	subtitle.add_theme_color_override("font_color", DIM_TEXT)
+	subtitle.add_theme_font_size_override("font_size", 17)
+	brand.add_child(subtitle)
+
+	var rule := ColorRect.new()
+	rule.name = "AccentRule"
+	rule.custom_minimum_size = Vector2(260, 4)
+	rule.color = ACCENT
+	brand.add_child(rule)
+
+	var spacer := Control.new()
+	spacer.name = "Spacer"
+	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	columns.add_child(spacer)
+
+	var nav := VBoxContainer.new()
+	nav.name = "Nav"
+	nav.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	nav.add_theme_constant_override("separation", 14)
+	columns.add_child(nav)
+
+	nav.add_child(_make_button("MainMenuButton", "Main Menu", _on_main_menu_pressed))
 	_settings_button = _make_button("SettingsButton", "Settings", _on_settings_pressed)
-	rows.add_child(_settings_button)
+	nav.add_child(_settings_button)
 	_cancel_button = _make_button("CancelButton", "Cancel", _close)
-	rows.add_child(_cancel_button)
+	nav.add_child(_cancel_button)
+
+	var footer := HBoxContainer.new()
+	footer.name = "Footer"
+	footer.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
+	footer.offset_left = 32.0
+	footer.offset_top = -52.0
+	footer.offset_right = 500.0
+	footer.offset_bottom = -24.0
+	footer.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	footer.add_theme_constant_override("separation", 10)
+	_panel.add_child(footer)
+
+	var studio := Label.new()
+	studio.name = "Studio"
+	studio.text = "SDVGAMES"
+	studio.add_theme_color_override("font_color", DIM_TEXT)
+	studio.add_theme_font_size_override("font_size", 14)
+	footer.add_child(studio)
+
+	var version := Label.new()
+	version.name = "VersionLabel"
+	version.text = "v0.1.0"
+	version.add_theme_color_override("font_color", DIM_TEXT)
+	version.add_theme_font_size_override("font_size", 14)
+	footer.add_child(version)
 
 
 func _make_button(button_name: String, label: String, handler: Callable) -> Button:
 	var button := Button.new()
 	button.name = button_name
-	button.custom_minimum_size = Vector2(300, 60)
+	button.custom_minimum_size = Vector2(340, 64)
 	button.text = label
-	button.add_theme_font_size_override("font_size", 32)
 	button.pressed.connect(handler)
 	return button
 

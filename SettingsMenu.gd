@@ -33,15 +33,25 @@ const SHADOW_COLOR := Color(0.05, 0.03, 0.1, 0.75)
 @onready var _debug_check: CheckButton = %DebugCheck
 @onready var _gravity_field_check: CheckButton = %GravityFieldCheck
 @onready var _back_button: Button = %BackButton
-@onready var _menu_box: Control = $Menu
-@onready var _background: ColorRect = $Background
+## Issue #348: the screen follows the main-menu template (MenuBackground
+## artwork + MenuTheme); the layout container is the toggleable content.
+@onready var _layout: Control = %Layout
+@onready var _background: Control = $Background
+## The dim shown INSTEAD of the background artwork while the game stays
+## visible behind this screen in overlay mode (issue #304).
+@onready var _shadow: ColorRect = $Shadow
+@onready var _footer: Control = $Footer
 
 
 func _ready() -> void:
-	# Issue #304 (rework): inside the pause overlay the game stays visible
-	# behind a shadow instead of the opaque standalone background.
+	# Issue #304 (rework, #348 template): inside the pause overlay the game
+	# stays visible behind the shared shadow dim while the template's
+	# background artwork and footer are hidden.
 	if in_game:
-		_background.color = SHADOW_COLOR
+		_background.visible = false
+		_shadow.color = SHADOW_COLOR
+		_shadow.visible = true
+		_footer.visible = false
 	_team_button.pressed.connect(_on_team_pressed)
 	# Issue #294: the hotkeys screen — rebindable, persisted key bindings.
 	_hotkeys_button.pressed.connect(_on_hotkeys_pressed)
@@ -85,10 +95,10 @@ func _open_submenu(path: String) -> bool:
 	_submenu.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_submenu.back_requested.connect(_on_submenu_closed)
 	add_child(_submenu)
-	_menu_box.visible = false
+	_layout.visible = false
 	# The submenu casts its own shadow over the game — hide this screen's
 	# one so the dim is not doubled (issue #304).
-	_background.visible = false
+	_shadow.visible = false
 	return true
 
 
@@ -98,8 +108,8 @@ func _on_submenu_closed() -> void:
 		return
 	_submenu.queue_free()
 	_submenu = null
-	_menu_box.visible = true
-	_background.visible = true
+	_layout.visible = true
+	_shadow.visible = true
 	_team_button.grab_focus()
 
 
