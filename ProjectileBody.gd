@@ -296,6 +296,14 @@ func _explode() -> void:
 			continue
 		if mine.global_position.distance_to(global_position) <= blast_radius:
 			mine.take_damage(damage)
+	# Issue #364: level items share the 1-HP destructible rule — the
+	# blast detonates them too (chain reactions included).
+	for node in get_tree().get_nodes_in_group("level_items"):
+		var item := node as LevelItem
+		if item == null or not is_instance_valid(item):
+			continue
+		if item.global_position.distance_to(global_position) <= blast_radius:
+			item.take_damage(damage)
 	_spawn_blast_visual()
 	queue_free()
 

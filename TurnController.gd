@@ -54,6 +54,11 @@ var active_team := ""
 var active_member: Node2D = null
 ## True once one team eliminated the other.
 var game_over := false
+## Issue #364: current ROUND — one full cycle through the turn order
+## (every team acted once). From the second round on, one random item
+## (first aid kit / weapon / tool bundle) falls on the level at each
+## round change (LevelItems.spawn_random_item).
+var _round := 1
 
 var _level: Node = null
 var _turn_left := 0.0
@@ -290,6 +295,7 @@ func _on_level_changed() -> void:
 		_roll_wait = 0.0
 		_switch_wait = 0.0
 		_stall_wait = 0.0
+		_round = 1
 		_teams = []
 		_color_to_id = {}
 		_turn_order = []
@@ -376,6 +382,13 @@ func _next_alive_team() -> String:
 		var index := (_turn_index + step) % n
 		var id: String = _turn_order[index]
 		if not _alive_of(id).is_empty():
+			# Issue #364: wrapping past the end of the order = every team
+			# acted once = a new ROUND began. From the second round on,
+			# one random item falls on a random spot of the level.
+			if index <= _turn_index:
+				_round += 1
+				if _round >= 2:
+					LevelItems.spawn_random_item(_level)
 			_turn_index = index
 			return id
 	return ""
@@ -386,6 +399,8 @@ func _start_round() -> void:
 	_switching = false
 	# A fresh round must never inherit a wedged transition (issue #85).
 	_stall_wait = 0.0
+	# Issue #364: a fresh game starts at round 1 — items drop from round 2.
+	_round = 1
 	active_team = ""
 	active_member = null
 	_build_ui()

@@ -12,8 +12,15 @@ extends Node
 ## Run headless: godot --headless res://tests/test_issue305.tscn
 ## Exit code 0 = pass.
 
-const WEAPONS := ["Shotgun", "Rocket", "Grenade", "Spear", "Mine", "Jackhammer"]
+## Issue #359 added the RAILGUN as the seventh weapon — the list and
+## the starting budgets below track the live WeaponInventory.WEAPONS
+## (railgun starts at ONE use, issue #359; everything else at five,
+## spear infinite). Kept in sync by hand for issue #364's run: the
+## railgun PR left this local copy at six weapons and check 1 red.
+const WEAPONS := ["Shotgun", "Rocket", "Grenade", "Spear", "Mine", "Jackhammer", "Railgun"]
 const SPEAR := 3
+const RAILGUN := 6
+const RAILGUN_START := 1
 
 var _fails: Array = []
 
@@ -42,7 +49,7 @@ func _ready() -> void:
 
 	# 1) Fresh budgets: 5 uses of every weapon and tool, spear infinite.
 	for w in WEAPONS.size():
-		var want := -1 if w == SPEAR else 5
+		var want := -1 if w == SPEAR else (RAILGUN_START if w == RAILGUN else 5)
 		_check("weapon %s starts at %d" % [WEAPONS[w], want],
 			inv.weapon_uses_left("player", w) == want)
 	for t in tools.TOOLS.size():

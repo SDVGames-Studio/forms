@@ -351,6 +351,16 @@ func set_shielded(value: bool) -> void:
 		_shield_rect.visible = shielded
 
 
+## Issue #364: first aid kits heal NPCs exactly like player figures
+## (Player.heal) — same clamp at MAX_HEALTH; dead figures stay dead
+## (issue #151).
+func heal(amount: int) -> void:
+	if _dead:
+		return
+	health = clampi(health + amount, 0, MAX_HEALTH)
+	_update_bar()
+
+
 func take_damage(amount: int, attacker: Node2D = null) -> void:
 	if _dead:
 		return
