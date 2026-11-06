@@ -20,6 +20,13 @@ extends Node2D
 ##                    ahead and damaging every figure on the way
 ##                    (issue #307; issue #316: any aim direction, max 3 s,
 ##                    steerable mid-drill with the aim keys, no cancel)
+##  7 Railgun (key R) — hold F to charge, release to fire an INSTANT
+##                    hitscan beam (60 dmg on a tap, up to 150 at full
+##                    charge when the line turns white; a tap keeps the
+##                    iridescent rainbow). Infinite range, no falloff;
+##                    the line lingers 1 s. Charging slows the wielder
+##                    and shakes the sight. ONE use per team per round
+##                    (issue #359)
 ## Visuals are plain rectangles built in code — no extra assets.
 
 const ProjectileScript := preload("res://Projectile.gd")
@@ -29,9 +36,10 @@ const ProjectileBodyScript := preload("res://ProjectileBody.gd")
 const COOLDOWN := 0.3
 
 ## Issue #101: shots each weapon allows during ONE turn (index = weapon:
-## shotgun 2, rocket 1, grenade 1, spear 2, mine 1, jackhammer 1) and the
-## 3-second delay after every shot during which the character cannot shoot.
-const SHOTS_PER_TURN: Array = [2, 1, 1, 2, 1, 1]
+## shotgun 2, rocket 1, grenade 1, spear 2, mine 1, jackhammer 1, railgun 1)
+## and the 3-second delay after every shot during which the character
+## cannot shoot.
+const SHOTS_PER_TURN: Array = [2, 1, 1, 2, 1, 1, 1]
 const SHOT_DELAY := 3.0
 
 const PELLET_SPEED := 900.0
@@ -99,13 +107,32 @@ const JACKHAMMER_DAMAGE := 30
 ## damage. The reach covers the farthest touching pair (pole to pole,
 ## 32 + 32 = 64) so every figure the drill presses against is hit.
 const JACKHAMMER_REACH := 64.0
+## Issue #359: the railgun — an instant hitscan beam along the aim.
+## Damage scales with the held-F charge: 60 on an instant tap, up to 150
+## at full charge, while the beam's iridescent rainbow lerps to pure
+## white. Infinite range, no damage falloff; the thick line lingers one
+## second, then disappears. ONE use per team per round (the team budget
+## lives in WeaponInventory). Charging slows the wielder to half speed
+## and shakes the sight (Player._physics_process reads the accessors
+## below).
+const RAILGUN_MIN_DAMAGE := 60
+const RAILGUN_MAX_DAMAGE := 150
+## The beam lingers this long before it disappears (issue text: 1 s).
+const RAILGUN_BEAM_TIME := 1.0
+const RAILGUN_BEAM_WIDTH := 8.0
+## Walk-speed fraction while charging the railgun (issue #359).
+const RAILGUN_CHARGE_SLOWDOWN := 0.5
+## Sight wobble per physics tick while charging, in radians (issue #359).
+const RAILGUN_SIGHT_SHAKE := 0.035
+## "Infinite" range — far beyond any level, but keeps the ray finite.
+const RAILGUN_RANGE := 20000.0
 
 var _facing := 1.0
 var _cooldown_left := 0.0
 ## Issue #101: shots already made this turn by this member, per weapon
 ## (issue #116: the quota is per weapon so switching after a shot keeps
 ## the newly selected weapon's own quota).
-var _shots_used := [0, 0, 0, 0, 0, 0]
+var _shots_used := [0, 0, 0, 0, 0, 0, 0]
 
 ## Issue #101: seconds left before the character may shoot again.
 var _shot_delay_left := 0.0
@@ -201,6 +228,8 @@ func _held_style_index() -> int:
 		return 5  # mine
 	if selected_weapon == 5:
 		return 6  # jackhammer
+	if selected_weapon == 6:
+		return 7  # railgun (#359)
 	return selected_weapon
 
 ## Issue #68: size and color of the held weapon per selected weapon index.
@@ -214,6 +243,7 @@ const HELD_STYLES: Array = [
 	{"size": Vector2(14, 14), "color": Color(0.55, 0.5, 0.45, 1)},  # rock (tool)
 	{"size": Vector2(14, 14), "color": Color(0.22, 0.24, 0.3, 1)},  # mine (#246)
 	{"size": Vector2(10, 18), "color": Color(0.85, 0.85, 0.95, 1)},  # jackhammer (#307)
+	{"size": Vector2(46, 4), "color": Color(0.55, 0.85, 1.0, 1)},   # railgun (#359)
 ]
 
 ## Currently selected weapon index (0..5), shared through the inventory HUD.
@@ -311,7 +341,8 @@ func _physics_process(delta: float) -> void:
 	var frozen: bool = TurnController.is_input_frozen()
 	var rock_armed := _rock_armed()
 	var charged := rock_armed or selected_weapon == 1 or selected_weapon == 2 \
-			or selected_weapon == 4 or selected_weapon == 5
+			or selected_weapon == 4 or selected_weapon == 5 \
+			or selected_weapon == 6  # railgun (#359)
 	var can_act: bool = (rock_armed or can_shoot) and not frozen
 	if controlled and can_act and not _charging \
 			and Input.is_action_just_pressed("shoot"):
@@ -383,6 +414,10 @@ func _physics_process(delta: float) -> void:
 		# Issue #307: the drilling jackhammer shakes in the wielder's hands.
 		if _drill_left > 0.0:
 			_held.position += Vector2(randf_range(-2.0, 2.0), randf_range(-2.0, 2.0))
+		# Issue #359: so does a CHARGING railgun — the held weapon rattles
+		# while the charge builds (the aim itself wobbles via sight_shake).
+		if is_charging_railgun():
+			_held.position += Vector2(randf_range(-1.5, 1.5), randf_range(-1.5, 1.5))
 
 
 ## Issue #322: the charge bar (the power indicator) is authored above
@@ -483,6 +518,7 @@ func _fire(power := 1.0) -> void:
 		3: _thrust_spear()
 		4: _throw_mine(power)
 		5: _start_jackhammer(power)
+		6: _fire_railgun(power)
 	# Issue #101+#65: only the LAST shot of the turn hands the turn over;
 	# with quota remaining the character keeps acting after the pause.
 	if _shots_used[clampi(selected_weapon, 0, _shots_used.size() - 1)] >= _shot_limit():
@@ -759,3 +795,112 @@ func _end_jackhammer() -> void:
 	if _drill_effect != null and is_instance_valid(_drill_effect):
 		_drill_effect.queue_free()
 	_drill_effect = null
+
+
+## Issue #359: true while this wielder charges the railgun (holding F) —
+## Player._physics_process slows the walk and shakes the sight then.
+func is_charging_railgun() -> bool:
+	return _charging and selected_weapon == 6
+
+
+## Issue #359: the wielder's walk-speed factor — half speed while the
+## railgun charges, full speed otherwise. Read by Player._physics_process.
+func move_speed_factor() -> float:
+	return RAILGUN_CHARGE_SLOWDOWN if is_charging_railgun() else 1.0
+
+
+## Issue #359: this tick's sight wobble while the railgun charges — a
+## small random angle offset (radians), 0.0 when not charging. Read by
+## Player._physics_process every physics tick.
+func sight_shake() -> float:
+	if not is_charging_railgun():
+		return 0.0
+	return randf_range(-RAILGUN_SIGHT_SHAKE, RAILGUN_SIGHT_SHAKE)
+
+
+## Issue #359: railgun damage for a charge fraction — 60 on an instant
+## tap, 150 at full charge, lerped between (no range falloff: the damage
+## depends on the charge alone, never the distance).
+static func railgun_damage(power: float) -> int:
+	return int(round(lerpf(RAILGUN_MIN_DAMAGE, RAILGUN_MAX_DAMAGE,
+			clampf(power, 0.0, 1.0))))
+
+
+## Issue #359: the beam's gradient stops — the iridescent rainbow of a
+## plain shot lerped toward WHITE as the charge builds (a full charge is
+## a pure white beam).
+static func railgun_beam_colors(power: float) -> PackedColorArray:
+	var stops := PackedColorArray([Color.RED, Color.ORANGE, Color.YELLOW,
+			Color.GREEN, Color.CYAN, Color.BLUE, Color.MAGENTA])
+	var charged := clampf(power, 0.0, 1.0)
+	var out := PackedColorArray()
+	out.resize(stops.size())
+	for i in stops.size():
+		out[i] = stops[i].lerp(Color.WHITE, charged)
+	return out
+
+
+## Issue #359: fire the railgun — an INSTANT hitscan beam along the aim.
+## `power` (0..1, the held-F charge fraction) scales the damage (see
+## railgun_damage). The ray stops at the FIRST character or terrain it
+## meets (collision layers: ground 1, NPC 2, player 8); with nothing in
+## the way it runs the full "infinite" range. A gate node in the
+## turn-effects group keeps the post-shot handover waiting while the beam
+## is still visible (same pattern as the jackhammer drill, #307).
+func _fire_railgun(power: float = 1.0) -> void:
+	var muzzle := global_position + _aim() * 36.0
+	var dir := _aim().normalized()
+	var query := PhysicsRayQueryParameters2D.create(muzzle,
+			muzzle + dir * RAILGUN_RANGE, 1 | 2 | 8)
+	var wielder := get_parent()
+	if wielder is CollisionObject2D:
+		# The shooter never blocks their own beam.
+		var exclude: Array[RID] = [wielder.get_rid()]
+		query.exclude = exclude
+	var hit := get_world_2d().direct_space_state.intersect_ray(query)
+	var beam_end := muzzle + dir * RAILGUN_RANGE
+	if not hit.is_empty():
+		beam_end = hit["position"]
+		var target: Object = hit["collider"]
+		if target != null and target.has_method("take_damage"):
+			target.take_damage(railgun_damage(power), wielder)
+	_railgun_beam(muzzle, beam_end, power)
+
+
+## Issue #359: the railgun tracer — a thick Line2D from the muzzle to the
+## hit point with a rainbow-to-white gradient (see railgun_beam_colors).
+## It lingers RAILGUN_BEAM_TIME seconds (fading over the last quarter),
+## then frees itself together with the turn-effects gate.
+func _railgun_beam(muzzle: Vector2, beam_end: Vector2, power: float) -> void:
+	var beam := Line2D.new()
+	beam.name = "RailgunBeam"
+	beam.width = RAILGUN_BEAM_WIDTH
+	beam.begin_cap_mode = Line2D.LINE_CAP_ROUND
+	beam.end_cap_mode = Line2D.LINE_CAP_ROUND
+	var gradient := Gradient.new()
+	var stops := railgun_beam_colors(power)
+	# Gradient.new() ships two default stops (black->white) — assign the
+	# full offset/color arrays instead of add_point to REPLACE them.
+	var offsets := PackedFloat32Array()
+	var colors := PackedColorArray()
+	for i in stops.size():
+		offsets.append(float(i) / float(stops.size() - 1))
+		colors.append(stops[i])
+	gradient.offsets = offsets
+	gradient.colors = colors
+	beam.gradient = gradient
+	var level_root := get_parent().get_parent()
+	if level_root == null:
+		return
+	level_root.add_child(beam)
+	beam.global_position = muzzle
+	beam.points = PackedVector2Array([Vector2.ZERO, beam.to_local(beam_end)])
+	var gate := Node.new()
+	gate.name = "RailgunBeamGate"
+	gate.add_to_group(TurnController.EFFECT_GROUP)
+	level_root.add_child(gate)
+	var tween := beam.create_tween()
+	tween.tween_interval(RAILGUN_BEAM_TIME - 0.25)
+	tween.tween_property(beam, "modulate:a", 0.0, 0.25)
+	tween.tween_callback(gate.queue_free)
+	tween.tween_callback(beam.queue_free)

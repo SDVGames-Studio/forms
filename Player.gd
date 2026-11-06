@@ -467,6 +467,12 @@ func _physics_process(delta: float) -> void:
 		if direction != 0.0 or view_axis != 0.0 \
 				or (Input.is_action_just_pressed("jump") and is_on_floor()):
 			TurnController.notify_member_action()
+		# Issue #359: charging the railgun slows the wielder to half speed
+		# (Weapon.move_speed_factor) while F is held and the charge builds.
+		var weapon := get_node_or_null("Weapon")
+		var speed := SPEED
+		if weapon != null and weapon.has_method("move_speed_factor"):
+			speed *= float(weapon.move_speed_factor())
 		if direction != 0.0:
 			# Issue #250 rework: walk along the SURFACE — the input maps onto
 			# the current gravity frame's tangent, not the world x axis. With
@@ -476,12 +482,19 @@ func _physics_process(delta: float) -> void:
 			# tangent orientation follows the previous frame by continuity (see
 			# _aim_tangent), so "right" stays right under flipped gravity AND
 			# never flips 180° mid-walk around a disc rim.
-			velocity = _aim_tangent * direction * SPEED \
+			velocity = _aim_tangent * direction * speed \
 					+ grav * velocity.dot(grav)
 		else:
 			velocity = grav * velocity.dot(grav)
 		# Issue #67: raise/lower the view with W/S / Arrow Up/Down.
 		view_angle = clampf(view_angle + view_axis * VIEW_SPEED * delta, -VIEW_MAX, VIEW_MAX)
+		# Issue #359: charging the railgun SHAKES the sight — a small random
+		# wobble piles onto the view angle every tick while the charge builds
+		# (Weapon.sight_shake), so a full charge is harder to aim precisely.
+		if weapon != null and weapon.has_method("sight_shake"):
+			var shake := float(weapon.sight_shake())
+			if shake != 0.0:
+				view_angle = clampf(view_angle + shake, -VIEW_MAX, VIEW_MAX)
 	else:
 		# Issue #316: a DRILLING wielder is the one frozen-input exception —
 		# the aim keys (W/S) still steer the running jackhammer (the drill

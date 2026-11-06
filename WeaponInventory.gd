@@ -18,8 +18,9 @@ extends CanvasLayer
 
 ## Issue #179: tools joined the weapons in THIS panel — one unified
 ## inventory grid: weapons on keys 1-4 plus the mine on key 9 (issue
-## #246) and the jackhammer on key 0 (issue #307), tools on keys 5-8
-## (issue #227 added the fourth tool, Rock).
+## #246), the jackhammer on key 0 (issue #307) and the railgun on key R
+## (issue #359), tools on keys 5-8 (issue #227 added the fourth tool,
+## Rock).
 ## The tool LOGIC stays in the ToolInventory autoload; this script only
 ## renders the shared slots.
 
@@ -95,13 +96,17 @@ var _toggle_button: Button
 var _mobile_open := false
 var _mobile_layout_applied := false
 
-const WEAPONS := ["Shotgun", "Rocket", "Grenade", "Spear", "Mine", "Jackhammer"]
+const WEAPONS := ["Shotgun", "Rocket", "Grenade", "Spear", "Mine", "Jackhammer", "Railgun"]
 
 ## Issue #305: per-team use budgets. Every team starts a round with 5
 ## uses of each weapon and 5 uses of each tool; the SPEAR is the only
 ## exception — its uses are infinite (shown as ∞, never spent).
+## Issue #359: the RAILGUN is the second exception — each team starts a
+## round with exactly ONE railgun shot.
 const USES_PER_ITEM := 5
 const WEAPON_SPEAR := 3
+const WEAPON_RAILGUN := 6
+const RAILGUN_USES := 1
 ## ∞ fallback when the default font has no U+221E glyph.
 var _infinity_text := "∞"
 
@@ -126,6 +131,7 @@ const ICONS: Array = [
 	{"shape": "rect", "size": Vector2(40, 4), "color": Color(0.8, 0.8, 0.9, 1)},
 	{"shape": "circle", "radius": 8.0, "color": Color(0.22, 0.24, 0.3, 1)},
 	{"shape": "rect", "size": Vector2(10, 18), "color": Color(0.85, 0.85, 0.95, 1)},
+	{"shape": "rect", "size": Vector2(44, 5), "color": Color(0.55, 0.85, 1.0, 1)},
 ]
 
 ## Issue #271: hover hints. The scripts are preloaded (not the autoload
@@ -299,6 +305,9 @@ func _budget(team_id: String) -> Dictionary:
 		var weapons: Array = []
 		weapons.resize(WEAPONS.size())
 		weapons.fill(USES_PER_ITEM)
+		# Issue #359: the railgun is scarce — each team starts a round with
+		# exactly ONE shot of it, not the standard five.
+		weapons[WEAPON_RAILGUN] = RAILGUN_USES
 		var tools: Array = []
 		tools.resize(ToolState.TOOLS.size())
 		tools.fill(USES_PER_ITEM)
@@ -424,6 +433,9 @@ func _weapon_hint(i: int) -> String:
 			damage = str(WeaponFire.MINE_DAMAGE)
 		"Jackhammer":
 			damage = str(WeaponFire.JACKHAMMER_DAMAGE)
+		"Railgun":
+			damage = "%d-%d" % [WeaponFire.RAILGUN_MIN_DAMAGE,
+				WeaponFire.RAILGUN_MAX_DAMAGE]
 	return "%s\nDamage: %s" % [WEAPONS[i], damage]
 
 
