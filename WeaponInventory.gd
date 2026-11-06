@@ -394,6 +394,25 @@ func spend_tool(team_id: String, tool: int) -> bool:
 	return true
 
 
+## Issue #364: a picked-up weapon bundle ADDS one use of that weapon
+## to the team's budget (the bundle roll never picks the spear — it is
+## infinite already).
+func grant_weapon(team_id: String, weapon: int) -> void:
+	var w := clampi(weapon, 0, WEAPONS.size() - 1)
+	if w == WEAPON_SPEAR:
+		return
+	_budget(team_id)["weapons"][w] = weapon_uses_left(team_id, w) + 1
+	refresh_counts()
+
+
+## Issue #364: the tool twin of grant_weapon — +1 use of the rolled
+## tool to the team's budget.
+func grant_tool(team_id: String, tool: int) -> void:
+	var t := clampi(tool, 0, ToolState.TOOLS.size() - 1)
+	_budget(team_id)["tools"][t] = tool_uses_left(team_id, t) + 1
+	refresh_counts()
+
+
 ## Issue #305: fresh round — every team's budgets back to 5/5/5/…
 ## Called by TurnController._start_round on every level load.
 func reset_uses() -> void:
