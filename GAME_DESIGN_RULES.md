@@ -94,9 +94,10 @@ successions are noted inline. Reference point for the whole game:
 8. **Mines**: the activation radius is doubled (#262); a mine has HP
    and can be destroyed (#281); once activated, the turn waits until it
    explodes (#312).
-9. The **jackhammer** damages characters and carves destructible
-   ground; its tunnel is at least as wide as the drilling figure (#307
-   owner comment, #313).
+9. The **jackhammer** pushes a met character along the aiming direction
+   and grinds them for 10 damage per second while the contact lasts
+   (#363); it carves destructible ground; its tunnel is at least as wide
+   as the drilling figure (#307 owner comment, #313).
 10. The aiming view/arrow direction must match the character's facing
     (#277, #298).
 11. The shot-power indicator renders at the aiming figure, not at a

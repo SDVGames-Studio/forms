@@ -10,7 +10,9 @@ extends Node
 ##    runs out its full aimed time.
 ## 4. Rework: the damage corridor REACHES a touching figure (contact at
 ##    48 px, the new reach is 64) — a drill aimed at an adjacent enemy
-##    damages them instead of grinding against their body harmlessly.
+##    catches them. Issue #363 rework: a met figure is no longer
+##    burst-damaged — the drill PUSHES them along the aim direction and
+##    grinds them at 10 damage per second while the contact lasts.
 ##
 ## Run headless: godot --headless res://tests/test_issue316.tscn
 ## Exit code 0 = pass.
@@ -143,7 +145,9 @@ func _ready() -> void:
 	# at a nearby enemy (not into the ground) ground against them and
 	# dealt NO damage. A victim 60 px along a LEVEL aim (beyond the old
 	# 40 px window, inside body contact + the new JACKHAMMER_REACH) must
-	# take the drill damage within the first ticks. ---
+	# be caught on the very first ticks — and per the #363 rework PUSHED
+	# along the aim while the grind streams 10 damage per second (no
+	# one-shot burst any more). ---
 	var reach_wielder := _make_wielder(Vector2(0, 0))
 	level.add_child(reach_wielder)
 	await get_tree().process_frame
@@ -151,14 +155,21 @@ func _ready() -> void:
 	var reach_victim := _make_victim(Vector2(60, 0))
 	level.add_child(reach_victim)
 	reach_weapon.call("_start_jackhammer", 0.0)
-	for i in 3:  # the hit must land on the very first ticks
+	for i in 24:  # ~0.4 s of contact — the grind must be streaming by then
 		await get_tree().physics_frame
 	reach_weapon.call("_end_jackhammer")
-	var reach_hit: bool = reach_victim.get("hits") == 1 \
-			and reach_victim.get("damage") == WeaponFire.JACKHAMMER_DAMAGE
-	print("ISSUE316 reach hits=", reach_victim.get("hits"))
-	if not reach_hit:
-		printerr("FAIL: a touching figure ahead of the drill must take its damage")
+	var grind: int = reach_victim.get("damage")
+	var streaming: bool = grind >= 2 and grind <= 6 \
+			and reach_victim.get("hits") == grind
+	var pushed: bool = reach_victim.global_position.x > 90.0 \
+			and absf(reach_victim.global_position.y) < 8.0
+	print("ISSUE316 reach hits=", reach_victim.get("hits"),
+			" damage=", grind, " victim=", reach_victim.global_position)
+	if not streaming:
+		printerr("FAIL: a met figure must be ground down at the push DPS, not burst-damaged")
+		failures += 1
+	if not pushed:
+		printerr("FAIL: a met figure must be pushed along the aim direction")
 		failures += 1
 	reach_wielder.queue_free()
 	reach_victim.queue_free()

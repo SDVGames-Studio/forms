@@ -17,9 +17,11 @@ extends Node2D
 ##  6 Jackhammer (key 0) — hold F to charge, release to drill: the wielder
 ##                    is pushed along the AIM direction for 1–3 s
 ##                    (scaled by the charge), carving destructible ground
-##                    ahead and damaging every figure on the way
-##                    (issue #307; issue #316: any aim direction, max 3 s,
-##                    steerable mid-drill with the aim keys, no cancel)
+##                    ahead. A figure the drill meets is PUSHED along the
+##                    aim and ground down for 10 damage per second while
+##                    the contact lasts (issue #307; issue #316: any aim
+##                    direction, max 3 s, steerable mid-drill with the aim
+##                    keys, no cancel; issue #363: push + grind, no burst)
 ##  7 Railgun (key R) — hold F to charge, release to fire an INSTANT
 ##                    hitscan beam (60 dmg on a tap, up to 150 at full
 ##                    charge when the line turns white; a tap keeps the
@@ -75,12 +77,14 @@ const ROCK_MASS := 0.8
 ## meter), release to drill. Issue #316 rework: the wielder is pushed
 ## along the AIM direction (any direction the character directs, not
 ## just down) for MIN..MAX seconds scaled by the charge, carving
-## destructible ground ahead in a tunnel of JACKHAMMER_RADIUS and
-## damaging every other character caught in the tunnel (once per drill).
+## destructible ground ahead in a tunnel of JACKHAMMER_RADIUS.
 ## The drill direction is re-sampled from the LIVE aim at every tick:
 ## the aim keys steer a running drill (it cannot be cancelled — it runs
 ## its full time or stalls), and on radial arenas the aim frame rides
 ## the level gravity, so the tunnel still bends around the core.
+## Issue #363 rework: a character the drill MEETS is pushed along the
+## aim direction at the drill speed and ground down at
+## JACKHAMMER_PUSH_DPS per second while the contact lasts.
 const JACKHAMMER_MIN_TIME := 1.0
 const JACKHAMMER_MAX_TIME := 3.0
 const JACKHAMMER_SPEED := 130.0
@@ -98,7 +102,12 @@ const JACKHAMMER_RADIUS := 32.0
 ## ground: it grinds to a halt early.
 const JACKHAMMER_CARVE_STEP := 6.0
 const JACKHAMMER_STALL_TIME := 0.3
-const JACKHAMMER_DAMAGE := 30
+## Issue #363 rework: the drill no longer burst-damages a met figure —
+## it PUSHES them along the aim direction at the wielder's drill speed
+## (JACKHAMMER_SPEED) and grinds them for this many damage per second
+## for as long as the contact lasts (a full 3 s charge grinds ~30 —
+## the old one-shot value — but streamed tick by tick).
+const JACKHAMMER_PUSH_DPS := 10.0
 ## Issue #316 rework: how far AHEAD of the wielder the drill's damage
 ## corridor reaches. Two figure capsules (radius 24) TOUCH at 48 px
 ## centre-to-centre — the old forward window (`along < 40`) ended
@@ -149,13 +158,13 @@ var _thrust_t := -1.0
 var _thrust_hit: Array = []
 ## Issue #307: jackhammer drill state — seconds left, drill direction
 ## (re-sampled from the live aim every tick so the aim keys steer a
-## running drill, #316), bodies already damaged by THIS drill, the last
-## carve centre, the stall probe position/timer, and the turn-effect
-## gate node that keeps the post-shot handover waiting while the drill
-## runs.
+## running drill, #316), the per-body accrued grind damage of THIS
+## drill (#363), the last carve centre, the stall probe position/timer,
+## and the turn-effect gate node that keeps the post-shot handover
+## waiting while the drill runs.
 var _drill_left := 0.0
 var _drill_dir := Vector2.DOWN
-var _drill_hit: Array = []
+var _drill_push: Dictionary = {}
 var _drill_carve_at := Vector2.INF
 var _drill_last_pos := Vector2.ZERO
 var _drill_stall := 0.0
@@ -724,7 +733,7 @@ func _start_jackhammer(power: float = 1.0) -> void:
 	_drill_left = lerpf(JACKHAMMER_MIN_TIME, JACKHAMMER_MAX_TIME,
 			clampf(power, 0.0, 1.0))
 	_drill_dir = _aim().normalized()
-	_drill_hit.clear()
+	_drill_push.clear()
 	_drill_stall = 0.0
 	_drill_carve_at = Vector2.INF
 	var parent := get_parent()
@@ -763,7 +772,7 @@ func _tick_jackhammer(delta: float) -> void:
 				if chunk != null and is_instance_valid(chunk) \
 						and chunk.has_method("apply_blast"):
 						chunk.apply_blast(carve_point, JACKHAMMER_RADIUS)
-	_jackhammer_sweep_hit(parent)
+	_jackhammer_sweep_hit(parent, delta)
 	# Push the wielder along the drill direction. Player._physics_process
 	# keeps the velocity while the handover freezes input (#316), so this
 	# lands in the next move_and_slide.
@@ -782,29 +791,57 @@ func _tick_jackhammer(delta: float) -> void:
 		_end_jackhammer()
 
 
-## Issue #307: damage every OTHER character on the drill's way — the
-## tunnel corridor below the wielder (along gravity, within the tunnel
-## radius laterally), once per drill (same once-rule as the spear, #257).
-func _jackhammer_sweep_hit(parent: Node2D) -> void:
+## Issue #307/#316: the drill's contact corridor — every OTHER character
+## ahead of the wielder (along the drill direction within the reach,
+## inside the tunnel radius laterally). Issue #316 rework: the forward
+## window reaches JACKHAMMER_REACH — far enough to catch a TOUCHING
+## figure (see the constant) — so a drill aimed at a nearby enemy (not
+## into the ground) catches them the moment the bodies press together.
+## Issue #363 rework: a met figure is no longer damaged once per drill —
+## the drill PUSHES them along the aim direction and grinds them at
+## JACKHAMMER_PUSH_DPS per second for as long as the contact lasts.
+func _jackhammer_sweep_hit(parent: Node2D, delta: float) -> void:
 	var perp := Vector2(-_drill_dir.y, _drill_dir.x)
+	var push := _drill_dir * JACKHAMMER_SPEED
 	for group in ["player_team", "enemy_team"]:
 		for node in get_tree().get_nodes_in_group(group):
 			var body := node as Node2D
-			if body == null or body == parent or not body.has_method("take_damage") \
-					or _drill_hit.has(body):
+			if body == null or body == parent or not is_instance_valid(body) \
+					or not body.has_method("take_damage"):
+					continue
+			var hp = body.get("health")
+			if hp is int and hp <= 0:
 				continue
 			var offset := body.global_position - parent.global_position
 			var along := offset.dot(_drill_dir)
 			var lateral := absf(offset.dot(perp))
-			# Issue #316 rework: the forward window reaches JACKHAMMER_REACH —
-			# far enough to catch a TOUCHING figure (see the constant) — so a
-			# drill aimed at a nearby enemy (not into the ground) damages them
-			# the moment the bodies press together, instead of grinding
-			# harmlessly against them.
-			if along > -10.0 and along < JACKHAMMER_REACH \
-					and lateral <= JACKHAMMER_RADIUS:
-				_drill_hit.append(body)
-				body.take_damage(JACKHAMMER_DAMAGE)
+			if not (along > -10.0 and along < JACKHAMMER_REACH \
+					and lateral <= JACKHAMMER_RADIUS):
+				continue
+			# Issue #363: push the met figure along the aim direction. An
+			# idle figure's own physics clamp (Player/Npc keep only the
+			# along-gravity velocity component) eats a plain tangential
+			# velocity write, so the drill shoves the body itself every
+			# tick — collision-safe for physics bodies via move_and_collide,
+			# a direct offset for plain Node2D stand-ins. The velocity write
+			# still hands them the shove's momentum for when contact breaks.
+			if "velocity" in body:
+				body.velocity = push
+			var physics := body as PhysicsBody2D
+			if physics != null:
+				physics.move_and_collide(push * delta)
+			else:
+				body.global_position += push * delta
+			# Issue #363: grind damage — 10 per second, dealt in whole-number
+			# chunks as it accrues while the contact lasts.
+			var accrued: float = float(_drill_push.get(body, 0.0)) \
+					+ JACKHAMMER_PUSH_DPS * delta
+			var whole := int(accrued)
+			if whole >= 1:
+				body.take_damage(whole)
+				_drill_push[body] = accrued - whole
+			else:
+				_drill_push[body] = accrued
 
 
 ## Issue #307: finish the drill — hand the wielder back to normal physics

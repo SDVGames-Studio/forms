@@ -128,7 +128,10 @@ func _ready() -> void:
 
 	# --- The drill carves destructible ground and moves the wielder along
 	# the AIMED direction (issue #316: steepest downward aim, VIEW_MAX);
-	# a figure inside the tunnel is damaged EXACTLY once.
+	# a figure the drill meets is PUSHED along the drill and ground down
+	# at 10 damage per second while the contact lasts (issue #363 rework:
+	# no one-shot burst any more — the damage streams and the victim
+	# travels with the drill).
 	# Issue #307 rework: start ABOVE the dirt — the capsule's front cap
 	# reaches center+32, so (0,-40) keeps the body clear of the top edge
 	# at y=10 exactly like a figure standing on the surface.
@@ -150,16 +153,23 @@ func _ready() -> void:
 			break
 	await get_tree().physics_frame
 	var drilled_through: bool = wielder.global_position.y > 150.0
-	var hit_once: bool = victim.get("hits") == 1 \
-			and victim.get("damage") == WeaponFire.JACKHAMMER_DAMAGE
+	var grind: int = victim.get("damage")
+	var streamed: bool = grind >= 12 and grind <= 34 \
+			and victim.get("hits") >= 5
+	var pushed_along: bool = victim.global_position.y > 140.0
 	var dirt_gone: bool = not is_instance_valid(dirt) or dirt.is_queued_for_deletion()
 	print("ISSUE307 drill y=", wielder.global_position.y,
-			" hits=", victim.get("hits"), " dirt_gone=", dirt_gone)
+			" victim_y=", victim.global_position.y,
+			" hits=", victim.get("hits"), " damage=", grind,
+			" dirt_gone=", dirt_gone)
 	if not drilled_through:
 		printerr("FAIL: the wielder did not drill down through the ground")
 		failures += 1
-	if not hit_once:
-		printerr("FAIL: a figure on the way must take the drill damage exactly once")
+	if not streamed:
+		printerr("FAIL: a met figure must be ground down at the push DPS while contact lasts")
+		failures += 1
+	if not pushed_along:
+		printerr("FAIL: a met figure must be pushed along the drill direction")
 		failures += 1
 	if not dirt_gone:
 		printerr("FAIL: the original chunk below the wielder was not carved away")
