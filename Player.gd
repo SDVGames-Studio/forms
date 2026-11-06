@@ -237,7 +237,7 @@ func set_controlled(value: bool) -> void:
 var _dead := false
 
 
-func take_damage(amount: int) -> void:
+func take_damage(amount: int, attacker: Node2D = null) -> void:
 	if _dead:
 		return
 	# Issue #170: the energy shield blocks all damage until next turn.
@@ -253,6 +253,10 @@ func take_damage(amount: int) -> void:
 	# Issue #252: debug damage number + action-log line.
 	DebugInfo.show_damage(self, amount)
 	DebugInfo.log("%s takes %d damage (%d/%d)" % [display_name, amount, health, MAX_HEALTH])
+	# Issue #335: comics line near the figure — the victim cries out (or
+	# calls out an ALLY's betrayal) and a big hit makes the attacker
+	# gloat; identical logic in Npc.take_damage.
+	CharacterLines.on_damage_taken(self, amount, attacker)
 	if health == 0:
 		_dead = true
 		_die()
@@ -309,6 +313,9 @@ func _die() -> void:
 	set_physics_process(false)
 	# Issue #252: action-log line — the figure left the field.
 	DebugInfo.log("%s died" % display_name)
+	# Issue #335: if this leaves exactly one teammate alive, the survivor
+	# is "left alone in the team" and speaks up.
+	CharacterLines.on_member_death(self)
 	# Issue #222: the shared camera must survive EVERY dying member — its
 	# host may die while someone else is controlled, or when the whole team
 	# is wiped at the end of the game. Reparent it to the level and keep it

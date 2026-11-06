@@ -351,7 +351,7 @@ func set_shielded(value: bool) -> void:
 		_shield_rect.visible = shielded
 
 
-func take_damage(amount: int) -> void:
+func take_damage(amount: int, attacker: Node2D = null) -> void:
 	if _dead:
 		return
 	# Issue #221: the energy shield blocks all damage until the next turn.
@@ -367,6 +367,10 @@ func take_damage(amount: int) -> void:
 	# Issue #252: debug damage number + action-log line.
 	DebugInfo.show_damage(self, amount)
 	DebugInfo.log("%s takes %d damage (%d/%d)" % [display_name, amount, health, MAX_HEALTH])
+	# Issue #335: comics line near the figure — the victim cries out (or
+	# calls out an ALLY's betrayal) and a big hit makes the attacker
+	# gloat; identical logic in Player.take_damage.
+	CharacterLines.on_damage_taken(self, amount, attacker)
 	# Hit flash.
 	_set_body_color(Color(1.0, 0.6, 0.7, 1))
 	get_tree().create_timer(0.1).timeout.connect(
@@ -379,6 +383,9 @@ func _die() -> void:
 	_dead = true
 	# Issue #252: action-log line — the figure left the field.
 	DebugInfo.log("%s died" % display_name)
+	# Issue #335: if this leaves exactly one teammate alive, the survivor
+	# is "left alone in the team" and speaks up.
+	CharacterLines.on_member_death(self)
 	# Issue #280: an NPC may HOST the shared camera (LevelDuel authors it
 	# under an NPC figure) — rescue it exactly like Player._die does for
 	# the player team (issue #222): reparent it to the level and keep it

@@ -19,7 +19,9 @@ class Victim:
 	extends Node2D
 	var damage_taken := 0
 
-	func take_damage(amount: int) -> void:
+	# Issue #335: figures take_damage(amount, attacker) — stubs take the
+	# optional attacker too.
+	func take_damage(amount: int, attacker: Node2D = null) -> void:
 		damage_taken += amount
 
 

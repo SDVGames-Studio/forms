@@ -98,7 +98,9 @@ func _on_body_entered(body: Node2D) -> void:
 		_explode()
 		return
 	if body.has_method("take_damage"):
-		body.take_damage(damage)
+		# Issue #335: pass the shooter so the victim can tell friend from
+		# foe when it reacts with a comics line.
+		body.take_damage(damage, shooter)
 	queue_free()
 
 
@@ -114,7 +116,8 @@ func _explode() -> void:
 		var body := node as Node2D
 		if body and body.has_method("take_damage") \
 				and body.global_position.distance_to(global_position) <= blast_radius:
-			body.take_damage(damage)
+			# Issue #335: pass the shooter (comics lines, friend vs foe).
+			body.take_damage(damage, shooter)
 	# Issue #281: the blast also destroys mines within the radius — each
 	# has 1 HP and detonates instantly when damaged.
 	for node in get_tree().get_nodes_in_group("mines"):
