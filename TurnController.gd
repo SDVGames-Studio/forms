@@ -122,6 +122,10 @@ func _process(delta: float) -> void:
 	# Issue #85: stall watchdogs run even while switching / before the
 	# first turn, so a lost tween or timer can never freeze the game.
 	_process_watchdog(delta)
+	# Issue #335: idle characters muse a comics line — the active figure
+	# standing around without any action speaks to itself (own guards
+	# inside; resets outside levels and during the handover).
+	CharacterLines.tick_idle(delta)
 	# Issue #119: post-shot handover — wait for the short delay AND for
 	# every projectile to explode before passing the turn.
 	# Issue #244: the same handover now also serves an expired turn timer,
@@ -191,6 +195,8 @@ func notify_member_action() -> void:
 		# Issue #306: a move/aim action commits a pending Switch-tool
 		# character change — its use is spent now.
 		ToolInventory.commit_switch()
+		# Issue #335: an action restarts the active figure's idle musings.
+		CharacterLines.note_action()
 
 
 ## Issue #104: true while N/P character switching is locked for the turn.
@@ -206,6 +212,8 @@ func notify_shot() -> void:
 	# Issue #306: a shot commits a pending Switch-tool character change
 	# — its use is spent now (switch, move, aim or shoot).
 	ToolInventory.commit_switch()
+	# Issue #335: a shot is an action — restart the idle musings.
+	CharacterLines.note_action()
 	_switching = true
 	# Issue #131, reworked in #143: the weapon lock is per character and
 	# applied by Weapon._fire — notify_shot no longer locks the inventory
