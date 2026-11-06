@@ -20,6 +20,10 @@ const SHOW_TIME := 3.0
 ## Width the text wraps at, and the padding inside the balloon.
 const MAX_TEXT_WIDTH := 140.0
 const PADDING := Vector2(12.0, 10.0)
+## Issue #335 rework (owner 2026-11-06): the fallback font leaves more
+## air under the last line than above the first, so the text read high
+## in the balloon — drop it a little and grow the box to match.
+const TEXT_DROP := 4.0
 const FONT_SIZE := 13
 ## Distance from the figure's origin to the balloon's bottom edge —
 ## clear above the name label (-62..-46) and health bar.
@@ -65,7 +69,7 @@ func _setup(line: String) -> void:
 	var text_size := font.get_multiline_string_size(_line,
 			HORIZONTAL_ALIGNMENT_CENTER, MAX_TEXT_WIDTH, FONT_SIZE)
 	var width := text_size.x + PADDING.x * 2.0
-	var height := text_size.y + PADDING.y * 2.0
+	var height := text_size.y + PADDING.y * 2.0 + TEXT_DROP
 	offset_left = -width / 2.0
 	offset_right = width / 2.0
 	offset_top = -RISE - height
@@ -159,7 +163,7 @@ func _draw_shout() -> void:
 
 func _draw_text() -> void:
 	var font := ThemeDB.fallback_font
-	draw_multiline_string(font, Vector2(PADDING.x, PADDING.y), _line,
+	draw_multiline_string(font, Vector2(PADDING.x, PADDING.y + TEXT_DROP), _line,
 			HORIZONTAL_ALIGNMENT_CENTER, size.x - PADDING.x * 2.0,
 			FONT_SIZE, -1, TEXT_COLOR)
 
