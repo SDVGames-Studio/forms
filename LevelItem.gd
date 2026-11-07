@@ -99,15 +99,27 @@ func _ready() -> void:
 	# chain rule the mines use (issue #281).
 	add_to_group("level_items")
 	# Layer 4 (projectiles) like the mine, so rockets and pellets can
-	# also detonate an item with a direct hit. Mask 1: the item falls
-	# onto the world terrain only — characters never collide with it,
-	# they pick it up through PICKUP_RADIUS.
+	# also detonate an item with a direct hit.
 	collision_layer = 4
-	collision_mask = 1
+	# Issue #374: the item must collide with other objects — the world
+	# terrain (1), BOTH teams' characters (2 = NPCs, 8 = players) and
+	# everything else on layer 4 (other items, mines, projectiles). A
+	# pair forms when either body masks the other, so no other file has
+	# to grow a mask bit; characters still take the item through
+	# PICKUP_RADIUS, and contact with a figure now picks it up too (see
+	# _on_body_entered) so a bundle landing on someone never balances on
+	# a head just outside the radius.
+	collision_mask = 1 | 2 | 4 | 8
 	gravity_scale = 0.0
 	var mat := PhysicsMaterial.new()
 	mat.bounce = 0.2
 	physics_material_override = mat
+	# Issue #374: two 64 px bodies touch at about SIZE px between
+	# centres, which is OUTSIDE the 0.75 * SIZE pickup radius — watch
+	# contacts so a resting touch with a character still takes the item.
+	contact_monitor = true
+	max_contacts_reported = 4
+	body_entered.connect(_on_body_entered)
 	var shape := CollisionShape2D.new()
 	var rect := RectangleShape2D.new()
 	rect.size = Vector2(SIZE, SIZE)
@@ -149,6 +161,21 @@ func _build_visual() -> void:
 		vbar.color = cross
 		vbar.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		add_child(vbar)
+
+## Issue #374: the item now physically collides with characters, so a
+## falling bundle can come to rest ON a figure — bodies touch at about
+## SIZE px between centres while PICKUP_RADIUS is only 0.75 * SIZE.
+## Treat contact with a LIVING character exactly like the proximity
+## loop in _physics_process: the touching figure takes the item.
+func _on_body_entered(body: Node2D) -> void:
+	if _picked or _exploded:
+		return
+	for group in ["player_team", "enemy_team"]:
+		if body.is_in_group(group):
+			var hp = body.get("health")
+			if hp is int and hp > 0:
+				_pickup(body)
+			return
 
 
 func _physics_process(_delta: float) -> void:
