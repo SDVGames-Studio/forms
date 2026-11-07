@@ -26,6 +26,13 @@ extends StaticBody2D
 ## Craters therefore actually OPEN chunk by chunk — the first delivery
 ## only ever split chunks smaller (a half never fitted inside the blast
 ## BOX), so the ring stayed solid.
+##
+## Issue #376: convex POLYGON chunks (a non-empty `polygon`) — the
+## trapezoid / triangle / half-disc destructible hills. They carve with
+## the blast circle exactly like the other kinds: disjoint pieces
+## survive, covered pieces vanish and partial ones are halved along
+## their longer axis (convex clipping — the halves stay convex) until
+## small enough to decide by their centre.
 
 const COLOR := Color(0.45, 0.32, 0.2, 1)
 ## Strips thinner than this are discarded (avoids sub-pixel slivers).
@@ -40,6 +47,11 @@ const MIN_ARC_SPAN := 0.005
 const MIN_BAND := 4.0
 
 @export var rect_size := Vector2(200, 60)
+
+## Issue #376: convex polygon mode — the chunk is this authored polygon
+## in local space (trapezoid, triangle, half-disc hills; base edge at
+## y = 0). An empty array keeps the rectangle of `rect_size`.
+@export var polygon: PackedVector2Array
 
 ## Issue #250: annular-sector mode — the chunk is the band between
 ## `ring_inner` and `ring_outer` over `arc_span` radians centred on
@@ -67,6 +79,11 @@ func _ready() -> void:
 		poly.name = "Shape"
 		poly.polygon = _sector_polygon()
 		add_child(poly)
+	elif polygon.size() >= 3:
+		var poly := CollisionPolygon2D.new()
+		poly.name = "Shape"
+		poly.polygon = polygon
+		add_child(poly)
 	else:
 		var shape := CollisionShape2D.new()
 		shape.name = "Shape"
@@ -80,8 +97,23 @@ func _ready() -> void:
 func _draw() -> void:
 	if ring_outer > 0.0:
 		draw_colored_polygon(_sector_polygon(), COLOR)
+	elif polygon.size() >= 3:
+		draw_colored_polygon(polygon, COLOR)
 	else:
 		draw_rect(Rect2(-rect_size / 2.0, rect_size), COLOR)
+
+
+## Issue #376: local-space bounds of the authored chunk — the rect for
+## rectangle chunks, the polygon's AABB for polygon chunks. Consumers
+## that must avoid the soil (e.g. ProjectileBody's rock exclusion)
+## use this instead of assuming `rect_size`.
+func local_bounds() -> Rect2:
+	if polygon.size() >= 3:
+		var aabb := Rect2(polygon[0], Vector2.ZERO)
+		for p in polygon:
+			aabb = aabb.expand(p)
+		return aabb
+	return Rect2(-rect_size / 2.0, rect_size)
 
 
 ## Carve this chunk with an explosion at `global_point` (blast `radius`).
@@ -89,7 +121,125 @@ func apply_blast(global_point: Vector2, radius: float) -> void:
 	if ring_outer > 0.0:
 		_carve_sector(to_local(global_point), radius)
 		return
+	if polygon.size() >= 3:
+		_carve_polygon(to_local(global_point), radius)
+		return
 	_carve_rect(to_local(global_point), radius)
+
+
+## Issue #376: carve a convex polygon chunk with the blast CIRCLE —
+## the polygon twin of `_carve_rect`: untouched chunks stay whole,
+## everything else is halved along its longer axis (convex clipping)
+## until each piece is disjoint, covered or small enough to decide by
+## its centre.
+func _carve_polygon(point: Vector2, blast: float) -> void:
+	_blast_point = point
+	_blast_radius = blast
+	if _poly_disjoint(polygon):
+		return
+	queue_free()
+	_split_or_keep_poly(get_parent(), polygon)
+
+
+## True when the blast circle cannot touch the convex polygon — the
+## closest point of its BOUNDARY is farther than the blast radius and
+## the blast centre is not inside (a blast inside is never disjoint).
+func _poly_disjoint(pts: PackedVector2Array) -> bool:
+	if _poly_contains(_blast_point, pts):
+		return false
+	return LevelTerrain._closest_on_polygon(pts, _blast_point).distance_to(
+			_blast_point) > _blast_radius
+
+
+## True when the point sits inside (or on) the convex polygon — the
+## edge cross products all keep one sign, whatever the winding.
+func _poly_contains(p: Vector2, pts: PackedVector2Array) -> bool:
+	var side := 0
+	for i in pts.size():
+		var a := pts[i]
+		var b := pts[(i + 1) % pts.size()]
+		var cross := (b.x - a.x) * (p.y - a.y) - (b.y - a.y) * (p.x - a.x)
+		if cross < 0.0:
+			if side > 0:
+				return false
+			side = -1
+		elif cross > 0.0:
+			if side < 0:
+				return false
+			side = 1
+	return true
+
+
+## True when every polygon vertex sits inside the blast circle.
+func _poly_covered(pts: PackedVector2Array) -> bool:
+	for p in pts:
+		if p.distance_to(_blast_point) > _blast_radius:
+			return false
+	return true
+
+
+## Recursive halving for polygon pieces: keep disjoint ones, drop
+## covered ones, halve the rest along the LONGER axis through the
+## vertex mean (convex clip — both halves stay convex); a piece too
+## small to halve is dropped when the blast circle swallows its
+## centre, kept otherwise — mirroring `_split_or_keep_rect`.
+func _split_or_keep_poly(parent: Node, pts: PackedVector2Array) -> void:
+	if _poly_disjoint(pts):
+		parent.add_child(_spawn_poly(pts))
+		return
+	if _poly_covered(pts):
+		return
+	var aabb := Rect2(pts[0], Vector2.ZERO)
+	for p in pts:
+		aabb = aabb.expand(p)
+	var axis := 0 if aabb.size.x >= aabb.size.y else 1
+	if aabb.size[axis] < 2.0 * MIN_PIECE:
+		var centroid := Vector2.ZERO
+		for p in pts:
+			centroid += p
+		centroid /= float(pts.size())
+		if centroid.distance_to(_blast_point) > _blast_radius:
+			parent.add_child(_spawn_poly(pts))
+		return
+	var split := 0.0
+	for p in pts:
+		split += p[axis]
+	split /= float(pts.size())
+	var lo := _clip_half(pts, axis, split, false)
+	var hi := _clip_half(pts, axis, split, true)
+	if lo.size() >= 3:
+		_split_or_keep_poly(parent, lo)
+	if hi.size() >= 3:
+		_split_or_keep_poly(parent, hi)
+
+
+## Convex clip of `pts` against an axis-aligned half-plane: keep the
+## side where p[axis] >= t (`keep_ge`) or <= t — Sutherland–Hodgman for
+## a single clip edge, so both halves are closed convex polygons.
+func _clip_half(pts: PackedVector2Array, axis: int, t: float,
+		keep_ge: bool) -> PackedVector2Array:
+	var out := PackedVector2Array()
+	var n := pts.size()
+	for i in n:
+		var cur := pts[i]
+		var nxt := pts[(i + 1) % n]
+		var cur_in := (cur[axis] >= t) if keep_ge else (cur[axis] <= t)
+		var nxt_in := (nxt[axis] >= t) if keep_ge else (nxt[axis] <= t)
+		if cur_in:
+			out.append(cur)
+		if cur_in != nxt_in:
+			var f := (t - cur[axis]) / (nxt[axis] - cur[axis])
+			out.append(cur + (nxt - cur) * f)
+	return out
+
+
+## New chunk node for a surviving polygon piece. The piece lives in the
+## carved node's local space, so it spawns at the same position.
+func _spawn_poly(pts: PackedVector2Array) -> DestructibleGround:
+	var piece := DestructibleGround.new()
+	piece.polygon = pts
+	piece.position = position
+	return piece
 
 
 ## Issue #299: carve a rectangle chunk with the blast CIRCLE, not its
