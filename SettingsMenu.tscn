@@ -78,31 +78,25 @@ theme_override_constants/separation = 14
 unique_name_in_owner = true
 custom_minimum_size = Vector2(340, 64)
 layout_mode = 2
-text = "Teams"
+text = "TEAMS CUSTOMIZATION"
 
 [node name="HotkeysButton" type="Button" parent="Layout/Columns/Nav"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(340, 64)
 layout_mode = 2
-text = "Hotkeys"
+text = "CONTROLS"
 
-[node name="DebugCheck" type="CheckButton" parent="Layout/Columns/Nav"]
+[node name="DebugButton" type="Button" parent="Layout/Columns/Nav"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(340, 64)
 layout_mode = 2
-text = "Debug Mode"
-
-[node name="GravityFieldCheck" type="CheckButton" parent="Layout/Columns/Nav"]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(340, 64)
-layout_mode = 2
-text = "Gravity Field"
+text = "DEBUG"
 
 [node name="BackButton" type="Button" parent="Layout/Columns/Nav"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(340, 64)
 layout_mode = 2
-text = "Back"
+text = "BACK"
 
 [node name="Footer" type="HBoxContainer" parent="."]
 layout_mode = 1

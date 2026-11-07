@@ -29,6 +29,9 @@ class Issue303Driver extends Node:
 		["res://TeamMenu.tscn", "res://SettingsMenu.tscn"],
 		["res://LevelConfigMenu.tscn", "res://LevelsMenu.tscn"],
 		["res://HotkeysMenu.tscn", "res://SettingsMenu.tscn"],
+		# Main-menu spec M2 (Q1): the debug switches live under their own
+		# category screen — Escape returns to the settings screen.
+		["res://DebugMenu.tscn", "res://SettingsMenu.tscn"],
 	]
 
 
