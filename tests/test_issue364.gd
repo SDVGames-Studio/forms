@@ -11,8 +11,9 @@ extends Node
 ##  - destructibility: an item has 1 HP — one point of damage detonates
 ##    it with the grenade's COPIED values (100 px radius / 40 damage)
 ##    and chain-detonates a neighbour item.
-##  - round drop: wrapping the turn order starts round 2 — exactly one
-##    item falls from above the terrain and obeys the level gravity.
+##  - round drop: wrapping the turn order starts round 2 — one item
+##    may appear (a seeded 25% roll, issue #375) right ON a ground
+##    surface, where it rests.
 ##
 ## Run headless: godot --headless res://tests/test_issue364.tscn
 ## Exit code 0 = pass.
@@ -110,27 +111,41 @@ func _ready() -> void:
 		get_tree().quit(1)
 		return
 
-	# 4) Round drop: wrapping the turn order bumps the round counter and
-	# drops exactly one item, from above the terrain, under gravity.
+	# 4) Round drop: wrapping the turn order bumps the round counter
+	# and (issue #375) creates an item with a 25% chance — seed(13) makes
+	# that roll land under 0.25, so this wrap creates exactly one item,
+	# right ON a ground surface of the level (no sky drop anymore).
+	seed(13)
 	tc._turn_index = tc._turn_order.size() - 1
 	tc._next_alive_team()
 	_check("round wrap bumps the round counter", int(tc.get("_round")) == 2)
 	var dropped: Array = get_tree().get_nodes_in_group("level_items")
-	_check("round 2 drops exactly one item", dropped.size() == 1)
-	var sky_item: LevelItem = dropped[0] if dropped.size() == 1 else null
-	if sky_item == null:
+	_check("round 2 may create exactly one item (seeded 25% roll)",
+		dropped.size() == 1)
+	var dropped_item: LevelItem = dropped[0] if dropped.size() == 1 else null
+	if dropped_item == null:
 		_finish()
 		return
-	var v0 := sky_item.linear_velocity.y
-	for i in 10:
+	var spawn_at := dropped_item.global_position
+	for i in 45:
 		await get_tree().physics_frame
-	_check("the dropped item obeys the level gravity",
-		is_instance_valid(sky_item) and sky_item.linear_velocity.y > v0)
-	if is_instance_valid(sky_item):
-		sky_item.take_damage(1)
+	var p1 := dropped_item.global_position \
+			if is_instance_valid(dropped_item) else Vector2.ZERO
+	for i in 15:
+		await get_tree().physics_frame
+	# The item is created right ON a ground surface — no sky drop — and
+	# then only the level's local gravity field may tug it to its resting
+	# spot (a mass above can even lift it), so: still a live body, near
+	# the creation spot, and at rest.
+	_check("the created item settles on the field (no sky drop)",
+		is_instance_valid(dropped_item)
+		and dropped_item.global_position.distance_to(spawn_at) < 300.0
+		and dropped_item.global_position.distance_to(p1) < 4.0)
+	if is_instance_valid(dropped_item):
+		dropped_item.take_damage(1)
 		await get_tree().physics_frame
 		_check("1 damage detonates the item (1 HP)",
-			not is_instance_valid(sky_item))
+			not is_instance_valid(dropped_item))
 
 	# 5) Pickups on a player figure at full, unshielded health.
 	var figure: Node2D = null

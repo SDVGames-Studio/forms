@@ -56,9 +56,14 @@ var active_member: Node2D = null
 var game_over := false
 ## Issue #364: current ROUND — one full cycle through the turn order
 ## (every team acted once). From the second round on, one random item
-## (first aid kit / weapon / tool bundle) falls on the level at each
-## round change (LevelItems.spawn_random_item).
+## (first aid kit / weapon / tool bundle) may appear on a random SURFACE
+## spot of the level at each round change (LevelItems.spawn_random_item).
+## Issue #375: the round drop is a 25% roll now (was 100%).
 var _round := 1
+## Issue #375: the chance that a round beginning creates the round
+## drop (LevelItems.spawn_random_item) — a quarter of the rounds,
+## down from every round.
+const ROUND_DROP_CHANCE := 0.25
 
 var _level: Node = null
 var _turn_left := 0.0
@@ -407,11 +412,12 @@ func _next_alive_team() -> String:
 		var id: String = _turn_order[index]
 		if not _alive_of(id).is_empty():
 			# Issue #364: wrapping past the end of the order = every team
-			# acted once = a new ROUND began. From the second round on,
-			# one random item falls on a random spot of the level.
+			# acted once = a new ROUND began. From the second round on, one
+			# random item may appear on a random surface spot of the level
+			# — a 25% roll per round now (issue #375).
 			if index <= _turn_index:
 				_round += 1
-				if _round >= 2:
+				if _round >= 2 and randf() < ROUND_DROP_CHANCE:
 					LevelItems.spawn_random_item(_level)
 			_turn_index = index
 			return id
