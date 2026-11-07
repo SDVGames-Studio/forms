@@ -5,3 +5,7 @@ extends Node2D
 
 func _ready() -> void:
 	GameConfig.apply(self)
+	# Issue #367: the night regime is picked in the level
+	# configuration menu and applied when the level starts.
+	if GameConfig.night_regime:
+		NightRegime.apply(self)
