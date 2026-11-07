@@ -34,9 +34,10 @@ static var turn_time := 15.0
 
 ## Issue #367: night regime — chosen in the level configuration menu
 ## before the level starts. While on, the level plays in darkness:
-## the player's figures each carry a vision field and every light
-## source (muzzle flashes, projectiles, explosions) genuinely lights
-## the terrain around it (see scripts/NightRegime.gd).
+## a mask layer hides everything beyond the player's figures' vision
+## wedges (aimed along their live aim) and beyond every light source
+## (muzzle flashes, projectiles, explosions — see
+## scripts/NightRegime.gd).
 static var night_regime := false
 
 ## Issue #169: player team customisation, edited in the team menu and

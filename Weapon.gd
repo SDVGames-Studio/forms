@@ -184,6 +184,12 @@ func _aim() -> Vector2:
 		return parent.aim_dir(_facing, 1.0)
 	return Vector2(_facing, 0.0)
 
+
+## Issue #367 (rework): the wielder's facing sign — the night-regime
+## vision wedges aim along the same live aim the held weapon shows.
+func facing_sign() -> float:
+	return _facing
+
 ## Issue #277 rework: the "up" of the wielder's current gravity frame —
 ## lobbed throws arc away from the floor in the same frame the weapon
 ## aims in.
