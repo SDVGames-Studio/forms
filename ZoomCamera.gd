@@ -77,16 +77,21 @@ func _ready() -> void:
 	add_child(load("res://OSD.gd").new())
 	# Issue #289: the camera-type switch button (bottom-left corner).
 	add_child(load("res://CameraSwitch.gd").new())
-	# Issue #290: debug gravity vector field overlay — created only while
-	# the setting is on (levels never re-read it mid-game: the settings
-	# menu sits in the main menu, like the debug mode). The overlay itself
-	# deduplicates, so a second camera cannot double the field.
-	if GameConfig.debug_gravity_field:
-		var field: Node2D = load("res://scripts/GravityFieldDebug.gd").new()
-		field.name = "GravityFieldDebug"
-		add_child(field)
+	# Issue #290: debug gravity vector field overlay. Issue #384: it is
+	# no longer built only here — since #304 the settings screen (with
+	# the Gravity Field switch) is reachable from the in-game pause
+	# overlay, so the flag can flip while the level runs. _ready seeds the
+	# overlay when the level starts with the switch already on; _process
+	# reconciles it live afterwards (_ensure_gravity_field).
+	_ensure_gravity_field()
 
 func _process(delta: float) -> void:
+	# Issue #384: keep the gravity field overlay in sync with the LIVE
+	# setting — enabling it in the in-game settings must show the field
+	# without restarting the level. One static bool check per frame; when
+	# the switch is off nothing is created (the overlay itself hides by
+	# the same flag, and stays hidden until it is flipped on again).
+	_ensure_gravity_field()
 	var member := _controlled_member()
 	# Issue #289: ease the view rotation to the current type's target — 0 in
 	# the static mode, the character's gravity frame in the character mode
@@ -105,6 +110,20 @@ func _process(delta: float) -> void:
 
 func _is_spectator() -> bool:
 	return _controlled_member() == null
+
+## Issue #384: create exactly one gravity field overlay while the switch
+## is on. Idempotent: skips when the flag is off or the overlay already
+## exists (the overlay's own group dedup also collapses a race between
+## several cameras creating one in the same frame, keeping the field
+## single however many cameras appear or die mid-level).
+func _ensure_gravity_field() -> void:
+	if not GameConfig.debug_gravity_field:
+		return
+	if get_tree().get_first_node_in_group("gravity_field_debug") != null:
+		return
+	var field: Node2D = load("res://scripts/GravityFieldDebug.gd").new()
+	field.name = "GravityFieldDebug"
+	add_child(field)
 
 
 func _controlled_member() -> Node2D:
