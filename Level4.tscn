@@ -39,15 +39,30 @@ position = Vector2(2048, 704)
 script = ExtResource("10_indestr")
 rect_size = Vector2(4096, 448)
 
-[node name="Soil1" type="StaticBody2D" parent="."]
-position = Vector2(1024, 450)
+[node name="SoilLayer1" type="StaticBody2D" parent="."]
+position = Vector2(992, 368)
 script = ExtResource("11_destr")
-rect_size = Vector2(2048, 60)
+rect_size = Vector2(1984, 224)
 
-[node name="Soil2" type="StaticBody2D" parent="."]
-position = Vector2(3072, 450)
+[node name="SoilLayer2" type="StaticBody2D" parent="."]
+position = Vector2(2944, 368)
 script = ExtResource("11_destr")
-rect_size = Vector2(2048, 60)
+rect_size = Vector2(1920, 224)
+
+[node name="TriangleHill" type="StaticBody2D" parent="."]
+position = Vector2(800, 256)
+script = ExtResource("11_destr")
+polygon = PackedVector2Array(-160, 0, 160, 0, 0, -320)
+
+[node name="TrapezoidHill" type="StaticBody2D" parent="."]
+position = Vector2(1300, 256)
+script = ExtResource("11_destr")
+polygon = PackedVector2Array(-180, 0, 180, 0, 120, -320, -120, -320)
+
+[node name="DomeHill" type="StaticBody2D" parent="."]
+position = Vector2(3110, 256)
+script = ExtResource("11_destr")
+polygon = PackedVector2Array(-256.0, -0.0, -253.8, -33.4, -247.3, -66.3, -236.5, -98.0, -221.7, -128.0, -203.1, -155.8, -181.0, -181.0, -155.8, -203.1, -128.0, -221.7, -98.0, -236.5, -66.3, -247.3, -33.4, -253.8, 0.0, -256.0, 33.4, -253.8, 66.3, -247.3, 98.0, -236.5, 128.0, -221.7, 155.8, -203.1, 181.0, -181.0, 203.1, -155.8, 221.7, -128.0, 236.5, -98.0, 247.3, -66.3, 253.8, -33.4, 256.0, -0.0)
 
 [node name="Platform1" type="StaticBody2D" parent="."]
 position = Vector2(900, 72)
@@ -65,7 +80,7 @@ script = ExtResource("11_destr")
 rect_size = Vector2(384, 48)
 
 [node name="Player" type="CharacterBody2D" parent="."]
-position = Vector2(300, 400)
+position = Vector2(300, 220)
 collision_layer = 8
 collision_mask = 1
 script = ExtResource("1_player")
@@ -91,7 +106,7 @@ shape = SubResource("CircleShape2D_shape")
 script = ExtResource("5_weapon")
 
 [node name="Teammate1" type="CharacterBody2D" parent="."]
-position = Vector2(180, 400)
+position = Vector2(180, 220)
 collision_layer = 8
 collision_mask = 1
 script = ExtResource("1_player")
@@ -111,7 +126,7 @@ shape = SubResource("CircleShape2D_shape")
 script = ExtResource("5_weapon")
 
 [node name="Teammate2" type="CharacterBody2D" parent="."]
-position = Vector2(420, 400)
+position = Vector2(420, 220)
 collision_layer = 8
 collision_mask = 1
 script = ExtResource("1_player")
@@ -131,7 +146,7 @@ shape = SubResource("CircleShape2D_shape")
 script = ExtResource("5_weapon")
 
 [node name="Npc" type="CharacterBody2D" parent="."]
-position = Vector2(1600, 400)
+position = Vector2(1600, 220)
 collision_layer = 2
 collision_mask = 1
 script = ExtResource("3_npc")
@@ -149,7 +164,7 @@ offset_bottom = 32.0
 color = Color(0.85, 0.25, 0.25, 1)
 
 [node name="Npc2" type="CharacterBody2D" parent="."]
-position = Vector2(1780, 400)
+position = Vector2(1780, 220)
 collision_layer = 2
 collision_mask = 1
 script = ExtResource("3_npc")
@@ -167,7 +182,7 @@ offset_bottom = 32.0
 color = Color(0.85, 0.25, 0.25, 1)
 
 [node name="Npc3" type="CharacterBody2D" parent="."]
-position = Vector2(1960, 400)
+position = Vector2(1960, 220)
 collision_layer = 2
 collision_mask = 1
 script = ExtResource("3_npc")
@@ -185,7 +200,7 @@ offset_bottom = 32.0
 color = Color(0.85, 0.25, 0.25, 1)
 
 [node name="Npc4" type="CharacterBody2D" parent="."]
-position = Vector2(2450, 400)
+position = Vector2(2450, 220)
 collision_layer = 2
 collision_mask = 1
 script = ExtResource("3_npc")
@@ -203,7 +218,7 @@ offset_bottom = 32.0
 color = Color(0.25, 0.75, 0.35, 1)
 
 [node name="Npc5" type="CharacterBody2D" parent="."]
-position = Vector2(2630, 400)
+position = Vector2(2630, 220)
 collision_layer = 2
 collision_mask = 1
 script = ExtResource("3_npc")
@@ -221,7 +236,7 @@ offset_bottom = 32.0
 color = Color(0.25, 0.75, 0.35, 1)
 
 [node name="Npc6" type="CharacterBody2D" parent="."]
-position = Vector2(2810, 400)
+position = Vector2(2760, 220)
 collision_layer = 2
 collision_mask = 1
 script = ExtResource("3_npc")
@@ -239,7 +254,7 @@ offset_bottom = 32.0
 color = Color(0.25, 0.75, 0.35, 1)
 
 [node name="Npc7" type="CharacterBody2D" parent="."]
-position = Vector2(3400, 400)
+position = Vector2(3420, 220)
 collision_layer = 2
 collision_mask = 1
 script = ExtResource("3_npc")
@@ -257,7 +272,7 @@ offset_bottom = 32.0
 color = Color(0.25, 0.45, 0.9, 1)
 
 [node name="Npc8" type="CharacterBody2D" parent="."]
-position = Vector2(3580, 400)
+position = Vector2(3600, 220)
 collision_layer = 2
 collision_mask = 1
 script = ExtResource("3_npc")
@@ -275,7 +290,7 @@ offset_bottom = 32.0
 color = Color(0.25, 0.45, 0.9, 1)
 
 [node name="Npc9" type="CharacterBody2D" parent="."]
-position = Vector2(3760, 400)
+position = Vector2(3780, 220)
 collision_layer = 2
 collision_mask = 1
 script = ExtResource("3_npc")

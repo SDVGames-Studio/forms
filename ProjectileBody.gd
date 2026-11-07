@@ -374,8 +374,11 @@ func _create_ground() -> void:
 	for node in get_tree().get_nodes_in_group("destructible_ground"):
 		var soil := node as DestructibleGround
 		if soil != null and is_instance_valid(soil):
-			solids.append(Rect2(soil.position - soil.rect_size / 2.0
-						- origin, soil.rect_size))
+			# Issue #376: polygon hills carry their own bounds — never assume
+			# the rect of `rect_size` (wrong for shaped chunks).
+			var bounds := soil.local_bounds()
+			solids.append(Rect2(soil.position + bounds.position - origin,
+					bounds.size))
 	# Row by row: the true chord of the disk minus the x-intervals the
 	# exclusions ban from that row — one exact strip per remaining span.
 	var rows := int(ceilf(ROCK_GROUND_RADIUS / ROCK_ROW))

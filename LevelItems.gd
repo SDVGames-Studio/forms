@@ -93,6 +93,9 @@ static func _surface_length(ground: Node2D) -> float:
 	var radius = ground.get("radius")
 	if (radius is float or radius is int) and float(radius) > 0.0:
 		return TAU * float(radius)
+	var poly = ground.get("polygon")
+	if poly is PackedVector2Array and poly.size() >= 3:
+		return _up_boundary_length(poly)
 	var size = ground.get("rect_size")
 	if size is Vector2:
 		return maxf(0.0, size.x)
@@ -115,7 +118,64 @@ static func _surface_point(ground: Node2D, offset: float) -> Dictionary:
 		var angle := offset * TAU
 		var radial := Vector2(cos(angle), sin(angle))
 		return {"point": radial * float(radius), "normal": radial}
+	var poly = ground.get("polygon")
+	if poly is PackedVector2Array and poly.size() >= 3:
+		return _up_boundary_point(poly, offset)
 	var size = ground.get("rect_size")
 	var width: float = size.x
 	return {"point": Vector2((offset - 0.5) * width, -float(size.y) / 2.0),
 			"normal": Vector2.UP}
+
+
+## Issue #376: the outward normal of one polygon edge — the perpendicular
+## pointing away from the polygon's centroid (convex chunks only).
+static func _edge_normal(a: Vector2, b: Vector2,
+		centroid: Vector2) -> Vector2:
+	var edge := b - a
+	var normal := Vector2(-edge.y, edge.x).normalized()
+	var mid := (a + b) / 2.0
+	if (mid + normal * 4.0).distance_to(centroid) \
+				< (mid - normal * 4.0).distance_to(centroid):
+		normal = -normal
+	return normal
+
+
+## Issue #376: the total length of a polygon chunk's UPWARD-facing
+## boundary — the edges whose outward normal points at least somewhat
+## up. The walkable surface of a trapezoid / triangle / half-disc hill
+## is exactly that boundary (the flat base is not a surface).
+static func _up_boundary_length(pts: PackedVector2Array) -> float:
+	var centroid := Vector2.ZERO
+	for p in pts:
+		centroid += p
+	centroid /= float(pts.size())
+	var total := 0.0
+	for i in pts.size():
+		var b := pts[(i + 1) % pts.size()]
+		if _edge_normal(pts[i], b, centroid).y < -0.1:
+			total += pts[i].distance_to(b)
+	return total
+
+
+## Issue #376: the point + outward normal at a uniform offset [0, 1)
+## along the polygon chunk's upward-facing boundary.
+static func _up_boundary_point(pts: PackedVector2Array,
+		offset: float) -> Dictionary:
+	var centroid := Vector2.ZERO
+	for p in pts:
+		centroid += p
+	centroid /= float(pts.size())
+	var walk := offset * _up_boundary_length(pts)
+	for i in pts.size():
+		var a := pts[i]
+		var b := pts[(i + 1) % pts.size()]
+		var normal := _edge_normal(a, b, centroid)
+		if normal.y >= -0.1:
+			continue
+		var edge_len := a.distance_to(b)
+		if walk > edge_len:
+			walk -= edge_len
+			continue
+		var t := walk / edge_len if edge_len > 0.0 else 0.0
+		return {"point": a + (b - a) * t, "normal": normal}
+	return {"point": pts[0], "normal": Vector2.UP}
