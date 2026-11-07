@@ -115,6 +115,7 @@ var _roll_tween: Tween
 ## backgroundless "controls" word remains and it reopens on click.
 var _controls_panel: PanelContainer
 var _controls_word: Button
+var _controls_root: Control
 var _controls_hidden := false
 ## Issue #87: one-line hint of what the player should do right now.
 const HINT_ROLL := "Rolling for the first team..."
@@ -303,6 +304,11 @@ func _on_level_changed() -> void:
 			_layer = null
 			_label = null
 			_hint_label = null
+		# Issue #377 rework: the controls hint dies with the HUD — null the
+		# refs so visibility updates never touch a freed instance.
+		_controls_root = null
+		_controls_panel = null
+		_controls_word = null
 		active_team = ""
 		active_member = null
 		game_over = false
@@ -702,13 +708,24 @@ func _build_ui() -> void:
 	_update_label()
 
 
-## Issue #377: compact controls window at the center of the left side of
-## the screen — a window with a 90% transparent white background, every
-## item of the list on its own line, closed by the ✕ button in its top
-## left corner. While hidden, only the backgroundless word "controls"
-## stays and clicking it shows the window again. The panel itself ignores
-## the mouse so gameplay clicks pass through; only the buttons act.
+## Issue #377 rework: compact controls window at the center of the left
+## side of the screen — a window with a 90% transparent white background,
+## every item of the list on its own line, closed by a vector-drawn cross
+## (no font glyph dependency) in its top left corner. While hidden, only
+## the backgroundless word "controls" stays — pinned to the exact spot
+## the cross occupied — and clicking it shows the window again. The window
+## lives through every turn change (enemy turns included); only leaving
+## the level rebuilds it, and the hidden/shown choice is never reset.
 func _build_controls_panel() -> void:
+	_controls_root = Control.new()
+	_controls_root.name = "ControlsHintRoot"
+	_controls_root.set_anchors_preset(Control.PRESET_CENTER_LEFT)
+	_controls_root.grow_horizontal = Control.GROW_DIRECTION_END
+	_controls_root.grow_vertical = Control.GROW_DIRECTION_BOTH
+	_controls_root.offset_left = 12.0
+	_controls_root.offset_right = 12.0
+	_controls_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_layer.add_child(_controls_root)
 	var style := StyleBoxFlat.new()
 	style.bg_color = Color(1.0, 1.0, 1.0, 0.1)
 	style.set_corner_radius_all(6.0)
@@ -716,26 +733,15 @@ func _build_controls_panel() -> void:
 	_controls_panel = PanelContainer.new()
 	_controls_panel.name = "ControlsPanel"
 	_controls_panel.add_theme_stylebox_override("panel", style)
-	_controls_panel.set_anchors_preset(Control.PRESET_CENTER_LEFT)
-	_controls_panel.grow_horizontal = Control.GROW_DIRECTION_END
-	_controls_panel.grow_vertical = Control.GROW_DIRECTION_BOTH
-	_controls_panel.offset_left = 12.0
-	_controls_panel.offset_right = 12.0
 	_controls_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_controls_root.add_child(_controls_panel)
 	var rows := VBoxContainer.new()
 	rows.name = "Rows"
 	rows.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	rows.add_theme_constant_override("separation", 2)
-	var close := Button.new()
+	var close := CrossCloseButton.new()
 	close.name = "CloseButton"
-	close.text = "✕"
-	close.flat = true
-	close.focus_mode = Control.FOCUS_NONE
 	close.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
-	close.add_theme_font_size_override("font_size", 13)
-	close.add_theme_color_override("font_color", Color(1, 1, 1, 0.75))
-	close.add_theme_color_override("font_hover_color", Color(1, 1, 1, 1.0))
-	close.add_theme_color_override("font_pressed_color", Color(1, 1, 1, 1.0))
 	close.pressed.connect(_on_controls_close_pressed)
 	rows.add_child(close)
 	for line in CONTROL_LINES:
@@ -746,7 +752,11 @@ func _build_controls_panel() -> void:
 		row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		rows.add_child(row)
 	_controls_panel.add_child(rows)
-	_layer.add_child(_controls_panel)
+	# The root sits on the vertical center line; shift the window up by
+	# half its height so the window's CENTER hugs the anchor point, the
+	# same centered look the old grow-both layout had.
+	var window_height := _controls_panel.get_minimum_size().y
+	_controls_panel.position = Vector2(0.0, -window_height * 0.5)
 	_controls_word = Button.new()
 	_controls_word.name = "ControlsWord"
 	_controls_word.text = "controls"
@@ -756,25 +766,24 @@ func _build_controls_panel() -> void:
 	_controls_word.add_theme_color_override("font_color", Color(1, 1, 1, 0.75))
 	_controls_word.add_theme_color_override("font_hover_color", Color(1, 1, 1, 1.0))
 	_controls_word.add_theme_color_override("font_pressed_color", Color(1, 1, 1, 1.0))
-	_controls_word.set_anchors_preset(Control.PRESET_CENTER_LEFT)
-	_controls_word.grow_horizontal = Control.GROW_DIRECTION_END
-	_controls_word.grow_vertical = Control.GROW_DIRECTION_BOTH
-	_controls_word.offset_left = 12.0
-	_controls_word.offset_right = 12.0
+	# Issue #377 rework: while hidden, the word sits exactly where the
+	# cross button was — the top left corner of the window's content.
+	_controls_word.position = Vector2(10.0, 8.0 - window_height * 0.5)
+	_controls_word.size = _controls_word.get_minimum_size()
 	_controls_word.pressed.connect(_on_controls_word_pressed)
-	_layer.add_child(_controls_word)
+	_controls_root.add_child(_controls_word)
 	_update_controls_visibility()
 
 
-## Issue #377: the controls window shows only while the player may act;
-## when closed with ✕ only the "controls" word remains in its place.
+## Issue #377 rework: the window and the "controls" word stay on screen
+## through every turn change — the player's hidden/shown choice persists
+## and the instance is only dropped when the level is left.
 func _update_controls_visibility() -> void:
-	var player_turn: bool = not game_over and not _switching \
-		and active_team == TEAM_PLAYER
-	if _controls_panel != null:
-		_controls_panel.visible = player_turn and not _controls_hidden
-	if _controls_word != null:
-		_controls_word.visible = player_turn and _controls_hidden
+	if not is_instance_valid(_controls_panel) \
+			or not is_instance_valid(_controls_word):
+		return
+	_controls_panel.visible = not _controls_hidden
+	_controls_word.visible = _controls_hidden
 
 
 func _on_controls_close_pressed() -> void:
@@ -820,3 +829,27 @@ func _update_hint() -> void:
 	else:
 		_hint_label.text = HINT_ENEMY
 	_update_controls_visibility()
+
+
+## Issue #377 rework: the close control of the controls window. The cross
+## is DRAWN with two anti-aliased lines instead of a text glyph — the
+## project font has no ✕ character, so the old text button rendered a
+## placeholder box. Drawing it keeps the symbol identical everywhere.
+class CrossCloseButton extends Button:
+	var cross_color := Color(1.0, 1.0, 1.0, 0.75)
+	var cross_color_hover := Color(1.0, 1.0, 1.0, 1.0)
+
+	func _init() -> void:
+		flat = true
+		focus_mode = Control.FOCUS_NONE
+		custom_minimum_size = Vector2(18.0, 18.0)
+
+	func _draw() -> void:
+		var center := size * 0.5
+		var arm: float = maxf(minf(size.x, size.y) * 0.5 - 2.0, 3.0)
+		var color := cross_color_hover if is_hovered() else cross_color
+		var width := 2.0
+		draw_line(center - Vector2(arm, arm), center + Vector2(arm, arm),
+			color, width, true)
+		draw_line(center - Vector2(arm, -arm), center + Vector2(arm, -arm),
+			color, width, true)
