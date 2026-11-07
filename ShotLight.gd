@@ -89,6 +89,14 @@ func fade(duration: float) -> void:
 	tween.chain().tween_callback(queue_free)
 
 
+func _ready() -> void:
+	# Issue #367: the night-regime vision mask reveals every active
+	# light source (muzzle flashes, projectiles, mines, explosions)
+	# even beyond the player's own vision. Freed nodes leave the group
+	# automatically.
+	add_to_group("shot_lights")
+
+
 func _process(delta: float) -> void:
 	if flicker <= 0.0:
 		set_process(false)
