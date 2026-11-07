@@ -31,6 +31,11 @@ const RISE := 100.0
 const FILL := Color(1.0, 1.0, 1.0, 0.96)
 const OUTLINE := Color(0.05, 0.05, 0.05, 1.0)
 const TEXT_COLOR := Color(0.1, 0.1, 0.12, 1.0)
+## Issue #383: the THOUGHT cloud reads wrong — its middle must be
+## filled white (the bump circles only fringe the border, so the text
+## floated over the world behind), and its text sits a little lower
+## than in the flat balloons (the cloud adds visual height above).
+const THOUGHT_TEXT_DROP := 4.0
 const BORDER := 3.0
 ## Thought-cloud bump radius and the trailing bubbles' radii.
 const BUMP := 9.0
@@ -70,6 +75,8 @@ func _setup(line: String) -> void:
 			HORIZONTAL_ALIGNMENT_CENTER, MAX_TEXT_WIDTH, FONT_SIZE)
 	var width := text_size.x + PADDING.x * 2.0
 	var height := text_size.y + PADDING.y * 2.0 + TEXT_DROP
+	if kind == Kind.THOUGHT:
+		height += THOUGHT_TEXT_DROP
 	offset_left = -width / 2.0
 	offset_right = width / 2.0
 	offset_top = -RISE - height
@@ -132,6 +139,16 @@ func _draw_thought() -> void:
 	# the cloud and a clean white interior (trail dots included).
 	for pass_color in [OUTLINE, FILL]:
 		var outline_pass: bool = pass_color == OUTLINE
+		if not outline_pass:
+			# Issue #383: fill the cloud's middle. The bump circles only
+			# reach BUMP deep from the ellipse curve, so a wide, low cloud
+			# had a see-through middle; a filled ellipse on the bump ring's
+			# footprint closes it (the bumps still cap its edge).
+			var cloud := PackedVector2Array()
+			for i in 24:
+				var fill_angle := TAU * i / 24.0
+				cloud.append(center + Vector2(cos(fill_angle) * a, sin(fill_angle) * b))
+			draw_colored_polygon(cloud, FILL)
 		for i in steps:
 			var angle := TAU * i / steps
 			var p := center + Vector2(cos(angle) * a, sin(angle) * b)
@@ -162,8 +179,10 @@ func _draw_shout() -> void:
 
 
 func _draw_text() -> void:
+	# Issue #383: the thought cloud's text sits a little lower.
+	var extra_drop := THOUGHT_TEXT_DROP if kind == Kind.THOUGHT else 0.0
 	var font := ThemeDB.fallback_font
-	draw_multiline_string(font, Vector2(PADDING.x, PADDING.y + TEXT_DROP), _line,
+	draw_multiline_string(font, Vector2(PADDING.x, PADDING.y + TEXT_DROP + extra_drop), _line,
 			HORIZONTAL_ALIGNMENT_CENTER, size.x - PADDING.x * 2.0,
 			FONT_SIZE, -1, TEXT_COLOR)
 
