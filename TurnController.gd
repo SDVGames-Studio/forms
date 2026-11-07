@@ -110,9 +110,27 @@ var _layer: CanvasLayer
 var _label: Label
 var _hint_label: Label
 var _roll_tween: Tween
+## Issue #377: the reworked controls hint — a compact closable window
+## at the center of the screen's left side; when closed only a
+## backgroundless "controls" word remains and it reopens on click.
+var _controls_panel: PanelContainer
+var _controls_word: Button
+var _controls_hidden := false
 ## Issue #87: one-line hint of what the player should do right now.
 const HINT_ROLL := "Rolling for the first team..."
-const HINT_PLAYER := "Move: A/D or arrows • Jump: Space • Aim: W/S or Up/Down • Shoot: F • Camera: C • Tools: 5-8 • Switch figure: arm 5, then N/P • Weapon: 1-4, 9 (mine), 0 (jackhammer — steers with W/S) • Skip turn: Tab"
+## Issue #377: the player-turn controls list moved from the one-line top
+## hint into the closable left window — one list item per line.
+const CONTROL_LINES: Array[String] = [
+	"Move: A/D or arrows",
+	"Jump: Space",
+	"Aim: W/S or Up/Down",
+	"Shoot: F",
+	"Camera: C",
+	"Tools: 5-8",
+	"Switch figure: arm 5, then N/P",
+	"Weapon: 1-4, 9 (mine), 0 (jackhammer — W/S)",
+	"Skip turn: Tab",
+]
 const HINT_ENEMY := "Enemy turn — wait for your move..."
 const HINT_SWITCH := "Shot fired — waiting for the projectiles..."
 ## Issue #244: the timer ran out — the turn is over, the character is
@@ -654,6 +672,7 @@ func _check_win() -> void:
 			camera.enabled = true
 	if _hint_label != null:
 		_hint_label.text = HINT_SPECTATE
+	_update_controls_visibility()
 
 
 func _build_ui() -> void:
@@ -679,7 +698,93 @@ func _build_ui() -> void:
 	_hint_label.add_theme_font_size_override("font_size", 14)
 	_hint_label.add_theme_color_override("font_color", Color(1, 1, 1, 0.75))
 	_layer.add_child(_hint_label)
+	_build_controls_panel()
 	_update_label()
+
+
+## Issue #377: compact controls window at the center of the left side of
+## the screen — a window with a 90% transparent white background, every
+## item of the list on its own line, closed by the ✕ button in its top
+## left corner. While hidden, only the backgroundless word "controls"
+## stays and clicking it shows the window again. The panel itself ignores
+## the mouse so gameplay clicks pass through; only the buttons act.
+func _build_controls_panel() -> void:
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(1.0, 1.0, 1.0, 0.1)
+	style.set_corner_radius_all(6.0)
+	style.set_content_margin_all(10.0)
+	_controls_panel = PanelContainer.new()
+	_controls_panel.name = "ControlsPanel"
+	_controls_panel.add_theme_stylebox_override("panel", style)
+	_controls_panel.set_anchors_preset(Control.PRESET_CENTER_LEFT)
+	_controls_panel.grow_horizontal = Control.GROW_DIRECTION_END
+	_controls_panel.grow_vertical = Control.GROW_DIRECTION_BOTH
+	_controls_panel.offset_left = 12.0
+	_controls_panel.offset_right = 12.0
+	_controls_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var rows := VBoxContainer.new()
+	rows.name = "Rows"
+	rows.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	rows.add_theme_constant_override("separation", 2)
+	var close := Button.new()
+	close.name = "CloseButton"
+	close.text = "✕"
+	close.flat = true
+	close.focus_mode = Control.FOCUS_NONE
+	close.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	close.add_theme_font_size_override("font_size", 13)
+	close.add_theme_color_override("font_color", Color(1, 1, 1, 0.75))
+	close.add_theme_color_override("font_hover_color", Color(1, 1, 1, 1.0))
+	close.add_theme_color_override("font_pressed_color", Color(1, 1, 1, 1.0))
+	close.pressed.connect(_on_controls_close_pressed)
+	rows.add_child(close)
+	for line in CONTROL_LINES:
+		var row := Label.new()
+		row.text = line
+		row.add_theme_font_size_override("font_size", 12)
+		row.add_theme_color_override("font_color", Color(1, 1, 1, 0.85))
+		row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		rows.add_child(row)
+	_controls_panel.add_child(rows)
+	_layer.add_child(_controls_panel)
+	_controls_word = Button.new()
+	_controls_word.name = "ControlsWord"
+	_controls_word.text = "controls"
+	_controls_word.flat = true
+	_controls_word.focus_mode = Control.FOCUS_NONE
+	_controls_word.add_theme_font_size_override("font_size", 12)
+	_controls_word.add_theme_color_override("font_color", Color(1, 1, 1, 0.75))
+	_controls_word.add_theme_color_override("font_hover_color", Color(1, 1, 1, 1.0))
+	_controls_word.add_theme_color_override("font_pressed_color", Color(1, 1, 1, 1.0))
+	_controls_word.set_anchors_preset(Control.PRESET_CENTER_LEFT)
+	_controls_word.grow_horizontal = Control.GROW_DIRECTION_END
+	_controls_word.grow_vertical = Control.GROW_DIRECTION_BOTH
+	_controls_word.offset_left = 12.0
+	_controls_word.offset_right = 12.0
+	_controls_word.pressed.connect(_on_controls_word_pressed)
+	_layer.add_child(_controls_word)
+	_update_controls_visibility()
+
+
+## Issue #377: the controls window shows only while the player may act;
+## when closed with ✕ only the "controls" word remains in its place.
+func _update_controls_visibility() -> void:
+	var player_turn: bool = not game_over and not _switching \
+		and active_team == TEAM_PLAYER
+	if _controls_panel != null:
+		_controls_panel.visible = player_turn and not _controls_hidden
+	if _controls_word != null:
+		_controls_word.visible = player_turn and _controls_hidden
+
+
+func _on_controls_close_pressed() -> void:
+	_controls_hidden = true
+	_update_controls_visibility()
+
+
+func _on_controls_word_pressed() -> void:
+	_controls_hidden = false
+	_update_controls_visibility()
 
 
 func _update_label() -> void:
@@ -690,6 +795,7 @@ func _update_label() -> void:
 			_label.text = ""
 			if _hint_label != null:
 				_hint_label.text = HINT_ROLL
+		_update_controls_visibility()
 		return
 	var team_name: String = _team_name(active_team)
 	# Issue #165/#167: the banner names the team by its actual scene-
@@ -708,6 +814,9 @@ func _update_hint() -> void:
 		# expired timer; both block input while the effects resolve.
 		_hint_label.text = HINT_EFFECTS if _timer_wait else HINT_SWITCH
 	elif active_team == TEAM_PLAYER:
-		_hint_label.text = HINT_PLAYER
+		# Issue #377: the controls list lives in the closable window on the
+		# left — the one-line top hint stays empty during the player's turn.
+		_hint_label.text = ""
 	else:
 		_hint_label.text = HINT_ENEMY
+	_update_controls_visibility()
