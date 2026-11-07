@@ -1,4 +1,4 @@
-[gd_resource type="Theme" load_steps=10 format=3]
+[gd_resource type="Theme" load_steps=11 format=3]
 
 [ext_resource type="FontFile" path="res://assets/fonts/Jost-Variable.ttf" id="1_jost"]
 
@@ -45,6 +45,29 @@ border_width_top = 1
 border_width_right = 1
 border_width_bottom = 1
 border_color = Color(0.655, 0.545, 0.98, 1)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
+
+[sub_resource type="StyleBoxFlat" id="btn_hover_pressed"]
+## Issue #384 (rework): a CHECKED CheckButton hovered by the cursor draws
+## with the "hover_pressed" state (BaseButton.DRAW_HOVER_PRESSED). The
+## theme previously did not define it, so Godot fell back to the DEFAULT
+## theme's EMPTY StyleBox — and font_hover_pressed_color is near-black —
+## which made an enabled switch (e.g. GRAVITY FIELD) vanish completely
+## the moment the mouse touched it. Keep the pressed/checked accent fill
+## and brighten the border so hover stays visible on every button.
+content_margin_left = 22.0
+content_margin_top = 12.0
+content_margin_right = 22.0
+content_margin_bottom = 12.0
+bg_color = Color(0.655, 0.545, 0.98, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.85, 0.78, 1.0, 1)
 corner_radius_top_left = 6
 corner_radius_top_right = 6
 corner_radius_bottom_right = 6
@@ -111,6 +134,7 @@ Button/font_sizes/font_size = 22
 Button/styles/disabled = SubResource("btn_disabled")
 Button/styles/focus = SubResource("btn_focus")
 Button/styles/hover = SubResource("btn_hover")
+Button/styles/hover_pressed = SubResource("btn_hover_pressed")
 Button/styles/normal = SubResource("btn_normal")
 Button/styles/pressed = SubResource("btn_pressed")
 Label/colors/font_color = Color(0.91, 0.91, 0.929, 1)
