@@ -32,6 +32,13 @@ static var ai_friendly_fire := 0
 ## configuration menu and read by TurnController when a turn starts.
 static var turn_time := 15.0
 
+## Issue #367: night regime — chosen in the level configuration menu
+## before the level starts. While on, the level plays in darkness:
+## the player's figures each carry a vision field and every light
+## source (muzzle flashes, projectiles, explosions) genuinely lights
+## the terrain around it (see scripts/NightRegime.gd).
+static var night_regime := false
+
 ## Issue #169: player team customisation, edited in the team menu and
 ## persisted to user://team.cfg. Since issue #208 the menu edits the
 ## whole set of teams (see `teams` below); these single-team fields stay

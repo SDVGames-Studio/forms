@@ -10,6 +10,7 @@ extends Control
 @onready var _team_size: SpinBox = %TeamSizeSpinBox
 @onready var _enemy_count: SpinBox = %EnemyCountSpinBox
 @onready var _turn_time: SpinBox = %TurnTimeSpinBox
+@onready var _night_regime: CheckButton = %NightRegimeCheck
 @onready var _start_button: Button = %StartButton
 @onready var _back_button: Button = %BackButton
 
@@ -18,11 +19,16 @@ func _ready() -> void:
 	_team_size.value_changed.connect(func(value: float) -> void: GameConfig.team_size = int(value))
 	_enemy_count.value_changed.connect(func(value: float) -> void: GameConfig.enemy_count = int(value))
 	_turn_time.value_changed.connect(func(value: float) -> void: GameConfig.turn_time = value)
+	# Issue #367: the night regime is picked here, before the game.
+	_night_regime.toggled.connect(func(on: bool) -> void: GameConfig.night_regime = on)
 	_start_button.pressed.connect(_on_start_pressed)
 	_back_button.pressed.connect(_on_back_pressed)
 	_team_size.set_value_no_signal(GameConfig.team_size)
 	_enemy_count.set_value_no_signal(GameConfig.enemy_count)
 	_turn_time.set_value_no_signal(GameConfig.turn_time)
+	# Setting the property directly does not emit `toggled`, so the
+	# stored choice is restored without being written back.
+	_night_regime.button_pressed = GameConfig.night_regime
 	if GameConfig.level_path.is_empty():
 		# Opened directly (e.g. from the editor): fall back to level 1.
 		GameConfig.level_path = "res://Level.tscn"
