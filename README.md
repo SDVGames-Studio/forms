@@ -13,6 +13,9 @@ Main reference: Worms: Armageddon.
 
 ## Godot Native RL (ncnn) readiness — confirmed 2026-11-06
 
+The full train → export → convert → deploy pipeline, with pinned tool versions,
+lives in [`DEPLOYMENT.md`](DEPLOYMENT.md).
+
 - **Engine requirement met.** The Godot Native RL GDExtension requires Godot
   **4.5+** (`compatibility_minimum = "4.5"` in
   `addons/godot_native_rl/ncnn_runner.gdextension`); this project runs

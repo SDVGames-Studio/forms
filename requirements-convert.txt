@@ -1,0 +1,6 @@
+# Forms — conversion venv (.venv-convert), issue #357.
+# Only pnnx + torch are needed for ONNX -> ncnn conversion:
+#   .venv-convert/bin/pnnx models/policy.onnx inputshape=[1,OBS_SIZE]
+# Parity verification runs from .venv-train (see DEPLOYMENT.md §3).
+pnnx==20261020
+torch>=2.3,<3

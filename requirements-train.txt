@@ -1,0 +1,13 @@
+# Forms — training + export/verify venv (.venv-train), issue #357.
+# Validated combo: PR #371 (godot-rl 0.8.2 + SB3 2.4.0 + torch CPU) ran
+# rl_connectivity_test.py end to end. Conversion (pnnx) lives in
+# requirements-convert.txt — keep the two venvs separate.
+godot-rl==0.8.2
+stable-baselines3==2.4.0        # godot-rl 0.8.2 declares stable-baselines3<=2.4.0
+gymnasium==1.0.0                # godot-rl 0.8.2 declares gymnasium<=1.0.0
+torch>=2.3,<3                   # CPU wheels suffice (validated on CPU, PR #371)
+numpy
+# --- export + conversion-parity check only (not needed to train) ---
+onnx==1.23.2
+onnxruntime==1.31.1
+ncnn==1.0.20261020
