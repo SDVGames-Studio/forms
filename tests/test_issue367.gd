@@ -3,11 +3,12 @@ extends Node
 ##  - The level configuration menu carries a "Night regime" check that
 ##    reads/writes GameConfig.night_regime and restores the stored
 ##    choice when reopened.
-##  - NightRegime.apply(level) adds a dark CanvasModulate to the level
-##    root (the world canvas goes dark, which also switches every
-##    ShotLight into a real light source).
-##  - Every player-team figure gets a VisionField (a green-tinted
-##    PointLight2D with a green rim); enemy figures get none.
+##  - NightRegime.apply(level) adds a near-black CanvasModulate to the
+##    level root (total darkness outside lights, which also switches
+##    every ShotLight into a real light source).
+##  - Every player-team figure gets a VisionField (a neutral moonlight
+##    PointLight2D whose texture is a wedge opening toward the enemy
+##    team — no green circle or rim); enemy figures get none.
 ##
 ## Run headless: godot --headless res://tests/test_issue367.tscn
 ## Exit code 0 = pass.
@@ -51,27 +52,46 @@ func _ready() -> void:
 	var modulate: CanvasModulate = level.get_node_or_null("NightModulate")
 	_check("apply() adds a CanvasModulate to the level",
 		modulate is CanvasModulate)
-	_check("the modulate tint is dark",
-		modulate != null and modulate.color.v < 0.4)
+	_check("the modulate tint is total darkness",
+		modulate != null and modulate.color.v < 0.05)
 
 	# 3) Vision fields: teammates only.
 	var hero := Node2D.new()
 	hero.add_to_group("player_team")
+	hero.position = Vector2(100, 100)
 	level.add_child(hero)
 	var foe := Node2D.new()
 	foe.add_to_group("enemy_team")
+	foe.position = Vector2(500, 120)
 	level.add_child(foe)
 	night._attach_vision_lights()
 	await get_tree().process_frame
 	var field: PointLight2D = hero.get_node_or_null("VisionField")
 	_check("a player-team figure carries a VisionField",
 		field is NightRegime.VisionField)
-	_check("the vision field is a green-tinted PointLight2D",
+	_check("the vision field is a neutral moonlight PointLight2D",
 		field != null and field is PointLight2D
-		and field.color.g > field.color.r)
+		and field.color.b > field.color.r)
 	_check("the vision light is scaled to the vision radius",
 		field != null
 		and is_equal_approx(field.texture_scale, NightRegime.VISION_RADIUS / 128.0))
+	# 3b) The light is a wedge, not a circle: along the facing direction
+	# (+X in the texture) it is bright, behind the figure and in the
+	# corners it is transparent.
+	if field != null and field.texture != null:
+		var tex: Image = field.texture.get_image()
+		_check("the vision texture is bright ahead of the figure",
+			tex.get_pixel(166, 128).a > 0.99)
+		_check("the vision texture is dark behind the figure",
+			tex.get_pixel(0, 128).a < 0.05)
+		_check("the vision texture is dark in a corner",
+			tex.get_pixel(255, 255).a < 0.05)
+	# 3c) The wedge opens toward the enemy team.
+	if field is NightRegime.VisionField:
+		field._aim()
+		var want := (Vector2(500, 120) - hero.global_position).angle()
+		_check("the vision wedge aims at the enemy team",
+			absf(field.global_rotation - want) < 0.01)
 	_check("an enemy figure carries no VisionField",
 		foe.get_node_or_null("VisionField") == null)
 

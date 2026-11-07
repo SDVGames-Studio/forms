@@ -3,12 +3,15 @@ extends Node
 ## Night regime (issue #367).
 ##
 ## Chosen in the level configuration menu before the level starts
-## (GameConfig.night_regime). While on, the level plays in darkness:
-## - a CanvasModulate tints the whole world canvas dark, so only lit
-##   areas are readable;
-## - every member of the player's team carries a vision field — a
-##   soft moonlight circle rimmed by a green line (the green boundary
-##   from the issue's mock) that travels with the figure;
+## (GameConfig.night_regime). While on, the level plays in total
+## darkness:
+## - a near-black CanvasModulate tints the whole world canvas, so only
+##   lit areas are readable (owner rework 2026-11-07: the shadowed area
+##   must be totally dark);
+## - every member of the player's team carries a vision field: a wedge
+##   of neutral moonlight opening toward the enemy team, shaped like
+##   the issue's mock (the mock's green lines only marked the wedge's
+##   borders — no circle and nothing green is drawn);
 ## - every other light source is already a ShotLight (issue #368):
 ##   muzzle flashes, projectiles, mines, explosions. In a darkened
 ##   canvas those PointLight2Ds genuinely light the terrain around
@@ -20,17 +23,20 @@ extends Node
 ## attached once when the level starts (a deferred pass, after
 ## GameConfig.apply trimmed the teams down to the chosen sizes).
 
-## Ambient tint of the world canvas while the night regime is on.
-const NIGHT_COLOR := Color(0.20, 0.22, 0.32, 1.0)
+## Ambient tint of the world canvas while the night regime is on:
+## total darkness (everything outside a light stays unreadable).
+const NIGHT_COLOR := Color(0.01, 0.015, 0.03, 1.0)
 
-## How far a figure sees, in world pixels (≈ five figure widths).
+## How far a figure sees, in world pixels (the mock's wedge reaches
+## beyond the screen edge).
 const VISION_RADIUS := 300.0
 
-## Moonlight tint of a vision field (greenish, matching the rim).
-const VISION_TINT := Color(0.62, 0.92, 0.68)
+## Half-opening of the vision wedge in radians (≈ 20°; the mock's wedge
+## spans roughly from -5° to +20° around the direction to the enemy).
+const VISION_HALF_ANGLE := 0.349066
 
-## Color of the vision-field boundary line.
-const RIM_COLOR := Color(0.35, 0.95, 0.45, 0.9)
+## Moonlight tint of a vision field — neutral white-blue, not green.
+const VISION_TINT := Color(0.85, 0.9, 1.0)
 
 var level_root: Node = null
 
@@ -70,28 +76,98 @@ func _attach_vision_lights() -> void:
 			member.add_child(VisionField.create(VISION_RADIUS))
 
 
-## A figure's vision field: soft green-tinted moonlight with a green
-## boundary ring drawn at its edge (the green lines of the mock).
+## A figure's vision field: a wedge of moonlight that opens toward the
+## enemy team (the visible-area shape of the issue's mock). The light
+## re-aims itself as figures walk, and nothing is drawn on top — no
+## green circle, no border lines.
 class VisionField:
 	extends PointLight2D
 
-	func _init() -> void:
-		texture = ShotLight.radial_texture()
+	## Seconds between re-aims (the enemy centroid barely moves).
+	const _AIM_INTERVAL := 0.25
 
-	static func create(radius: float) -> VisionField:
+	## Side length of the shared wedge texture; its sector reaches
+	## _SECTOR_TEX_RADIUS pixels from the centre.
+	const _SECTOR_TEX_SIZE := 256
+	const _SECTOR_TEX_RADIUS := 128.0
+
+	## The shared sector texture (built once, per-pixel).
+	static var _sector_texture: ImageTexture = null
+
+	## Vision reach in world pixels.
+	var radius := NightRegime.VISION_RADIUS
+
+	var _aim_timer := 0.0
+
+
+	## Build a configured wedge light. `vision_radius` is in world
+	## pixels.
+	static func create(vision_radius: float) -> VisionField:
 		var field := VisionField.new()
 		field.name = "VisionField"
 		field.color = NightRegime.VISION_TINT
 		field.energy = 1.1
-		field.texture_scale = radius / 128.0
-		field.radius = radius
+		field.texture = sector_texture()
+		# The texture's wedge reaches _SECTOR_TEX_RADIUS px from the
+		# centre; scale it to the requested vision radius.
+		field.texture_scale = vision_radius / _SECTOR_TEX_RADIUS
+		field.radius = vision_radius
 		return field
 
-	## Vision reach in world pixels (used to place the rim ring).
-	var radius := NightRegime.VISION_RADIUS
 
-	func _draw() -> void:
-		# The green boundary line of the vision field, just inside the
-		# lit circle so it stays readable against the darkness.
-		draw_arc(Vector2.ZERO, radius * 0.97, 0.0, TAU, 96,
-			NightRegime.RIM_COLOR, 2.0, true)
+	## The shared wedge texture: a sector of the vision half-angle
+	## opening along +X, bright at the figure and fading to nothing at
+	## the vision radius (same stops as ShotLight's radial gradient).
+	static func sector_texture() -> ImageTexture:
+		if _sector_texture != null:
+			return _sector_texture
+		var img := Image.create_empty(_SECTOR_TEX_SIZE, _SECTOR_TEX_SIZE,
+			false, Image.FORMAT_RGBA8)
+		var centre := Vector2(_SECTOR_TEX_SIZE / 2.0, _SECTOR_TEX_SIZE / 2.0)
+		var half := NightRegime.VISION_HALF_ANGLE
+		for y in _SECTOR_TEX_SIZE:
+			for x in _SECTOR_TEX_SIZE:
+				var offset := Vector2(x + 0.5, y + 0.5) - centre
+				var dist := offset.length()
+				var alpha := 0.0
+				if dist <= _SECTOR_TEX_RADIUS and absf(offset.angle()) <= half:
+					# Full brightness for the first 30% of the reach,
+					# then a linear fade to transparent at the edge.
+					var t := dist / _SECTOR_TEX_RADIUS
+					alpha = 1.0 if t <= 0.3 else clampf((1.0 - t) / 0.7, 0.0, 1.0)
+				img.set_pixel(x, y, Color(1, 1, 1, alpha))
+		_sector_texture = ImageTexture.create_from_image(img)
+		return _sector_texture
+
+
+	func _ready() -> void:
+		_aim()
+
+
+	func _process(delta: float) -> void:
+		# Keep the wedge pointed at the enemy team as figures walk.
+		_aim_timer += delta
+		if _aim_timer >= _AIM_INTERVAL:
+			_aim_timer = 0.0
+			_aim()
+
+
+	## Point the wedge toward the centroid of the enemy team (the
+	## direction figures face when they aim at the other side).
+	func _aim() -> void:
+		var parent := get_parent() as Node2D
+		if parent == null:
+			return
+		var centroid := Vector2.ZERO
+		var count := 0
+		for enemy in get_tree().get_nodes_in_group("enemy_team"):
+			if enemy is Node2D:
+				centroid += (enemy as Node2D).global_position
+				count += 1
+		if count == 0:
+			return
+		centroid /= count
+		var dir := centroid - parent.global_position
+		if dir.length_squared() < 1.0:
+			return
+		global_rotation = dir.angle()
