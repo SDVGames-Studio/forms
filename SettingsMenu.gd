@@ -1,12 +1,15 @@
 extends Control
-## Settings menu (issue #175).
+## Settings menu (issue #175; docs/ui/main_menu.md §6).
 ##
-## Hosts the settings entries; the team customisation ("My team") moved here
-## from the main menu. Issue #180: the entry is renamed to "Teams" — the
-## team menu configures the player's team AND the computer team's AI
-## behavior. Issue #252: the DEBUG MODE switch (on by default) gates the
-## OSD, the per-figure debug visuals and the action log. Back returns to
-## the main menu.
+## Hosts the settings categories; the team customisation ("My team")
+## moved here from the main menu. Issue #180: the entry is renamed to
+## "Teams Customization" — the team menu configures the player's team
+## AND the computer team's AI behavior. Issue #294: the hotkeys screen
+## is the CONTROLS category. Main-menu spec M2 (owner decision Q1,
+## 2026-11-06): the Debug Mode and Gravity Field switches live under
+## their own DEBUG category screen (DebugMenu) instead of on this root.
+## The GRAPHICS category (spec §6.3) arrives with milestone M3.
+## Back returns to the main menu.
 ## Issue #304: the SAME screen is reused inside the in-game pause overlay
 ## — with in_game set, navigation happens inside the overlay (the running
 ## level must survive) instead of changing the scene.
@@ -30,8 +33,7 @@ const SHADOW_COLOR := Color(0.05, 0.03, 0.1, 0.75)
 
 @onready var _team_button: Button = %TeamButton
 @onready var _hotkeys_button: Button = %HotkeysButton
-@onready var _debug_check: CheckButton = %DebugCheck
-@onready var _gravity_field_check: CheckButton = %GravityFieldCheck
+@onready var _debug_button: Button = %DebugButton
 @onready var _back_button: Button = %BackButton
 ## Issue #348: the screen follows the main-menu template (MenuBackground
 ## artwork + MenuTheme); the layout container is the toggleable content.
@@ -55,15 +57,9 @@ func _ready() -> void:
 	_team_button.pressed.connect(_on_team_pressed)
 	# Issue #294: the hotkeys screen — rebindable, persisted key bindings.
 	_hotkeys_button.pressed.connect(_on_hotkeys_pressed)
+	# Owner decision Q1: the debug switches live under their own category.
+	_debug_button.pressed.connect(_on_debug_pressed)
 	_back_button.pressed.connect(_on_back_pressed)
-	# Issue #252: the check shows the persisted state; every flip is saved
-	# at once so the choice survives a restart.
-	_debug_check.button_pressed = GameConfig.debug_mode
-	_debug_check.toggled.connect(_on_debug_toggled)
-	# Issue #290: the gravity vector field switch, right below the debug
-	# mode — same persist-on-flip behaviour.
-	_gravity_field_check.button_pressed = GameConfig.debug_gravity_field
-	_gravity_field_check.toggled.connect(_on_gravity_field_toggled)
 	_team_button.grab_focus()
 
 
@@ -81,6 +77,14 @@ func _on_hotkeys_pressed() -> void:
 	if _open_submenu("res://HotkeysMenu.tscn"):
 		return
 	get_tree().change_scene_to_file("res://HotkeysMenu.tscn")
+
+
+## Owner decision Q1 (2026-11-06): open the debug settings screen — the
+## Debug Mode and Gravity Field switches moved under this category.
+func _on_debug_pressed() -> void:
+	if _open_submenu("res://DebugMenu.tscn"):
+		return
+	get_tree().change_scene_to_file("res://DebugMenu.tscn")
 
 
 ## Issue #304: in overlay mode the submenu is instanced full-screen on
@@ -111,21 +115,6 @@ func _on_submenu_closed() -> void:
 	_layout.visible = true
 	_shadow.visible = true
 	_team_button.grab_focus()
-
-
-## Issue #252: flip and persist the debug mode. Levels read the flag when
-## they build their figures, so the change applies from the next level on
-## (the settings menu sits in the main menu, never over a running game).
-func _on_debug_toggled(pressed: bool) -> void:
-	GameConfig.debug_mode = pressed
-	GameConfig.save_settings()
-
-
-## Issue #290: flip and persist the gravity vector field switch; the
-## camera of the NEXT level reads it when it builds the overlay.
-func _on_gravity_field_toggled(pressed: bool) -> void:
-	GameConfig.debug_gravity_field = pressed
-	GameConfig.save_settings()
 
 
 func _on_back_pressed() -> void:

@@ -12,6 +12,9 @@ extends Node
 ## (MenuBackground artwork + MenuTheme) — standalone screens show the
 ## artwork; the overlay screens hide it and dim the game instead (the
 ## Shadow ColorRect), which is what these checks now verify.
+## Main-menu spec M2 (2026-11-07): the Settings root shows categories
+## (TEAMS CUSTOMIZATION / CONTROLS / DEBUG); the Debug Mode and Gravity
+## Field switches moved to the DebugMenu category screen (owner Q1).
 ##
 ## Run headless: godot --headless res://tests/test_issue304.tscn
 ## Exit code 0 = pass.
@@ -58,12 +61,12 @@ class Issue304Driver extends Node:
 		var opened: bool = settings != null and settings.is_inside_tree() \
 			and settings.get("in_game") == true \
 			and not panel.visible and get_tree().paused
-		# The very same entries as the main-menu settings screen.
+		# The very same categories as the main-menu settings screen; the
+		# debug switches now live on the DebugMenu category screen (Q1).
 		var entries: bool = settings != null \
 			and settings.get_node_or_null("%TeamButton") != null \
 			and settings.get_node_or_null("%HotkeysButton") != null \
-			and settings.get_node_or_null("%DebugCheck") != null \
-			and settings.get_node_or_null("%GravityFieldCheck") != null \
+			and settings.get_node_or_null("%DebugButton") != null \
 			and settings.get_node_or_null("%BackButton") != null
 		print("ISSUE304 settings_open=", opened, " entries=", entries)
 		ok = ok and opened and entries
@@ -128,6 +131,31 @@ class Issue304Driver extends Node:
 			and not is_instance_valid(hotkeys)
 		print("ISSUE304 hotkeys_back=", hotkeys_closed)
 		ok = ok and hotkeys_closed
+
+		# --- The Debug category (spec M2, owner Q1): the switches moved
+		# onto the DebugMenu screen, which opens as an overlay submenu too
+		# and carries the persisted CheckButtons there. ---
+		settings = pause.get("_settings_menu")
+		settings._on_debug_pressed()
+		await get_tree().process_frame
+		var debug_menu: Control = settings.get("_submenu")
+		var debug_open: bool = debug_menu != null \
+			and debug_menu.is_inside_tree() \
+			and debug_menu.get("in_game") == true
+		var debug_entries: bool = debug_menu != null \
+			and debug_menu.get_node_or_null("%DebugCheck") != null \
+			and debug_menu.get_node_or_null("%GravityFieldCheck") != null \
+			and debug_menu.get_node_or_null("%BackButton") != null
+		print("ISSUE304 debug_overlay=", debug_open,
+			" entries=", debug_entries)
+		ok = ok and debug_open and debug_entries
+		debug_menu._on_back_pressed()
+		await get_tree().process_frame
+		await get_tree().process_frame
+		var debug_closed: bool = settings.get("_submenu") == null \
+			and not is_instance_valid(debug_menu)
+		print("ISSUE304 debug_back=", debug_closed)
+		ok = ok and debug_closed
 
 		# --- Settings Back returns to the pause panel, still paused. ---
 		settings._on_back_pressed()
