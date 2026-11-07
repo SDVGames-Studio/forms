@@ -12,6 +12,14 @@ extends Control
 ## child of the speaking figure, so HudPose keeps it upright in whatever
 ## frame the current view shows (issue #311). It appears for SHOW_TIME
 ## (3 s, per the issue) and then frees itself.
+##
+## Issue #395 (night regime): a bubble in the world canvas would be
+## blacked out by the night mask, so while a NightRegime is active the
+## balloon is added to the regime's CharacterLinesLayer (in front of
+## the mask, below the OSD) instead and follows the speaker's on-screen
+## position every frame. Teammates' balloons stay visible all night;
+## an ENEMY's balloon shows exactly while its speaker is seen — inside
+## a teammate's vision wedge or lit by a light source (NightRegime.is_lit).
 
 enum Kind { SPEECH, THOUGHT, SHOUT }
 
@@ -43,8 +51,22 @@ const TRAIL := [8.0, 6.0, 4.0]
 
 var kind: int = Kind.SPEECH
 
+## Issue #395: the speaker this balloon belongs to while the night
+## regime is on (kept only as a weak reference — checked live).
+var figure: Node = null
+
+## The active night regime, or null in a normal (lit) level.
+var _night: NightRegime = null
+## Registry key of `figure` in _live (see speak).
+var _speaker_id := 0
+
 var _age := 0.0
 var _line := ""
+
+## Issue #395: figure instance id -> its live balloon. One balloon per
+## figure, whichever canvas the bubble sits in (on the figure by day, in
+## the CharacterLinesLayer at night) — a new line replaces the old one.
+static var _live := {}
 
 
 ## Issue #335: pop `line` above `figure` — the one door characters speak
@@ -53,17 +75,36 @@ var _line := ""
 static func speak(figure: Node, line: String, bubble_kind: int = Kind.SPEECH) -> void:
 	if figure == null or not is_instance_valid(figure):
 		return
-	var old := figure.get_node_or_null(NodePath("SpeechBubble"))
-	if old != null:
-		# Detach at once: a merely queue_free()d balloon still owns its
-		# name until the end of the frame, and a same-named sibling would
-		# be auto-renamed (breaking later lookups).
-		figure.remove_child(old)
-		old.queue_free()
+	var key := figure.get_instance_id()
+	if _live.has(key):
+		var old: Node = _live[key]
+		if old != null and is_instance_valid(old):
+			# Detach at once: a merely queue_free()d balloon still owns its
+			# name until the end of the frame, and a same-named sibling would
+			# be auto-renamed (breaking later lookups).
+			if old.get_parent() != null:
+				old.get_parent().remove_child(old)
+			old.queue_free()
+		_live.erase(key)
 	var bubble := SpeechBubble.new()
 	bubble.kind = bubble_kind
 	bubble.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	figure.add_child(bubble)
+	var night: NightRegime = null
+	var tree := figure.get_tree()
+	if tree != null:
+		night = tree.get_first_node_in_group("night_regime") as NightRegime
+	if night != null and night.lines_layer() != null:
+		# Issue #395: the night regime is on — the balloon must not sit in
+		# the world canvas (the mask would black it out). It lives in the
+		# character-lines layer, follows the speaker on screen, and hides
+		# for unseen enemies (see _process).
+		night.lines_layer().add_child(bubble)
+		bubble.figure = figure
+		bubble._speaker_id = key
+		bubble._night = night
+	else:
+		figure.add_child(bubble)
+	_live[key] = bubble
 	bubble._setup(line)
 
 
@@ -82,15 +123,55 @@ func _setup(line: String) -> void:
 	offset_top = -RISE - height
 	offset_bottom = -RISE
 	queue_redraw()
+	if _night != null:
+		# Issue #395: be right on the very first drawn frame — placed on
+		# the speaker and gated by the speaker's visibility already.
+		_follow_speaker()
+		_update_seen()
 
 
 func _process(delta: float) -> void:
+	if _night != null:
+		# Issue #395: keep the balloon on the speaker and hide an enemy's
+		# line while its speaker is not seen through the mask.
+		_follow_speaker()
+		_update_seen()
 	_age += delta
 	if _age >= SHOW_TIME:
 		queue_free()
 		return
 	# Quick fade over the last stretch so lines leave softly.
 	modulate.a = clampf((SHOW_TIME - _age) / 0.3, 0.0, 1.0)
+
+
+## Issue #395: the balloon lives in the night CharacterLinesLayer, so
+## it must track the speaker's on-screen position itself (that layer is
+## not moved by the camera).
+func _follow_speaker() -> void:
+	if figure == null or not is_instance_valid(figure) \
+			or not figure is CanvasItem:
+		return
+	position = (figure as CanvasItem).get_global_transform_with_canvas().origin
+
+
+## Issue #395: teammates' lines stay readable all night; an enemy's line
+## is visible exactly while the enemy is seen (vision wedge or light).
+func _update_seen() -> void:
+	if figure == null or not is_instance_valid(figure):
+		visible = false
+		return
+	if figure.is_in_group("player_team"):
+		visible = true
+		return
+	if figure is Node2D:
+		visible = _night.is_lit((figure as Node2D).global_position)
+
+
+func _exit_tree() -> void:
+	# Issue #395: drop the balloon from the one-per-figure registry (the
+	# figure may speak again later and must not find a stale entry).
+	if _speaker_id != 0 and _live.get(_speaker_id, null) == self:
+		_live.erase(_speaker_id)
 
 
 func _draw() -> void:

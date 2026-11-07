@@ -21,6 +21,13 @@ extends Node
 ## (0) and the background (-100) but below the OSD/menus (10), so the
 ## HUD stays readable.
 ##
+## Issue #395: teammates' character lines must stay readable at night
+## and an enemy's line must appear exactly while the enemy is seen —
+## so the regime also builds a CharacterLinesLayer one step ABOVE the
+## mask; SpeechBubble moves into it while the regime is on (see
+## SpeechBubble.speak), and enemy balloons hide unless the speaker is
+## is_lit() — inside a teammate's vision wedge or near a light source.
+##
 ## The manager is added once per level via NightRegime.apply(level); it
 ## reads the player_team group live each frame, so figures trimmed by
 ## GameConfig.apply or killed mid-level simply drop out of the mask.
@@ -28,6 +35,11 @@ extends Node
 ## Canvas layer of the mask: above the world (0) and the background
 ## (-100), below the OSD / in-game menu (10) and friends (12+).
 const MASK_LAYER := 5
+
+## Issue #395: the character-lines layer sits one step IN FRONT of the
+## night mask (everything the world shows) yet still below the HUD
+## (OSD/menus at 10), so balloons never black out but menus stay on top.
+const LINES_LAYER := MASK_LAYER + 1
 
 ## How far a figure sees, in world pixels (the mock's wedge reaches
 ## beyond the screen edge).
@@ -42,6 +54,14 @@ const VISION_HALF_ANGLE := 0.349066
 const SHADER_WEDGES := 12
 const SHADER_LIGHTS := 16
 
+## Soft-edge tolerances mirrored from scripts/night_mask.gdshader, so
+## is_lit() answers for exactly the region the mask reveals (issue #395).
+const EDGE_PX := 24.0
+const EDGE_ANG := 0.05
+## Small fully-visible disc every teammate/light always shows (SELF_PX
+## in the shader).
+const SELF_PX := 28.0
+
 ## The mask's fragment shader (wedge + light-source holes).
 const SHADER := preload("res://scripts/night_mask.gdshader")
 
@@ -49,6 +69,7 @@ var level_root: Node = null
 
 var _mask: ColorRect = null
 var _material: ShaderMaterial = null
+var _lines_layer: CanvasLayer = null
 var _wedge_data := PackedVector4Array()
 var _light_data := PackedVector3Array()
 var _wedge_count := 0
@@ -67,6 +88,9 @@ static func apply(level: Node) -> NightRegime:
 
 
 func _ready() -> void:
+	# Issue #395: SpeechBubble finds the active regime through this
+	# group the moment it joins the tree.
+	add_to_group("night_regime")
 	var layer := CanvasLayer.new()
 	layer.name = "NightMaskLayer"
 	layer.layer = MASK_LAYER
@@ -92,6 +116,45 @@ func _ready() -> void:
 		_light_data[j] = Vector3.ZERO
 	_material.set_shader_parameter("vision_radius", VISION_RADIUS)
 	_material.set_shader_parameter("vision_half_angle", VISION_HALF_ANGLE)
+
+	# Issue #395: the character-lines layer — in front of the mask so
+	# balloons stay readable in the night regime.
+	_lines_layer = CanvasLayer.new()
+	_lines_layer.name = "CharacterLinesLayer"
+	_lines_layer.layer = LINES_LAYER
+	level_root.add_child(_lines_layer)
+
+
+## The canvas layer SpeechBubble moves into while the regime is on
+## (issue #395). Null only before _ready or after the level is gone.
+func lines_layer() -> CanvasLayer:
+	return _lines_layer
+
+
+## Is `pos` seen through the mask right now? Mirrors the shader's rule
+## (wedge + light visibilities with their soft-edge tolerances): true
+## inside a teammate's vision wedge, in the small disc every teammate
+## or light always shows, or within an active light source's radius.
+## Issue #395: an enemy's character line shows exactly while the enemy
+## itself is seen — the enemy's own aim direction never matters (no
+## wedge for enemies).
+func is_lit(pos: Vector2) -> bool:
+	for i in _wedge_count:
+		var wedge := _wedge_data[i]
+		var delta := pos - Vector2(wedge.x, wedge.y)
+		var dist := delta.length()
+		if dist <= SELF_PX:
+			return true
+		if dist <= VISION_RADIUS + EDGE_PX \
+				and absf(Vector2(wedge.z, wedge.w).angle_to(delta)) \
+					<= VISION_HALF_ANGLE + EDGE_ANG:
+			return true
+	for j in _light_count:
+		var light := _light_data[j]
+		if pos.distance_to(Vector2(light.x, light.y)) \
+				<= maxf(light.z, SELF_PX) + EDGE_PX:
+			return true
+	return false
 
 
 func _process(_delta: float) -> void:
