@@ -36,6 +36,12 @@ enforced by `tests/test_issue420.gd`, which sweeps both controllers
 across multiple game states (extreme offsets, overspeed velocities,
 over-max HP, saturated cooldowns, overflow teams, the no-figure
 fallback, and the scaffold bot drifting off the arena).
+Issue #421 adds `tests/test_issue421.gd`: it drives a running episode for
+both controllers, reconstructs each full vector from world state using
+only the formulas in this file — the same construction a Python-side
+wrapper performs — and compares field by field (structure, key set,
+data types, lengths, order, and values); the sampled vectors are printed
+on pass.
 
 ## 1. `BotController.gd` — battlefield observation (46 floats)
 
