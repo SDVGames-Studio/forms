@@ -28,7 +28,9 @@ func get_reward() -> float:
 ## each key is an independent decision dimension and the Python training
 ## handshake builds one spaces.Discrete(size) object per head. Grounded in
 ## the game's own controls — movement set, aim keys, and the inventory's
-## four weapon slots (keys 1-4):
+## four weapon slots (keys 1-4). Issue #410 adds the action-mask half:
+## get_action_mask() marks the firing actions illegal while no alive
+## opposing figure stands within ATTACK_REACH.
 ##   "move":   0 hold | 1 walk right | 2 walk left | 3 jump | 4 backflip | 5 skip turn
 ##   "aim":    0 hold | 1 aim up | 2 aim down
 ##   "attack": 0 hold fire | 1-4 select+fire weapon slot 1-4
@@ -38,6 +40,50 @@ func get_action_space() -> Dictionary:
 		"aim": {"size": 3, "action_type": "discrete"},
 		"attack": {"size": 5, "action_type": "discrete"},
 	}
+
+## Issue #410: the weapon slots don't name weapons yet, so the scaffold's
+## attack reach is the game's widest AI weapon band — Npc.gd's per-weapon
+## ranges (issue #66): spear 90, shotgun 360, rocket 620. Any firing action
+## is legal while at least one alive opposing figure stands inside it.
+const ATTACK_REACH := 620.0
+
+## Issue #410: per-decision-step legality mask — one boolean array per
+## discrete head (true = legal), the same shape as get_action_space().
+## "move" and "aim" have no legality constraints in the scaffold (every
+## index is always legal); on "attack", index 0 (hold fire) is always
+## legal while indices 1-4 (select+fire a weapon slot) are legal only when
+## an alive opposing figure is within ATTACK_REACH. The mask is consumed
+## three ways: NcnnAIController2D.get_info() ships it in
+## info["action_mask"] on every training step (for the Python wrapper to
+## mask logits before sampling), and the ncnn inference path applies it to
+## the logits before argmax/softmax (ActionMask). Without a bound figure
+## the opposing side is "player_team" — the same figure-less default view
+## BotController uses (issue #381).
+func get_action_mask() -> Dictionary:
+	var can_fire := _enemy_in_reach()
+	var mask := {}
+	for key in get_action_space().keys():
+		var size: int = get_action_space()[key]["size"]
+		var legal: Array = []
+		legal.resize(size)
+		legal.fill(true)
+		if key == "attack":
+			for i in range(1, size):
+				legal[i] = can_fire
+		mask[key] = legal
+	return mask
+
+## Issue #410: nearest-opposing-figure reach test. Alive is duck-typed on
+## `health` (both Player.gd and Npc.gd report it), mirroring BotController.
+func _enemy_in_reach() -> bool:
+	if not is_inside_tree():
+		return false
+	for fig in get_tree().get_nodes_in_group("player_team"):
+		if fig is Node2D and fig.get("health") != null \
+				and float(fig.get("health")) > 0.0 \
+				and global_position.distance_to(fig.global_position) <= ATTACK_REACH:
+			return true
+	return false
 
 func set_action(action) -> void:
 	# Applied once per decision step; the trainer's action_repeat controls how
