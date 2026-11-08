@@ -10,9 +10,10 @@ extends NcnnAIController2D
 ## No raw coordinates or HP values ever leave this script. Issue #407
 ## implements the action-application half: set_action() translates discrete
 ## policy head indices into concrete game commands and stores them in
-## pending_command for the turn-based game loop. Reward shaping and the
-## action-space declaration land in follow-up issues (the remaining stubs
-## stay loud until then).
+## pending_command for the turn-based game loop. Issue #408 implements
+## the reward half: get_reward() returns the accumulated reward property,
+## credited by game logic when this bot's figure lands a hit. The
+## action-space declaration remains a loud stub until its own issue.
 
 const Stats := preload("res://scripts/CharacterStats.gd")
 
@@ -192,10 +193,35 @@ func _alive(fig) -> bool:
 	return hp != null and float(hp) > 0.0
 
 func get_reward() -> float:
-	# Return the reward accumulated since the last step — e.g. a RewardBuilder total,
-	# or a hand-computed shaping term (distance delta, goal bonus, time penalty).
-	push_error("get_reward() not implemented")
-	return 0.0
+	# Issue #408: the accumulated reward signal — simply the inherited
+	# `reward` property, never reset here. Game logic increments the
+	# property at known events (Player/Npc.take_damage credits
+	# HIT_REWARD when this bot's figure lands a hit); the training
+	# framework clears it after each collection (NcnnSync /
+	# zero_reward()), so this reports the delta since the last step.
+	return reward
+
+## Issue #408: reward per landed hit — the issue's sample magnitude.
+const HIT_REWARD := 1.0
+
+## Issue #408: does this controller play `fig`? Game logic (take_damage)
+## uses it to find whose accumulator a landed hit credits. Controllers
+## duck-type on this method, so foreign AGENT-group agents are skipped.
+func owns_figure(fig: Node2D) -> bool:
+	return _resolve_figure() == fig
+
+## Issue #408: a landed hit is a known reward event — every controller
+## in the AGENT group whose figure is the attacker earns +HIT_REWARD.
+## Called by Player/Npc.take_damage after damage is applied, so every
+## weapon path that threads its shooter (Projectile, ProjectileBody,
+## railgun) feeds the same accumulator.
+static func credit_hit_reward(attacker: Node2D) -> void:
+	if attacker == null or not attacker.is_inside_tree():
+		return
+	for ctrl in attacker.get_tree().get_nodes_in_group("AGENT"):
+		if ctrl != null and ctrl.has_method("owns_figure") \
+				and ctrl.owns_figure(attacker):
+			ctrl.reward += HIT_REWARD
 
 func get_action_space() -> Dictionary:
 	# Describe each action head. Examples:
