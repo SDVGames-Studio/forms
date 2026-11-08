@@ -17,6 +17,7 @@ const WeaponScript := preload("res://Weapon.gd")
 ## enemy figures are the SAME class of character as player figures
 ## (same health, speed, jump, gravity, aim and health bar).
 const Stats := preload("res://scripts/CharacterStats.gd")
+const BotController := preload("res://BotController.gd")
 
 const SPEED := Stats.SPEED
 const GRAVITY := Stats.GRAVITY
@@ -373,6 +374,10 @@ func take_damage(amount: int, attacker: Node2D = null) -> void:
 		DebugInfo.log("%s's shield blocked %d damage" % [display_name, amount])
 		return
 	health = clampi(health - amount, 0, MAX_HEALTH)
+	# Issue #408: a landed hit feeds the attacker's reward accumulator
+	# (+1.0 per hit — BotController.HIT_REWARD); the training framework
+	# zeroes the property per episode, the figures never manage it.
+	BotController.credit_hit_reward(attacker)
 	_update_bar()
 	# Issue #252: debug damage number + action-log line.
 	DebugInfo.show_damage(self, amount)
