@@ -12,8 +12,11 @@ extends NcnnAIController2D
 ## policy head indices into concrete game commands and stores them in
 ## pending_command for the turn-based game loop. Issue #408 implements
 ## the reward half: get_reward() returns the accumulated reward property,
-## credited by game logic when this bot's figure lands a hit. The
-## action-space declaration remains a loud stub until its own issue.
+## credited by game logic when this bot's figure lands a hit. Issue #409
+## implements the episode lifecycle half: reset() clears the controller's
+## own state (a pending order) and restores its figure to a clean start —
+## spawn position, full HP, default protection, no cooldowns, revived.
+## The action-space declaration remains a loud stub until its own issue.
 
 const Stats := preload("res://scripts/CharacterStats.gd")
 
@@ -42,6 +45,15 @@ const JUMP_CD_MAX := 1.0
 ## speaks for the nearest alive figure in the current level.
 @export var figure_path: NodePath
 
+## Issue #409: spawn snapshot — whose clean pose was captured, and where.
+## The FIRST resolution of a figure happens at its clean starting state
+## (the framework observes before any action is applied), so that pose
+## becomes the position reset() restores to. A NEW figure instance (the
+## old one freed by its death animation, re-instantiated by the level)
+## gets a fresh snapshot at its own clean state.
+var _spawn_figure: Node2D = null
+var _spawn_position := Vector2.ZERO
+
 func get_obs() -> Dictionary:
 	# Issue #381: the NcnnAIController2D contract wants ONE flat float
 	# array under "obs" (the trainer reads only that key); the named
@@ -67,10 +79,26 @@ func _collect_obs_parts() -> Dictionary:
 		"cooldowns": _cooldown_features(figure),
 	}
 
+## Issue #409: capture `figure`'s current pose as the spawn snapshot —
+## once per figure instance; later calls keep the original snapshot.
+func _capture_spawn(figure: Node2D) -> void:
+	if figure == _spawn_figure and is_instance_valid(_spawn_figure):
+		return
+	_spawn_figure = figure
+	_spawn_position = figure.global_position
+
+## Issue #409: the linked-or-nearest ALIVE resolution, plus the spawn
+## snapshot capture on first sight of a figure.
+func _resolve_figure() -> Node2D:
+	var figure := _resolve_alive_figure()
+	if figure != null:
+		_capture_spawn(figure)
+	return figure
+
 ## Issue #381: the linked figure, or the nearest alive figure in the tree.
 ## Duck-typed on `health` — both Player.gd and Npc.gd report it, so no
 ## type coupling to either script.
-func _resolve_figure() -> Node2D:
+func _resolve_alive_figure() -> Node2D:
 	if not figure_path.is_empty():
 		var linked := get_node_or_null(figure_path)
 		if linked != null and linked is Node2D and _alive(linked):
@@ -222,6 +250,80 @@ static func credit_hit_reward(attacker: Node2D) -> void:
 		if ctrl != null and ctrl.has_method("owns_figure") \
 				and ctrl.owns_figure(attacker):
 			ctrl.reward += HIT_REWARD
+
+## Issue #409: episode reset — restore the bot and its battlefield state
+## to a clean start. The framework's share (step counter, needs_reset,
+## recurrent memory — and the accumulated reward, cleared by the Sync's
+## zero_reward()) is already handled by the base class; this override
+## clears the controller's OWN custom state (a pending order must never
+## fire in the new episode) and restores the controlled figure.
+func reset() -> void:
+	super.reset()
+	pending_command = _idle_command()
+	_restore_figure()
+
+## Issue #409: the horizon auto-reset must restore the episode too — the
+## base reset_if_done() only clears core bookkeeping, which would leave a
+## stale command and a battered figure behind at a reset_after boundary.
+func reset_if_done() -> void:
+	if get_done():
+		reset()
+
+## Issue #409: which figure reset() restores — the LINKED figure even
+## when down (the game-over state _resolve_figure()'s alive filter
+## skips), else the spawn snapshot's owner if it still exists, else the
+## alive fallback. A figure FREED by its death animation (Player/Npc._die
+## queue_free()s after the shrink-out) is gone for good: a fresh episode
+## re-instances it with the scene, and until then the controller observes
+## the well-formed "no figure" default (issue #381).
+func _resolve_reset_figure() -> Node2D:
+	if not figure_path.is_empty():
+		var linked := get_node_or_null(figure_path)
+		if linked != null and linked is Node2D:
+			return linked
+	if is_instance_valid(_spawn_figure):
+		return _spawn_figure
+	return _resolve_figure()
+
+## Issue #409: the state restore itself — every access duck-typed so any
+## figure flavour (Player, Npc, test stand-ins) resets as far as it can:
+## spawn position, at rest, full HP, default protection (Forms has no AP
+## stat — the shield fills that slot, issue #381), zeroed cooldowns and
+## aim, a game-over figure revived, the health bar redrawn.
+func _restore_figure() -> void:
+	var figure := _resolve_reset_figure()
+	if figure == null:
+		return
+	_capture_spawn(figure)
+	figure.global_position = _spawn_position
+	if figure.get("velocity") != null:
+		figure.set("velocity", Vector2.ZERO)
+	figure.set("health", Stats.MAX_HEALTH)
+	if figure.has_method("set_shielded"):
+		figure.set_shielded(false)
+	for cooldown in ["_cooldown_left", "_jump_left"]:
+		if cooldown in figure:
+			figure.set(cooldown, 0.0)
+	if "view_angle" in figure:
+		figure.set("view_angle", 0.0)
+	if "_dead" in figure and bool(figure.get("_dead")):
+		_revive_figure(figure)
+	if figure.has_signal("health_changed"):
+		figure.emit_signal("health_changed", Stats.MAX_HEALTH, Stats.MAX_HEALTH)
+	if figure.has_method("_update_bar"):
+		figure.call("_update_bar")
+
+## Issue #409: a game-over figure is revived — the death flag comes down,
+## physics resumes, and the shrink-out death tween is cancelled (killed,
+## body scale restored) so the bot re-enters the next episode whole.
+func _revive_figure(figure: Node2D) -> void:
+	figure.set("_dead", false)
+	figure.set_physics_process(true)
+	var death_tween = figure.get("death_tween")
+	if death_tween is Tween:
+		death_tween.kill()
+		figure.set("death_tween", null)
+	figure.scale = Vector2.ONE
 
 func get_action_space() -> Dictionary:
 	# Describe each action head. Examples:

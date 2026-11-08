@@ -314,6 +314,10 @@ func _hit_flash() -> void:
 ## Issue #181: a player-team member that reaches 0 HP must DISAPPEAR like
 ## an NPC does (Npc._die) — shrink out, then free the node, so the corpse
 ## never stays on the field and win checks / turn flow see it as gone.
+## Issue #409: the shrink-out tween is kept in a field so an episode
+## reset (BotController.reset) can cancel a death that is mid-animation.
+var death_tween: Tween
+
 func _die() -> void:
 	set_physics_process(false)
 	# Issue #252: action-log line — the figure left the field.
@@ -346,9 +350,9 @@ func _die() -> void:
 				break
 		if successor != null:
 				successor.set_controlled(true)
-	var tween := create_tween()
-	tween.tween_property(self, "scale", Vector2.ZERO, 0.25)
-	tween.tween_callback(queue_free)
+	death_tween = create_tween()
+	death_tween.tween_property(self, "scale", Vector2.ZERO, 0.25)
+	death_tween.tween_callback(queue_free)
 
 
 func heal(amount: int) -> void:
