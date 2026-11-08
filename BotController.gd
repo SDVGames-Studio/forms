@@ -7,9 +7,12 @@ extends NcnnAIController2D
 ## gathers the bot's own vitals, the visible enemy and ally figures, and
 ## the active cooldown timers — normalized to stable ranges ([-1, 1] for
 ## relative positions and velocities, [0, 1] for HP/cooldown fractions).
-## No raw coordinates or HP values ever leave this script. Reward shaping,
-## the action space and action application land in follow-up issues (the
-## stubs below stay loud until then).
+## No raw coordinates or HP values ever leave this script. Issue #407
+## implements the action-application half: set_action() translates discrete
+## policy head indices into concrete game commands and stores them in
+## pending_command for the turn-based game loop. Reward shaping and the
+## action-space declaration land in follow-up issues (the remaining stubs
+## stay loud until then).
 
 const Stats := preload("res://scripts/CharacterStats.gd")
 
@@ -201,11 +204,95 @@ func get_action_space() -> Dictionary:
 	push_error("get_action_space() not implemented")
 	return {}
 
-func set_action(_action) -> void:
-	# Apply the chosen action to your agent, e.g.:
-	#     var idx := int(action["move"])
-	#     velocity = DIRECTIONS[idx] * speed
-	push_error("set_action() not implemented")
+## Issue #407: concrete game commands the raw policy indices translate
+## into. "move" orders the turn's walk direction (HOLD = stand still);
+## "action" orders the combat move — ATTACK_ENEMY_A targets the nearest
+## alive enemy, ATTACK_ENEMY_B the second nearest (the same nearest-first
+## order the observation vector reports them in, issue #381), USE_ABILITY
+## the figure's special, IDLE passes. Resolving which node "enemy A"/"B"
+## name at execution time stays with the game loop.
+enum MoveCommand { HOLD, RIGHT, LEFT }
+enum ActionCommand { IDLE, ATTACK_ENEMY_A, ATTACK_ENEMY_B, USE_ABILITY }
+
+## Walk direction each MoveCommand maps to (unit vector; distance and
+## timing stay with the game loop's turn logic).
+const MOVE_DIRS := {
+	MoveCommand.HOLD: Vector2.ZERO,
+	MoveCommand.RIGHT: Vector2.RIGHT,
+	MoveCommand.LEFT: Vector2.LEFT,
+}
+
+## Issue #407: the translated command the game loop executes on the bot's
+## next turn — set_action() rewrites it on every policy decision step.
+## Always carries "move" (MoveCommand), "action" (ActionCommand) and
+## "move_dir" (Vector2); malformed policy output degrades to idle/hold.
+var pending_command: Dictionary = {
+	"move": MoveCommand.HOLD,
+	"action": ActionCommand.IDLE,
+	"move_dir": Vector2.ZERO,
+}
+
+func set_action(action) -> void:
+	# Issue #407: NcnnSync (TRAINING mode) calls this once per decision step
+	# with the decoded policy output — for a discrete action space a
+	# dictionary of action head -> integer index, e.g. {"move": 2,
+	# "action": 0}. The indices are translated into the concrete commands
+	# above and STORED on the bot: actuation stays with the turn-based game
+	# loop, which executes pending_command when the bot's turn comes. The
+	# input is defended at the type/range level — garbage degrades to the
+	# idle command with a warning, never a script error.
+	if typeof(action) != TYPE_DICTIONARY:
+		push_warning(
+			"BotController.set_action: expected a Dictionary of action heads, "
+			+ "got %s — idling" % type_string(typeof(action)))
+		pending_command = _idle_command()
+		return
+	var move := _head_index(action, "move", MoveCommand.size())
+	var order := _head_index(action, "action", ActionCommand.size())
+	pending_command = {
+		"move": move,
+		"action": order,
+		"move_dir": MOVE_DIRS[move],
+	}
+
+## Issue #407: the game loop calls this when the bot's turn starts — it
+## hands over the stored order and resets the bot to idle/hold so a stale
+## command can never fire twice.
+func consume_pending_command() -> Dictionary:
+	var command := pending_command
+	pending_command = _idle_command()
+	return command
+
+## Issue #407: action-head lookup that survives any decoder — a missing
+## head or a value that is out of range / not int-coercible falls back to
+## index 0 (the head's neutral HOLD/IDLE value) with a warning. int()
+## coerces the float/string values foreign decoders emit; containers can
+## never be an index and are rejected outright.
+func _head_index(action: Dictionary, head: String, size: int) -> int:
+	if not action.has(head):
+		return 0
+	var value = action[head]
+	var value_type := typeof(value)
+	if value_type == TYPE_ARRAY or value_type == TYPE_DICTIONARY \
+			or value_type == TYPE_OBJECT:
+		push_warning(
+			("BotController.set_action: head '%s' is a %s, expected an "
+			+ "integer index — using 0") % [head, type_string(value_type)])
+		return 0
+	var index := int(value)
+	if index < 0 or index >= size:
+		push_warning(
+			("BotController.set_action: head '%s' index %d outside [0, %d] "
+			+ "— using 0") % [head, index, size - 1])
+		return 0
+	return index
+
+func _idle_command() -> Dictionary:
+	return {
+		"move": MoveCommand.HOLD,
+		"action": ActionCommand.IDLE,
+		"move_dir": Vector2.ZERO,
+	}
 
 #func get_obs_space() -> Dictionary:
 #	# Override only for complex obs (images, multiple keys). The base class derives
