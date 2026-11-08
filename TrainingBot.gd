@@ -15,8 +15,15 @@ const ARENA_H := 752.0
 func get_obs() -> Dictionary:
 	# Normalized own position in the instanced level (local space, so every
 	# environment reports the same range regardless of its offset in the
-	# training scene).
-	return {"obs": [position.x / ARENA_W, position.y / ARENA_H]}
+	# training scene). Issue #420: STRICT bounds — the scaffold walk has no
+	# wall check (set_action keeps applying MOVE_PER_STEP), so the raw
+	# position can drift past the arena rect; both fractions are clamped
+	# to keep every value inside the documented [0, 1] (OBSERVATION_SPEC.md),
+	# the same policy BotController.gd already enforces.
+	return {"obs": [
+		clampf(position.x / ARENA_W, 0.0, 1.0),
+		clampf(position.y / ARENA_H, 0.0, 1.0),
+	]}
 
 func get_reward() -> float:
 	# Flat per-step cost: a non-degenerate signal until real reward shaping
