@@ -259,7 +259,9 @@ func _ready() -> void:
 	# the flat capsule sides slide along obstacles instead.
 	var capsule := CapsuleShape2D.new()
 	capsule.radius = 24.0
-	capsule.height = 64.0
+	# Issue #406: the body push-box is 10% shorter vertically (64 -> 57.6)
+	# so figures brush past each other's shoulders more easily.
+	capsule.height = 57.6
 	shape.shape = capsule
 	add_child(shape)
 
