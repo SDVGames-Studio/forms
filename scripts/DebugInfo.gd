@@ -13,6 +13,19 @@ class_name DebugInfo
 
 const OSDScript := preload("res://OSD.gd")
 const ArrowScript := preload("res://scripts/DebugArrow.gd")
+const HitboxScript := preload("res://scripts/DebugHitbox.gd")
+
+## Issue #402: hitbox overlay palette. The FIRST hitbox of a figure is
+## transparent purple (the issue's main request); a figure with several
+## different collision hitboxes gets a DIFFERENT color per shape so they
+## stay distinguishable. The index wraps for exotic figures.
+const HITBOX_COLORS: Array[Color] = [
+	Color(0.6, 0.2, 0.95, 1.0),  # purple — the first/main hitbox
+	Color(1.0, 0.55, 0.1, 1.0),  # orange
+	Color(0.1, 0.85, 0.8, 1.0),  # teal
+	Color(0.95, 0.25, 0.45, 1.0),  # crimson
+	Color(0.55, 0.9, 0.25, 1.0),  # lime
+]
 
 ## Seconds a damage number stays up (issue #252: "appears for a second").
 const DAMAGE_POPUP_TIME := 1.0
@@ -50,6 +63,23 @@ static func attach(character: Node) -> void:
 	popup.add_theme_constant_override("outline_size", 6)
 	popup.visible = false
 	character.add_child(popup)
+	# Issue #402: a transparent hitbox overlay per collision shape — purple
+	# for the first shape, a different palette color per further one. Each
+	# overlay is parented to the SHAPE node itself, so it inherits authored
+	# offsets and the FigurePose gravity tilt (#270) exactly.
+	var hitbox_index := 0
+	for child in character.get_children():
+		if child is CollisionShape2D or child is CollisionPolygon2D:
+			var hitbox: Node2D = HitboxScript.new()
+			hitbox.name = "DebugHitbox%d" % hitbox_index
+			hitbox.set("overlay_color", hitbox_color(hitbox_index))
+			child.add_child(hitbox)
+			hitbox_index += 1
+
+
+## Issue #402: the palette color for hitbox number `index` (wraps).
+static func hitbox_color(index: int) -> Color:
+	return HITBOX_COLORS[wrapi(index, 0, HITBOX_COLORS.size())]
 
 
 ## Issue #252: refresh the HP number near the figure (no-op when absent).
