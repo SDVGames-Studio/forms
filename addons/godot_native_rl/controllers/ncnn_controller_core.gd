@@ -6,6 +6,7 @@ extends RefCounted
 # wrapper stays the single source of truth for that exported value.
 
 const ActionDecode = preload("res://addons/godot_native_rl/controllers/action_decode.gd")
+const ActionMask = preload("res://addons/godot_native_rl/controllers/action_mask.gd")
 const ObsNormalize = preload("res://addons/godot_native_rl/controllers/obs_normalize.gd")
 const RecurrentState = preload("res://addons/godot_native_rl/controllers/recurrent_state.gd")
 
@@ -105,6 +106,11 @@ func accumulate(adapters: Array, ctx) -> void:
 # The raw output is decoded against agent.get_action_space() via ActionDecode, so discrete,
 # continuous, multi-discrete, and multiple simultaneous action keys all deploy. No-op when the
 # runner is missing/unloaded. The agent Node is passed in, never stored (core stays node-agnostic).
+# Action masking (#410): when the agent exposes get_action_mask(), the mask is validated against
+# the action space and applied to the logits BEFORE decoding — illegal slots become ILLEGAL_LOGIT
+# (-1e9), so deterministic argmax can never pick them and stochastic softmax samples them with ~0
+# probability. An invalid mask skips the step (fail loud, same contract as a decode failure):
+# a wrong mask silently applied is worse than no action this frame.
 func choose_and_apply_action(agent, runner) -> void:
 	if runner == null or not runner.is_model_loaded():
 		return
@@ -140,17 +146,28 @@ func choose_and_apply_action(agent, runner) -> void:
 			output = _run_recurrent_and_advance(runner, obs_vec)
 		debug_obs = obs_vec
 	var action_space: Dictionary = agent.get_action_space()
-	var action: Dictionary = ActionDecode.decode_actions(output, action_space, deterministic_inference, rng, action_dist_stats)
+	var action_mask := ActionMask.from_agent(agent)
+	var logits := output
+	if not action_mask.is_empty():
+		if not ActionMask.validate(action_mask, action_space):
+			push_error("NcnnControllerCore.choose_and_apply_action: invalid action mask for agent '%s' (bad key/size/all-illegal head); skipping action." % agent.name)
+			return
+		logits = ActionMask.apply_to_logits(output, action_mask, action_space)
+	var action: Dictionary = ActionDecode.decode_actions(logits, action_space, deterministic_inference, rng, action_dist_stats)
 	if action.is_empty():
 		push_error("NcnnControllerCore.choose_and_apply_action: action decode failed (empty/mismatched output); skipping action.")
 		return
-	_emit_debug(agent, debug_obs, debug_img, output, action, action_space)
+	_emit_debug(agent, debug_obs, debug_img, logits, action, action_space, action_mask)
 	agent.set_action(action)
 
 # Emit the immutable debug payload through the agent (the node owns the signal; the core is
 # node-agnostic). Inert when nothing declares/listens for the signal — only the small Dictionary
-# is built, at decision cadence. See PolicyDebugOverlay for the consumer.
-func _emit_debug(agent, obs_vec: PackedFloat32Array, obs_image: Dictionary, logits: PackedFloat32Array, action: Dictionary, action_space: Dictionary) -> void:
+# is built, at decision cadence. See PolicyDebugOverlay for the consumer. The logged `logits`
+# are the EFFECTIVE (post-mask) logits that drove the choice, and `action_mask` carries the
+# per-head boolean mask itself (#410: "the mask is logged alongside the action") — so a
+# 0% probability on the overlay is explainable by the mask, and the raw logits stay
+# recoverable as "slot where mask is false was ILLEGAL_LOGIT".
+func _emit_debug(agent, obs_vec: PackedFloat32Array, obs_image: Dictionary, logits: PackedFloat32Array, action: Dictionary, action_space: Dictionary, action_mask: Dictionary = {}) -> void:
 	if not agent.has_signal("inference_step"):
 		return
 	agent.emit_signal("inference_step", {
@@ -160,6 +177,7 @@ func _emit_debug(agent, obs_vec: PackedFloat32Array, obs_image: Dictionary, logi
 		"logits": logits,
 		"action_space": action_space,
 		"action": action,
+		"action_mask": action_mask,
 		"deterministic": deterministic_inference,
 	})
 

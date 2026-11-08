@@ -10,8 +10,9 @@ const RecurrentState = preload("res://addons/godot_native_rl/controllers/recurre
 # Emitted once per inference decision with an immutable debug payload consumed by
 # PolicyDebugOverlay. Keys: agent_name:String, obs:PackedFloat32Array (normalized vector fed to
 # the net; [] on the image path), obs_image:Dictionary ({"w","h","c"} or {}), logits:PackedFloat32Array
-# (raw network output, pre-decode), action_space:Dictionary, action:Dictionary (decoded),
-# deterministic:bool. Inert when no listener is connected.
+# (EFFECTIVE post-mask network output, pre-decode — #410), action_space:Dictionary,
+# action:Dictionary (decoded), action_mask:Dictionary (per-head boolean mask; {} when the agent
+# supplies none — #410), deterministic:bool. Inert when no listener is connected.
 signal inference_step(debug: Dictionary)
 
 enum ControlModes { INHERIT_FROM_SYNC, HUMAN, TRAINING, NCNN_INFERENCE }
@@ -269,9 +270,21 @@ func get_inference_image() -> Image:
 	return null
 
 # Optional per-agent info (godot_rl reads response.get("info", ...)); default empty.
-# Agents may override to return e.g. {"is_success": true}.
+# Agents may override to return e.g. {"is_success": true} — call super.get_info() to keep
+# the action mask merged in. Action masking (#410): when the agent exposes get_action_mask(),
+# its per-head boolean arrays ship in info["action_mask"] on every training step message, so
+# the Python wrapper can set the illegal logits to a large negative value BEFORE sampling —
+# the same ILLEGAL_LOGIT convention the ncnn inference path applies via ActionMask.
 func get_info() -> Dictionary:
-	return {}
+	var info := {}
+	# call(), not a direct invocation: the base class never declares
+	# get_action_mask(), so a static call would not compile — has_method
+	# resolves it on the actual (subclass) instance at runtime.
+	if has_method("get_action_mask"):
+		var mask = call("get_action_mask")
+		if mask is Dictionary and not (mask as Dictionary).is_empty():
+			info["action_mask"] = mask
+	return info
 
 # --- Concrete contract methods used by NcnnSync (delegate to the shared core) ---
 func get_obs_space() -> Dictionary:
