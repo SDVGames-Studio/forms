@@ -7,7 +7,12 @@ extends NcnnAIController2D
 ## gathers the bot's own vitals, the visible enemy and ally figures, and
 ## the active cooldown timers — normalized to stable ranges ([-1, 1] for
 ## relative positions and velocities, [0, 1] for HP/cooldown fractions).
-## No raw coordinates or HP values ever leave this script. Issue #407
+## No raw coordinates or HP values ever leave this script. Issue #419
+## re-expresses every positional and velocity slot in the agent's LOCAL
+## frame — the bound figure's facing direction becomes +X (to_local() for
+## positions, the inverse of the figure's rotation for velocities) — so
+## the observation is translation- and rotation-invariant across the map.
+## Issue #407
 ## implements the action-application half: set_action() translates discrete
 ## policy head indices into concrete game commands and stores them in
 ## pending_command for the turn-based game loop. Issue #408 implements
@@ -66,16 +71,23 @@ func get_obs() -> Dictionary:
 ##   "enemies"   OBS_SLOTS x [rel_x, rel_y, hp, vel_x, vel_y]   (20)
 ##   "allies"    OBS_SLOTS x [rel_x, rel_y, hp, vel_x, vel_y]   (20)
 ##   "cooldowns" [fire_frac, jump_frac]                          (2)
-## Forms has no AP stat, so the shield flag (issue #221: it blocks one
+## Issue #419: every offset and velocity is expressed in the agent's
+## LOCAL frame (local +X = the figure's facing direction); see
+## _local_position() / _local_velocity(). Forms has no AP stat, so the shield flag (issue #221: it blocks one
 ## hit) fills the protection slot next to HP. Every alive figure in the
 ## level counts as visible — Forms has no fog or line-of-sight occlusion.
 func _collect_obs_parts() -> Dictionary:
 	var figure := _resolve_figure()
 	var origin: Vector2 = figure.global_position if figure != null else global_position
+	# Issue #419: the observation frame — the bound figure's local space
+	# (the controller node itself when none is bound). Positions and
+	# velocities below are expressed against it, so the observation stays
+	# the same wherever (and at whatever angle) the battle happens.
+	var frame: Node2D = figure if figure != null else self
 	return {
-		"own": _own_features(figure),
-		"enemies": _team_features(_enemy_group(figure), origin, figure),
-		"allies": _team_features(_ally_group(figure), origin, figure),
+		"own": _own_features(figure, frame),
+		"enemies": _team_features(_enemy_group(figure), origin, figure, frame),
+		"allies": _team_features(_ally_group(figure), origin, figure, frame),
 		"cooldowns": _cooldown_features(figure),
 	}
 
@@ -132,7 +144,10 @@ func _ally_group(figure: Node2D) -> String:
 ## Issue #381: nearest-first figure block with zero padding to a constant
 ## length; `exclude` drops the own figure from its allies (it is already
 ## reported by "own", and its position IS the observation origin).
-func _team_features(group_name: String, origin: Vector2, exclude: Node2D) -> Array:
+## `origin` stays a WORLD-space point — it only feeds the nearest-first
+## sort (distance is frame-independent); the reported features go through
+## the agent-local `frame` (issue #419).
+func _team_features(group_name: String, origin: Vector2, exclude: Node2D, frame: Node2D) -> Array:
 	var rows: Array = []
 	var figs: Array = []
 	if is_inside_tree():
@@ -146,28 +161,49 @@ func _team_features(group_name: String, origin: Vector2, exclude: Node2D) -> Arr
 			return da < db)
 	for i in OBS_SLOTS:
 		if i < figs.size():
-			rows.append_array(_figure_features(figs[i], origin))
+			rows.append_array(_figure_features(figs[i], frame))
 		else:
 			for _j in FEATURES_PER_FIGURE:
 				rows.append(0.0)
 	return rows
 
-## Issue #381: one figure = [rel_x, rel_y, hp_frac, vel_x, vel_y] —
-## relative offset normalized by the arena half-extents, HP as a [0, 1]
-## fraction, velocity by the shared run speed; all clamped to [-1, 1].
-func _figure_features(fig: Node2D, origin: Vector2) -> Array:
-	var rel := _norm_rel(fig.global_position - origin)
-	var vel := _norm_vel(fig.get("velocity"))
+## Issue #381/#419: one figure = [rel_x, rel_y, hp_frac, vel_x, vel_y] —
+## offset and velocity in the agent's LOCAL frame (issue #419:
+## _local_position() / _local_velocity() below), the offset normalized by
+## the arena half-extents, HP as a [0, 1] fraction, velocity by the shared
+## run speed; all clamped to [-1, 1]. An enemy straight ahead reads
+## rel_x > 0 at any agent rotation.
+func _figure_features(fig: Node2D, frame: Node2D) -> Array:
+	var rel := _norm_rel(_local_position(fig, frame))
+	var vel := _norm_vel(_local_velocity(fig.get("velocity"), frame))
 	return [rel.x, rel.y, _hp_frac(fig), vel.x, vel.y]
 
+## Issue #419: world → agent-local transforms. The frame's local +X is its
+## facing direction; positions go through Godot's to_local() (the inverse
+## of its global transform), velocities through the inverse of its
+## rotation basis — for a 2D node that is the velocity rotated by
+## -global_rotation, the 2D equivalent of
+## global_transform.basis.orthonormalized().inverse() * linear_velocity.
+## With rotation 0 the local frame equals the world frame, so scenes that
+## never rotate their figures observe no change.
+func _local_position(fig: Node2D, frame: Node2D) -> Vector2:
+	return frame.to_local(fig.global_position)
+
+func _local_velocity(value, frame: Node2D) -> Vector2:
+	if value == null:
+		return Vector2.ZERO
+	var v: Vector2 = value
+	return v.rotated(-frame.global_rotation)
+
 ## Issue #381: own vitals — HP fraction (never the raw value), the shield
-## flag in the AP slot, and the current velocity in [-1, 1]. Without a
-## figure the slots report a fully-healed stationary bot so the vector
-## stays well-formed.
-func _own_features(figure: Node2D) -> Array:
+## flag in the AP slot, and the current velocity in [-1, 1], expressed in
+## the agent's own (local) frame (issue #419) — moving forward reads
+## vel_x > 0 at any rotation. Without a figure the slots report a
+## fully-healed stationary bot so the vector stays well-formed.
+func _own_features(figure: Node2D, frame: Node2D) -> Array:
 	if figure == null:
 		return [1.0, 0.0, 0.0, 0.0]
-	var vel := _norm_vel(figure.get("velocity"))
+	var vel := _norm_vel(_local_velocity(figure.get("velocity"), frame))
 	var shield := 1.0 if bool(figure.get("shielded")) else 0.0
 	return [_hp_frac(figure), shield, vel.x, vel.y]
 

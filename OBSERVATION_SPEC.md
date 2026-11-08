@@ -25,6 +25,19 @@ Two controllers implement the contract today:
 
 ## 1. `BotController.gd` — battlefield observation (46 floats)
 
+**Frame (issue #419):** every positional and velocity value is expressed
+in the **agent's local frame** — the controlled figure's own coordinate
+space, where local **+X is its facing direction**. Positions go through
+Godot's `to_local()`; velocities are rotated by the inverse of the
+figure's rotation (2D equivalent of
+`global_transform.basis.orthonormalized().inverse() * linear_velocity`).
+The observation is therefore **translation- and rotation-invariant**: an
+enemy straight ahead always reports `rel_x > 0`, moving forward always
+reports `vel_x > 0`, whatever the agent's world position and rotation.
+With `rotation == 0` the local frame equals the world frame (issue #381
+behavior). When no figure is bound, the controller node itself is the
+frame.
+
 Layout: `own (4) + enemies (4×5) + allies (4×5) + cooldowns (2) = 46`,
 flattened in exactly this key order: `"own"`, `"enemies"`, `"allies"`,
 `"cooldowns"`.
@@ -40,11 +53,11 @@ flattened in exactly this key order: `"own"`, `"enemies"`, `"allies"`,
 
 | Value | Formula | Range |
 |---|---|---|
-| `rel_x` | `clampf(dx / 576.0, -1, 1)` — dx = target.global_position.x − origin.x | [-1, 1] |
-| `rel_y` | `clampf(dy / 376.0, -1, 1)` — dy = same for y | [-1, 1] |
+| `rel_x` | `clampf(local.x / 576.0, -1, 1)` — `local = frame.to_local(target.global_position)` (issue #419; `local.x` = component along the agent's facing direction) | [-1, 1] |
+| `rel_y` | `clampf(local.y / 376.0, -1, 1)` — same `local`; `local.y` is the lateral (local up/down) component | [-1, 1] |
 | `hp_frac` | `clampf(health / 100, 0, 1)` (`CharacterStats.MAX_HEALTH = 100`) | [0, 1] |
 | `shield` | `1.0` if figure `shielded` else `0.0` (issue #221 shield fills the AP slot; Forms has no AP stat) | {0, 1} |
-| `vel_x`, `vel_y` | `clampf(v / 320.0, -1, 1)` (`CharacterStats.SPEED = 320.0`) | [-1, 1] |
+| `vel_x`, `vel_y` | `clampf(v_local / 320.0, -1, 1)`, `v_local = velocity.rotated(-frame.global_rotation)` (`CharacterStats.SPEED = 320.0`); applies to the `own` block too | [-1, 1] |
 | `fire_frac` | `clampf(_cooldown_left / 2.0, 0, 1)` (`FIRE_CD_MAX`, Npc.gd easy AI fire pause) | [0, 1] |
 | `jump_frac` | `clampf(_jump_left / 1.0, 0, 1)` (`JUMP_CD_MAX`, Npc.gd jump cooldown) | [0, 1] |
 
@@ -54,8 +67,10 @@ maps to ≈[-1, 1] before clamping.
 
 ### Slot semantics
 
-- **Origin** is the controlled figure's `global_position` (the controller
-  node's own position when no figure is bound).
+- **Origin & frame** is the controlled figure's global transform
+  (`to_local()` of it yields the reported offsets; the controller node's
+  own when no figure is bound). The nearest-first sort still uses plain
+  world-space distance, which is frame-independent.
 - **Enemy/ally slots**: `OBS_SLOTS = 4` each, sorted nearest-first by
   squared distance (ties broken by node name). Unused slots are padded
   with five `0.0`s — the length is constant whatever happens on the
