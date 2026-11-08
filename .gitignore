@@ -28,3 +28,6 @@ Thumbs.db
 /addons/godot-mcp/
 *.uid
 
+
+# Python bytecode (rl_action_mask_check.py imports regenerate it)
+__pycache__/
