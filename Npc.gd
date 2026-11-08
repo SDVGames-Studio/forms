@@ -82,6 +82,10 @@ var _cooldown_left := 0.0
 ## once a second and otherwise stays grounded, aims and shoots.
 const JUMP_COOLDOWN := 1.0
 var _jump_left := 0.0
+## Issue #409: the shrink-out death tween, kept so an episode reset
+## (BotController.reset) can cancel a death that is mid-animation
+## (same field in Player.gd).
+var death_tween: Tween
 ## Issue #137: AI difficulty — 0 = easy, 1 = normal, 2 = hard. Scales
 ## aim slew speed and the pause between shots (set by the level
 ## configuration menu via GameConfig).
@@ -414,9 +418,9 @@ func _die() -> void:
 			break
 	# Tiny death puff: shrink out, then free.
 	set_physics_process(false)
-	var tween := create_tween()
-	tween.tween_property(self, "scale", Vector2.ZERO, 0.25)
-	tween.tween_callback(queue_free)
+	death_tween = create_tween()
+	death_tween.tween_property(self, "scale", Vector2.ZERO, 0.25)
+	death_tween.tween_callback(queue_free)
 
 
 func _physics_process(delta: float) -> void:
