@@ -23,6 +23,20 @@ Two controllers implement the contract today:
 | `BotController.gd` | battlefield levels (`Level*.tscn`) | **46** |
 | `TrainingBot.gd` | `training_scene.tscn` | **2** |
 
+## Normalization policy (issue #420)
+
+Every float returned by any `get_obs()` implementation is **strictly
+bounded**: signed slots (relative positions, velocities) are clamped to
+[-1, 1], fraction/flag slots (HP, shield, cooldowns, arena position
+fractions) to [0, 1], and booleans are exactly `0.0`/`1.0`. Raw world
+coordinates or unscaled HP values never leave a controller — ONNX/ncnn
+inference does not replicate training-framework preprocessing, so the
+normalization is baked into the environment itself. The bounds are
+enforced by `tests/test_issue420.gd`, which sweeps both controllers
+across multiple game states (extreme offsets, overspeed velocities,
+over-max HP, saturated cooldowns, overflow teams, the no-figure
+fallback, and the scaffold bot drifting off the arena).
+
 ## 1. `BotController.gd` — battlefield observation (46 floats)
 
 **Frame (issue #419):** every positional and velocity value is expressed
@@ -92,9 +106,12 @@ The minimal scaffold agent for `training_scene.tscn` (issue #341):
 
 | Index | Value | Formula | Range |
 |---|---|---|---|
-| 0 | normalized x | `position.x / 1152.0` (`ARENA_W`) | ≈[0, 1] (not clamped) |
-| 1 | normalized y | `position.y / 752.0` (`ARENA_H`) | ≈[0, 1] (not clamped) |
+| 0 | normalized x | `clampf(position.x / 1152.0, 0, 1)` (`ARENA_W`) | [0, 1] (strict) |
+| 1 | normalized y | `clampf(position.y / 752.0, 0, 1)` (`ARENA_H`) | [0, 1] (strict) |
 
 Position is the agent's **local** position in the instanced level, so
 every parallel environment reports the same range regardless of its
-offset in the training scene.
+offset in the training scene. Issue #420 clamps both fractions: the
+scaffold's `set_action` walk has no wall check, so the raw position can
+drift past the arena rect; the clamp keeps the vector inside the
+documented bounds (the same strict policy as `BotController.gd`).
