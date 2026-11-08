@@ -51,7 +51,7 @@ static func obs_rows(obs: PackedFloat32Array, bar_width: int) -> PackedStringArr
 # Per action key (insertion order over the logit vector): discrete -> softmax % + bar + chosen
 # marker (from the decoded action); continuous -> raw (+ tanh when squash) + bar. A size mismatch
 # is flagged inline and stops further walking (never indexes out of range).
-static func action_rows(logits: PackedFloat32Array, action_space: Dictionary, action: Dictionary, bar_width: int) -> PackedStringArray:
+static func action_rows(logits: PackedFloat32Array, action_space: Dictionary, action: Dictionary, bar_width: int, action_mask: Dictionary = {}) -> PackedStringArray:
 	var out := PackedStringArray()
 	var index := 0
 	for key in action_space.keys():
@@ -64,6 +64,11 @@ static func action_rows(logits: PackedFloat32Array, action_space: Dictionary, ac
 		var segment: PackedFloat32Array = logits.slice(index, index + size)
 		if action_type == "discrete":
 			out.append("ACTION  %s (discrete, %d)" % [str(key), size])
+			# Issue #423: the mask array rides right under the head header, alongside
+			# the chosen-action rows below — a 0 bit explains every ~0% row under it.
+			var mask_bits := _mask_bits(action_mask, key, size)
+			if not mask_bits.is_empty():
+				out.append("  mask  %s" % mask_bits)
 			var probs := InferenceMath.softmax(segment)
 			var chosen: int = int(action.get(key, -1))
 			for i in range(size):
@@ -84,6 +89,7 @@ static func action_rows(logits: PackedFloat32Array, action_space: Dictionary, ac
 	return out
 
 # Top-level composer used by the overlay: title + header + status + obs (or image dims) + actions.
+# The inference_step payload's action_mask (#410) feeds the per-head mask rows (#423).
 static func render_lines(debug: Dictionary, identity: Dictionary, status: Dictionary, bar_width: int) -> PackedStringArray:
 	var out := PackedStringArray()
 	out.append("POLICY DEBUG  -  %s" % str(debug.get("agent_name", "?")))
@@ -100,5 +106,26 @@ static func render_lines(debug: Dictionary, identity: Dictionary, status: Dictio
 		debug.get("logits", PackedFloat32Array()),
 		debug.get("action_space", {}),
 		debug.get("action", {}),
-		bar_width))
+		bar_width,
+		debug.get("action_mask", {})))
 	return out
+
+# Compact "1 0 0 …" bits for the head's mask row; "" when the payload carries no
+# well-sized entry for the head (no mask at all, or a size drift — rendering stays
+# safe and skips the row; the core has already validated the mask before emitting).
+# bools render directly; int/float read as non-zero (the JSON wire round-trip turns
+# false into 0) — the same truth reading ActionMask._truth applies.
+static func _mask_bits(action_mask: Dictionary, key, size: int) -> String:
+	if not action_mask.has(key):
+		return ""
+	var values = action_mask[key]
+	if not (values is Array or values is PackedFloat32Array \
+			or values is PackedInt32Array or values is PackedByteArray):
+		return ""
+	if values.size() != size:
+		return ""
+	var bits := PackedStringArray()
+	for v in values:
+		var legal: bool = (v is bool and bool(v)) or ((v is int or v is float) and v != 0)
+		bits.append("1" if legal else "0")
+	return " ".join(bits)

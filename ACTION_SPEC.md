@@ -97,7 +97,7 @@ indices 1/2 only; the other heads are part of the declared contract the
 trainer trains against, with gameplay actuation layered on in follow-up
 issues (see the TrainingBot.gd header).
 
-### Action mask (issues #410, #422)
+### Action mask (issues #410, #422, #423)
 
 - `move` and `aim`: every index always legal.
 - `attack`: index 0 always legal; indices 1–7 legal **only while at least
@@ -108,6 +108,24 @@ issues (see the TrainingBot.gd header).
 - `target`: index 0 always legal; index k legal **exactly while the k-th
   visible enemy exists** (alive, opposing side, within `ATTACK_REACH`),
   so the policy can only pick a target it could actually attack.
+
+Mask application (#423): both consumption paths overwrite the logits of
+illegal actions with **`ILLEGAL_LOGIT = -1e9`** before selection — Godot
+deploy via `ActionMask.apply_to_logits` (before `ActionDecode`'s
+argmax/softmax), Python training wrapper via `rl_action_mask.py`
+(`mask_logits`/`apply_action_masks` per head; `sample_masked` draws from
+the masked softmax, `argmax_masked` is the deterministic twin). The
+constant is pinned across languages by `rl_action_mask_check.py`, which
+parses `ActionMask.ILLEGAL_LOGIT` out of the .gd source and asserts it
+equals `rl_action_mask.ILLEGAL_LOGIT`; the same check proves the DoD —
+with no enemy in reach, 20000 sampled joints never select an attack
+action. The mask arrays are **logged alongside the chosen actions** on
+both sides: the `inference_step` payload ships `action_mask` next to
+`action` and the Policy Debugger overlay renders one compact mask row
+per discrete head (`mask 1 0 0 0 0 0 0 0`), while the Python side emits
+`rl_action_mask.format_decision` lines (`attack=0 mask=10000000 | …`).
+In-trainer PPO distribution masking (MaskablePPO-style, so SB3's own
+sampler consumes the masks live) is the training-pipeline follow-up.
 
 ## 2. `BotController.gd` — battlefield controller (`Level*.tscn`)
 
