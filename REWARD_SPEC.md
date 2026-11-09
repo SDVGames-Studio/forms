@@ -77,10 +77,10 @@ is `CharacterStats.MAX_HEALTH = 100`; the [0, 1] damage fraction is
 | Field | Value |
 |---|---|
 | Triggering event | the agent's own turn starts while its controlled figure is alive |
-| Magnitude | **+0.02** |
+| Magnitude | **+0.02 × hp_fraction** (≤ +0.02; issue #434) |
 | Sign | positive |
 | Frequency | per turn |
-| Rationale | small constant pressure against suicidal play; deliberately tiny so camping is never more profitable than fighting (a full idle turn nets +0.02 − 0.05 idling < 0) |
+| Rationale | small constant pressure against suicidal play; deliberately tiny so camping is never more profitable than fighting (a full idle turn nets +0.02 − 0.05 idling < 0). Since #434 the bonus scales with the remaining HP fraction (issue DoD): a battered figure keeps only part of it, rewarding cautious play without raising the ceiling |
 
 ### 2.5 `positioning` — cover / influence (shaping)
 
@@ -90,7 +90,7 @@ is `CharacterStats.MAX_HEALTH = 100`; the [0, 1] damage fraction is
 | Magnitude | **±0.10 × ΔΦ** per step (the shaped term is `0.10 × (Φ_now − Φ_turn_start)`, rebased at turn start) |
 | Sign | either (gains +, losses −) |
 | Frequency | per step (potential-based, so the total over a turn depends only on start and end tiles — repositioning smarter, not moving more) |
-| Rationale | teaches taking cover and contested ground without rewarding motion itself; Φ's definition (line-of-sight occlusion + influence map) lands with #434 and must expose `value_fn` + `rebase_on` through `get_reward_affordances()` |
+| Rationale | teaches taking cover and contested ground without rewarding motion itself; Φ's definition (line-of-sight occlusion + influence map) landed with #434 as the minimal cover term: the fraction of alive enemies within ATTACK_REACH whose straight fire line to the figure is occluded by world geometry (collision layer 1 ground, destructible and indestructible alike); a tile no enemy can reach scores Φ = 1.0. The influence-map half (Phase 1 optional / Phase 3 dependent, does not exist yet) stays deferred — Φ is pure cover until that map lands. `get_reward_affordances()` exposes `tile_quality` + `rebase_on` = own-turn start since #434 |
 
 ### 2.6 `friendly_fire` — combat
 
@@ -116,7 +116,7 @@ is `CharacterStats.MAX_HEALTH = 100`; the [0, 1] damage fraction is
 
 | Field | Value |
 |---|---|
-| Triggering event | the agent's own turn ends while its figure stands on a danger tile (inside an enemy's current line-of-fire band, or on blast-danger ground — the same tile set #434 formalizes) |
+| Triggering event | the agent's own turn ends while its figure stands on a danger tile (inside an enemy's current line-of-fire band, or on blast-danger ground — the tile set #434 formalizes as: an alive enemy within ATTACK_REACH holds a clear, unoccluded fire line onto the figure's tile, i.e. danger ⟺ Φ < 1) |
 | Magnitude | **−0.05** |
 | Sign | negative |
 | Frequency | per turn |
@@ -136,7 +136,7 @@ is `CharacterStats.MAX_HEALTH = 100`; the [0, 1] damage fraction is
 
 | Situation | Sum |
 |---|---|
-| Quiet step (own turn, no combat events) | +0.02 survival ± 0.10·ΔΦ positioning → **|r| ≤ 0.12**, typically ≈ 0.02–0.06 |
+| Quiet step (own turn, no combat events) | +0.02×hp survival ± 0.10·ΔΦ positioning → **\|r\| ≤ 0.12**, typically ≈ 0.02–0.06 |
 | Best non-terminal combat step | +0.30 damage cap + 0.50 kill + 0.02 + 0.10 = **+0.92** |
 | Worst non-terminal step | −0.30 friendly-fire floor − 0.05 idle − 0.05 danger = **−0.40**; with own death **−0.90** |
 | Terminal step | ±0.50 outcome on top of the above (e.g. −0.50 death − 0.50 loss = −1.00; +0.50 win + 0.50 kill ≤ +1.50) |
@@ -156,18 +156,18 @@ change.
 | `damage_dealt` | `event_bonus("damage_dealt", …)` | signal emitted by the damage attribution path (#433) |
 | `enemy_killed` | `event_bonus("enemy_killed", 0.5)` | signal on enemy death with agent attribution (#433) |
 | `own_figure_died` | `event_bonus("own_figure_died", -0.5)` | signal on controlled-figure death (#433) |
-| `survival_per_turn` | `alive_bonus(0.02)` | credited at own-turn start (#434) |
-| `positioning` | `progress_shaping(value_fn = tile_quality Φ, scale = 0.10, rebase_on = ["own_turn_start"])` | Φ computed on the level (#434) |
+| `survival_per_turn` | `alive_bonus(0.02)` | credited at own-turn start, HP-scaled (≤ +0.02) since #434 |
+| `positioning` | `progress_shaping(value_fn = tile_quality Φ, scale = 0.10, rebase_on = ["own_turn_start"])` | Φ = minimal cover check on the level since #434 (influence half deferred); TurnController → notify_own_turn_* |
 | `friendly_fire` | `event_bonus("friendly_fire", …)` | same attribution path, own-side victim (#433) |
 | `idling` | `event_bonus("idle_turn", -0.05)` | signal at turn end after command audit (#434) |
-| `danger_tile_turn_end` | `event_bonus("danger_tile_turn_end", -0.05)` | signal at turn end from the #434 tile set |
+| `danger_tile_turn_end` | `event_bonus("danger_tile_turn_end", -0.05)` | signal at turn end from the #434 tile set (TurnController → BotController) |
 | `episode_outcome` | `event_bonus("episode_won"/"episode_lost", ±0.5)` | signals from the episode-end handler |
 
 The four combat signals (`damage_dealt`, `enemy_killed`, `own_figure_died`,
-`friendly_fire`) are declared and emitted since #433. The remaining five
-(survival, positioning Φ, idle, danger-tile, episode outcome) do not exist
-in `get_reward_affordances()` yet — declaring them (manifest + real signal
-emission) is precisely the #434 work order. Recipes built from this
+`friendly_fire`) are declared and emitted since #433. The survival,
+positioning (Φ — minimal cover-only definition), idle and danger-tile
+signals/value functions are declared and emitted since #434; only the
+`episode_outcome` signals remain unimplemented. Recipes built from this
 spec are validated against the manifest by `RewardRecipe.validate()`:
 an unemitted signal fails loud, so the spec and the code cannot drift
 apart silently.
@@ -194,10 +194,10 @@ an unchoosable action is noise).
 review is honest): a cover/occlusion channel and a danger-tile channel
 are absent from the 46-float observation. Until they land, positioning
 and danger-tile components are still *correct* rewards (they shape real
-behavior) but only partially *learnable* from observations; #434 must
-either extend the observation vector (spec change to
-`OBSERVATION_SPEC.md` in the same PR) or accept the proxy signal from
-enemy relative positions.
+behavior) but only partially *learnable* from observations; #434 chose
+to accept the proxy signal from enemy relative positions (no
+observation-vector change in that slice — extending it stays a spec
+change to `OBSERVATION_SPEC.md`).
 
 ## Maintenance
 

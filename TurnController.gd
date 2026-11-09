@@ -13,6 +13,11 @@ extends Node
 ## pending effect too — once armed, the handover waits until it has
 ## exploded before the next turn begins.
 ## The game runs until only one team is alive.
+## Issue #434: every turn boundary is also a reward boundary — the acting
+## member's agent controller (if any) is notified so the REWARD_SPEC
+## §2.4/§2.5/§2.7/§2.8 components fire at the right moments.
+
+const BotController := preload("res://BotController.gd")
 
 ## Issue #192: default fallback; the configured value lives in
 ## GameConfig.turn_time (level configuration menu).
@@ -585,6 +590,11 @@ func _begin_turn(team: String) -> void:
 	if active_member != null and active_member.get("display_name") != null:
 		actor = active_member.get("display_name")
 	DebugInfo.log("%s: %s's turn" % [_team_name(team), str(actor)])
+	# Issue #434: REWARD_SPEC §2.4/§2.5 — the agent controller that plays
+	# the acting member is notified its own turn started (survival credit
+	# + shaping rebase). Human teams have no AGENT controller, so the
+	# dispatch is a no-op for them.
+	BotController.notify_own_turn_started(active_member)
 
 
 func _end_turn(from_serial: int = -1) -> void:
@@ -593,6 +603,11 @@ func _end_turn(from_serial: int = -1) -> void:
 	# A stale post-shot timer must not cut a fresh turn short (issue #85).
 	if from_serial != -1 and from_serial != _shot_serial:
 		return
+	# Issue #434: REWARD_SPEC §2.5/§2.7/§2.8 — the acting member's
+	# controller closes the ended turn (shaped positioning remainder,
+	# idle-command audit, danger-tile penalty) BEFORE _check_win() or the
+	# next _begin_turn() could free or replace the member.
+	BotController.notify_own_turn_ended(active_member)
 	_switch_wait = 0.0
 	_switching = false
 	# Issue #343: remember who acted this team's turn (a mid-turn Switch
