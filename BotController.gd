@@ -21,7 +21,12 @@ extends NcnnAIController2D
 ## refines those credits into the REWARD_SPEC.md §2 combat components
 ## (proportional damage with a per-step cap, a flat kill bonus on the
 ## killing blow, a once-per-death own-death penalty, and a floored
-## friendly-fire term). Issue #409
+## friendly-fire term). Issue #434 adds the positioning and tempo
+## components — an HP-scaled survival upkeep at own-turn start (§2.4),
+## potential-based tile-quality shaping over the own turn (§2.5), and
+## the idle-command and danger-tile turn-end penalties (§2.7/§2.8) —
+## driven by TurnController's turn boundaries via notify_own_turn_*.
+## Issue #409
 ## implements the episode lifecycle half: reset() clears the controller's
 ## own state (a pending order) and restores its figure to a clean start —
 ## spawn position, full HP, default protection, no cooldowns, revived.
@@ -282,6 +287,26 @@ const DEATH_PENALTY := -0.50             # §2.3: flat, once per own death
 const FRIENDLY_FIRE_SCALE := -0.10       # §2.6: −0.10 × damage_fraction
 const FRIENDLY_FIRE_STEP_FLOOR := -0.30  # §2.6: floor per decision step
 
+## Issue #434: the positioning/tempo reward components, magnitudes
+## straight from REWARD_SPEC.md §2 (updated in the same change): the
+## survival upkeep is SCALED by the remaining HP fraction (issue #434
+## DoD) so cautious play keeps more of it, while staying ≤ +0.02 so the
+## §3 quiet-step budget |r| ≤ 0.12 keeps holding.
+const SURVIVAL_REWARD := 0.02         # §2.4: +0.02 × hp_fraction per own turn
+const POSITIONING_SCALE := 0.10       # §2.5: ±0.10 × ΔΦ per decision step
+const IDLE_PENALTY := -0.05           # §2.7: flat, per idle turn
+const DANGER_TILE_PENALTY := -0.05    # §2.8: flat, per turn ended on a danger tile
+## Issue #434: the ACTION_SPEC §1 enemy-visibility band — alive +
+## opposing side + within ATTACK_REACH (the same reach the scaffold's
+## action mask uses, TrainingBot.ATTACK_REACH: the widest AI weapon
+## band, the rocket).
+const ATTACK_REACH := 620.0
+## Issue #434: the world collision layer — destructible AND indestructible
+## ground both live on layer 1 (IndestructibleGround/DestructibleGround),
+## exactly what a projectile's flight can be occluded by: the levels'
+## own tile/props data IS the cover check (the issue's fallback clause).
+const WORLD_LAYER := 1
+
 ## Issue #433: the four combat reward events, declared for the declarative
 ## recipe system (REWARD_SPEC §4): RewardRecipe validates event_bonus
 ## terms against get_reward_affordances() and a RewardAdapter routes
@@ -293,6 +318,16 @@ signal enemy_killed
 signal own_figure_died
 signal friendly_fire(applied: float)
 
+## Issue #434: the positioning/tempo reward events, declared for the
+## recipe system (REWARD_SPEC §4) — same payload contract as the combat
+## signals: the signed delta actually added to `reward`. The §2.5 shaped
+## term itself is a VALUE FUNCTION (tile_quality below); its per-step
+## delta rides positioning_credited for logging parity.
+signal survival_per_turn(applied: float)
+signal positioning_credited(applied: float)
+signal idle_turn(applied: float)
+signal danger_tile_turn_end(applied: float)
+
 ## Issue #433: how much of this step's §2.1 cap / §2.6 floor budget is
 ## already spent — several hits inside ONE decision step amortize into
 ## the cap, so the trackers reset exactly when the framework clears the
@@ -300,18 +335,38 @@ signal friendly_fire(applied: float)
 var _step_damage_reward := 0.0
 var _step_friendly_fire_reward := 0.0
 
+## Issue #434: own-turn bookkeeping — the shaping potential rebases at
+## every own-turn start (§2.5), the idle audit reads the order that was
+## pending when the turn began (what the game loop will consume at turn
+## start, #407), and every turn-end term fires at most once per started
+## turn. _has_new_order tracks whether the policy decided since the last
+## turn start: a controller that never got a set_action had no choice,
+## so its expired turn is not "idling" (REWARD_SPEC §1).
+var _turn_active := false
+var _turn_figure: Node2D = null
+var _has_new_order := false
+var _has_ordered := false
+var _turn_command := _idle_command()
+var _potential_baseline := 0.0
+
 ## Issue #433: the manifest the recipe tooling validates against
 ## (RewardRecipe.validate reads {"signals": …}); the four combat signals
 ## exist and are emitted by the attribution path below — the positioning,
 ## tempo and termination signals are #434's work order.
 func get_reward_affordances() -> Dictionary:
 	return {
-		"value_functions": {},
+		"value_functions": {
+			"tile_quality": "§2.5 — Φ ∈ [0,1] cover potential of the figure's tile: fraction of alive enemies within ATTACK_REACH whose fire line is occluded by world geometry; 1.0 when none is in reach (influence-map half deferred, #434 fallback clause)",
+		},
 		"signals": {
 			"damage_dealt": "§2.1 — enemy figure lost health to this agent's hit (+0.15×frac, +0.30/step cap)",
 			"enemy_killed": "§2.2 — this agent's blow killed an enemy figure (+0.50 flat, no damage tick stacked)",
 			"own_figure_died": "§2.3 — the controlled figure died (−0.50 flat, once per death)",
 			"friendly_fire": "§2.6 — this agent's hit damaged its own team (−0.10×frac, −0.30/step floor)",
+			"survival_per_turn": "§2.4 — own turn started while alive (+0.02 × hp_fraction, ≤ +0.02)",
+			"positioning_credited": "§2.5 — potential-based shaped ΔΦ credited this step (±0.10 × ΔΦ, rebased at own-turn start)",
+			"idle_turn": "§2.7 — turn ended all-neutral with an enemy in reach (−0.05, only on turns the policy ordered on)",
+			"danger_tile_turn_end": "§2.8 — turn ended inside an enemy's clear line-of-fire band (−0.05)",
 		},
 	}
 
@@ -384,6 +439,11 @@ func on_owned_figure_died(fig: Node2D) -> void:
 		return
 	reward += DEATH_PENALTY
 	own_figure_died.emit()
+	# Issue #434: §2.3 — after the own figure's death every further
+	# per-step component reads 0: the own-turn state closes so no idle,
+	# danger-tile or shaped remainder can fire afterwards.
+	_turn_active = false
+	_turn_figure = null
 
 ## Issue #433: §2.1 — proportional to the damage dealt, amortized into
 ## the per-step cap (the cap, not the per-hit term, is what a multi-hit
@@ -438,6 +498,154 @@ static func _figure_dead(fig: Node2D) -> bool:
 	var hp = fig.get("health")
 	return hp != null and float(hp) <= 0.0
 
+## Issue #434: TurnController calls these two at every turn boundary of
+## a figure an AGENT controller plays (duck-typed dispatch, exactly the
+## #433 pattern) — the turn-based half of the REWARD_SPEC §2.4/§2.5/
+## §2.7/§2.8 components. Human-controlled figures simply have no
+## controller in the AGENT group, so nothing fires for them.
+static func notify_own_turn_started(member: Node2D) -> void:
+	if not is_instance_valid(member) or not member.is_inside_tree():
+		return
+	for ctrl in member.get_tree().get_nodes_in_group("AGENT"):
+		if ctrl != null and ctrl.has_method("owns_figure") and ctrl.owns_figure(member):
+			ctrl.on_own_turn_started()
+
+## Issue #434: the turn-end twin — dispatched before the winner check
+## or the next team's turn could free or replace the acting member.
+static func notify_own_turn_ended(member: Node2D) -> void:
+	# is_instance_valid first: a figure freed by its death animation
+	# (queue_free) can still be TurnController's active_member when the
+	# turn ends — touching a freed instance would hard-error.
+	if not is_instance_valid(member) or not member.is_inside_tree():
+		return
+	for ctrl in member.get_tree().get_nodes_in_group("AGENT"):
+		if ctrl != null and ctrl.has_method("owns_figure") and ctrl.owns_figure(member):
+			ctrl.on_own_turn_ended()
+
+## Issue #434: §2.4 + §2.5 at own-turn start — the survival upkeep
+## (HP-scaled, ≤ +0.02) and the shaping rebase: the turn's Φ travels
+## are measured against the tile the turn STARTED on. The idle audit
+## snapshots the order pending right now — the one the game loop will
+## consume for this turn (#407) — and whether the policy decided at all
+## since the last turn start (§1: no decision ⇒ no choice ⇒ no idling).
+func on_own_turn_started() -> void:
+	_turn_active = true
+	_turn_figure = _resolve_alive_figure()
+	_has_ordered = _has_new_order
+	_turn_command = pending_command.duplicate()
+	_has_new_order = false
+	if _turn_figure != null:
+		var applied := SURVIVAL_REWARD * _hp_frac(_turn_figure)
+		reward += applied
+		survival_per_turn.emit(applied)
+	_potential_baseline = get_tile_quality()
+
+## Issue #434: the turn-end audits — §2.5's shaped remainder first, then
+## §2.7 idling (the command audit) and §2.8's danger-tile penalty. Fires
+## at most once per started turn; a figure that died mid-turn owes none
+## of these (§2.3 fired at the moment of death; everything after reads 0).
+func on_own_turn_ended() -> void:
+	if not _turn_active:
+		return
+	_credit_positioning_step()
+	_turn_active = false
+	var figure := _turn_figure
+	_turn_figure = null
+	if figure == null or not is_instance_valid(figure) or not _alive(figure):
+		return
+	if _has_ordered and _command_all_neutral(_turn_command) \
+				and _enemy_in_reach(figure):
+		reward += IDLE_PENALTY
+		idle_turn.emit(IDLE_PENALTY)
+	if _on_danger_tile(figure):
+		reward += DANGER_TILE_PENALTY
+		danger_tile_turn_end.emit(DANGER_TILE_PENALTY)
+
+## Issue #434: §2.5 — potential-based shaping: every decision step of
+## the own turn pays ±0.10 × ΔΦ since the last evaluation, so a whole
+## turn telescopes to 0.10 × (Φ_end − Φ_start) — repositioning smarter,
+## never moving more. Evaluated while the own turn is active and only
+## for the figure the turn belongs to (no drift scoring when the
+## alive-fallback would resolve a stand-in, the #433 note).
+func _credit_positioning_step() -> void:
+	if not _turn_active:
+		return
+	var figure := _resolve_alive_figure()
+	if figure == null or figure != _turn_figure:
+		return
+	var quality := _tile_quality(figure)
+	var applied := POSITIONING_SCALE * (quality - _potential_baseline)
+	_potential_baseline = quality
+	if is_zero_approx(applied):
+		return
+	reward += applied
+	positioning_credited.emit(applied)
+
+## Issue #434: the §2.5 value function the manifest declares — the
+## tile-quality potential Φ of the resolved figure's tile (0.0 in the
+## no-figure fallback state, a constant so a death never shapes).
+func get_tile_quality() -> float:
+	var figure := _resolve_alive_figure()
+	if figure == null:
+		return 0.0
+	return _tile_quality(figure)
+
+## Issue #434: Φ ∈ [0, 1] — the fraction of the alive enemies within
+## ATTACK_REACH whose straight fire line to the figure is occluded by
+## world geometry (layer 1 ground, destructible and indestructible
+## alike). No enemy in reach means nothing can fire at the tile at all:
+## Φ = 1.0. The influence-map half of REWARD_SPEC §2.5 is Phase 3's map
+## (it does not exist yet), so the issue's fallback clause makes this
+## the minimal cover check over the levels' own tile/props data.
+func _tile_quality(figure: Node2D) -> float:
+	var enemies := _enemies_in_reach(figure)
+	if enemies.is_empty():
+		return 1.0
+	var occluded := 0
+	for enemy in enemies:
+		if _fire_line_occluded(enemy.global_position, figure.global_position):
+			occluded += 1
+	return float(occluded) / float(enemies.size())
+
+## Issue #434: the ACTION_SPEC §1 predicate — alive, opposing side
+## (duck-typed on the team groups), within ATTACK_REACH of the figure.
+func _enemies_in_reach(figure: Node2D) -> Array:
+	if not is_inside_tree():
+		return []
+	var in_reach: Array = []
+	for fig in get_tree().get_nodes_in_group(_enemy_group(figure)):
+		if fig is Node2D and _alive(fig) \
+				and figure.global_position.distance_to(fig.global_position) <= ATTACK_REACH:
+			in_reach.append(fig)
+	return in_reach
+
+func _enemy_in_reach(figure: Node2D) -> bool:
+	return not _enemies_in_reach(figure).is_empty()
+
+## Issue #434: is the straight segment from `from` to `to` blocked by
+## world geometry? A physics ray against the world layer — the same
+## collision ground a projectile's flight would have to clear.
+func _fire_line_occluded(from: Vector2, to: Vector2) -> bool:
+	if not is_inside_tree():
+		return false
+	var query := PhysicsRayQueryParameters2D.create(from, to, WORLD_LAYER)
+	return not get_world_2d().direct_space_state.intersect_ray(query).is_empty()
+
+## Issue #434: §2.8's danger tile — open ground under enemy fire: at
+## least one alive enemy inside ATTACK_REACH holds a CLEAR fire line
+## onto the figure's tile (the same tile set Φ scores: danger ⟺ Φ < 1).
+func _on_danger_tile(figure: Node2D) -> bool:
+	for enemy in _enemies_in_reach(figure):
+		if not _fire_line_occluded(enemy.global_position, figure.global_position):
+			return true
+	return false
+
+## Issue #434: §2.7's neutral command — every head the controller
+## translates (#407) sits on its neutral value.
+func _command_all_neutral(command: Dictionary) -> bool:
+	return int(command.get("move", MoveCommand.HOLD)) == MoveCommand.HOLD \
+			and int(command.get("action", ActionCommand.IDLE)) == ActionCommand.IDLE
+
 ## Issue #433: the framework clears the accumulator per decision step
 ## (NcnnSync calls zero_reward()) — the §2.1 cap / §2.6 floor budgets
 ## restart together with it.
@@ -460,6 +668,13 @@ func reset() -> void:
 	# accumulator itself stays the framework's to clear).
 	_step_damage_reward = 0.0
 	_step_friendly_fire_reward = 0.0
+	# Issue #434: a fresh episode starts outside any turn — no stale order
+	# can be audited as this episode's idling, no Φ baseline leaks in.
+	_turn_active = false
+	_turn_figure = null
+	_has_new_order = false
+	_has_ordered = false
+	_turn_command = _idle_command()
 	_restore_figure()
 
 ## Issue #409: the horizon auto-reset must restore the episode too — the
@@ -582,6 +797,9 @@ func set_action(action) -> void:
 		"action": order,
 		"move_dir": MOVE_DIRS[move],
 	}
+	# Issue #434: a decision arrived — the NEXT own turn is one the policy
+	# chose commands on, so its idle audit may fire (REWARD_SPEC §1).
+	_has_new_order = true
 
 ## Issue #407: the game loop calls this when the bot's turn starts — it
 ## hands over the stored order and resets the bot to idle/hold so a stale
