@@ -380,10 +380,13 @@ func take_damage(amount: int, attacker: Node2D = null) -> void:
 		DebugInfo.log("%s's shield blocked %d damage" % [display_name, amount])
 		return
 	health = clampi(health - amount, 0, MAX_HEALTH)
-	# Issue #408: a landed hit feeds the attacker's reward accumulator
-	# (+1.0 per hit — BotController.HIT_REWARD); the training framework
-	# zeroes the property per episode, the figures never manage it.
-	BotController.credit_hit_reward(attacker)
+	# Issue #433: the REWARD_SPEC §2 combat components (proportional
+	# damage §2.1, kill bonus on the killing blow §2.2, friendly fire
+	# §2.6) are credited to the attacker's controller the moment the
+	# damage lands — after health is applied, so a killing blow is
+	# detectable; the training framework zeroes the property per step,
+	# the figures never manage it.
+	BotController.credit_combat_reward(attacker, self, amount)
 	_update_bar()
 	# Issue #252: debug damage number + action-log line.
 	DebugInfo.show_damage(self, amount)
@@ -397,6 +400,11 @@ func take_damage(amount: int, attacker: Node2D = null) -> void:
 	get_tree().create_timer(0.1).timeout.connect(
 		func() -> void: _set_body_color(team_color))
 	if health == 0:
+		# Issue #433: REWARD_SPEC §2.3 — the controller that plays this
+		# figure takes the once-per-death penalty at the moment of death,
+		# whatever killed it (_die() sets _dead right after, so it fires
+		# exactly once).
+		BotController.notify_figure_died(self)
 		_die()
 
 

@@ -17,7 +17,11 @@ extends NcnnAIController2D
 ## policy head indices into concrete game commands and stores them in
 ## pending_command for the turn-based game loop. Issue #408 implements
 ## the reward half: get_reward() returns the accumulated reward property,
-## credited by game logic when this bot's figure lands a hit. Issue #409
+## credited by game logic when this bot's figure lands a hit; issue #433
+## refines those credits into the REWARD_SPEC.md §2 combat components
+## (proportional damage with a per-step cap, a flat kill bonus on the
+## killing blow, a once-per-death own-death penalty, and a floored
+## friendly-fire term). Issue #409
 ## implements the episode lifecycle half: reset() clears the controller's
 ## own state (a pending order) and restores its figure to a clean start —
 ## spawn position, full HP, default protection, no cooldowns, revived.
@@ -259,33 +263,188 @@ func _alive(fig) -> bool:
 func get_reward() -> float:
 	# Issue #408: the accumulated reward signal — simply the inherited
 	# `reward` property, never reset here. Game logic increments the
-	# property at known events (Player/Npc.take_damage credits
-	# HIT_REWARD when this bot's figure lands a hit); the training
+	# property at known events (Player/Npc.take_damage credit the REWARD_SPEC
+	# §2 combat components when this bot's figure lands a hit); the training
 	# framework clears it after each collection (NcnnSync /
 	# zero_reward()), so this reports the delta since the last step.
 	return reward
 
-## Issue #408: reward per landed hit — the issue's sample magnitude.
-const HIT_REWARD := 1.0
+## Issue #433: the combat reward components, magnitudes straight from
+## REWARD_SPEC.md §2 (the damage fraction is damage / MAX_HEALTH, §1).
+## A killing blow pays KILL_REWARD alone — the kill bonus applies once
+## and NOT also the §2.1 damage tick on the same blow (issue #433), so
+## removing an enemy is always worth more than the same damage dealt
+## non-lethally.
+const DAMAGE_REWARD_SCALE := 0.15        # §2.1: +0.15 × damage_fraction
+const DAMAGE_REWARD_STEP_CAP := 0.30     # §2.1: cap per decision step
+const KILL_REWARD := 0.50                # §2.2: flat, per kill
+const DEATH_PENALTY := -0.50             # §2.3: flat, once per own death
+const FRIENDLY_FIRE_SCALE := -0.10       # §2.6: −0.10 × damage_fraction
+const FRIENDLY_FIRE_STEP_FLOOR := -0.30  # §2.6: floor per decision step
+
+## Issue #433: the four combat reward events, declared for the declarative
+## recipe system (REWARD_SPEC §4): RewardRecipe validates event_bonus
+## terms against get_reward_affordances() and a RewardAdapter routes
+## these signals into a Reward's trigger_event(). The payload is the
+## signed delta actually added to `reward` (already cap/floor-amortized),
+## so an external logger sees exactly the numbers the trainer does.
+signal damage_dealt(applied: float)
+signal enemy_killed
+signal own_figure_died
+signal friendly_fire(applied: float)
+
+## Issue #433: how much of this step's §2.1 cap / §2.6 floor budget is
+## already spent — several hits inside ONE decision step amortize into
+## the cap, so the trackers reset exactly when the framework clears the
+## accumulator (zero_reward() / reset()).
+var _step_damage_reward := 0.0
+var _step_friendly_fire_reward := 0.0
+
+## Issue #433: the manifest the recipe tooling validates against
+## (RewardRecipe.validate reads {"signals": …}); the four combat signals
+## exist and are emitted by the attribution path below — the positioning,
+## tempo and termination signals are #434's work order.
+func get_reward_affordances() -> Dictionary:
+	return {
+		"value_functions": {},
+		"signals": {
+			"damage_dealt": "§2.1 — enemy figure lost health to this agent's hit (+0.15×frac, +0.30/step cap)",
+			"enemy_killed": "§2.2 — this agent's blow killed an enemy figure (+0.50 flat, no damage tick stacked)",
+			"own_figure_died": "§2.3 — the controlled figure died (−0.50 flat, once per death)",
+			"friendly_fire": "§2.6 — this agent's hit damaged its own team (−0.10×frac, −0.30/step floor)",
+		},
+	}
 
 ## Issue #408: does this controller play `fig`? Game logic (take_damage)
 ## uses it to find whose accumulator a landed hit credits. Controllers
 ## duck-type on this method, so foreign AGENT-group agents are skipped.
+## Deliberately resolves WITHOUT capturing the spawn snapshot: game
+## logic calls this on every landed hit, and while the controller's own
+## figure lies dying the alive filter resolves a DIFFERENT figure —
+## re-capturing then would clobber the snapshot the death attribution
+## reads a moment later (issue #433). get_obs() owns the capturing.
 func owns_figure(fig: Node2D) -> bool:
-	return _resolve_figure() == fig
+	return _resolve_alive_figure() == fig
 
-## Issue #408: a landed hit is a known reward event — every controller
-## in the AGENT group whose figure is the attacker earns +HIT_REWARD.
-## Called by Player/Npc.take_damage after damage is applied, so every
-## weapon path that threads its shooter (Projectile, ProjectileBody,
-## railgun) feeds the same accumulator.
-static func credit_hit_reward(attacker: Node2D) -> void:
+## Issue #433: combat attribution — Player/Npc.take_damage calls this
+## right AFTER applying the damage (so a killing blow is detectable from
+## the victim's health), with the figure that fired. Every controller in
+## the AGENT group whose figure is the attacker earns the matching
+## REWARD_SPEC §2 component: enemy damage (§2.1), the kill bonus on the
+## killing blow (§2.2, replacing the damage tick), or friendly fire
+## (§2.6). Every weapon path that threads its shooter (Projectile,
+## ProjectileBody, railgun) feeds the same accumulator.
+static func credit_combat_reward(attacker: Node2D, victim: Node2D, damage: int) -> void:
 	if attacker == null or not attacker.is_inside_tree():
 		return
 	for ctrl in attacker.get_tree().get_nodes_in_group("AGENT"):
-		if ctrl != null and ctrl.has_method("owns_figure") \
-				and ctrl.owns_figure(attacker):
-			ctrl.reward += HIT_REWARD
+		if ctrl == null or not ctrl.has_method("owns_figure"):
+			continue
+		if not ctrl.owns_figure(attacker):
+			continue
+		if _same_team(attacker, victim):
+			ctrl._credit_friendly_fire(damage)
+		elif _figure_dead(victim):
+			ctrl._credit_kill()
+		else:
+			ctrl._credit_damage(damage)
+
+## Issue #433: the own-death penalty — REWARD_SPEC §2.3 fires at the
+## moment of death for every controller that plays the dying figure,
+## whatever killed it (an enemy, a stray blast, no attacker at all).
+## take_damage's _dead guard makes each figure die exactly once, so the
+## penalty can never stack.
+static func notify_figure_died(victim: Node2D) -> void:
+	if victim == null or not victim.is_inside_tree():
+		return
+	for ctrl in victim.get_tree().get_nodes_in_group("AGENT"):
+		if ctrl != null and ctrl.has_method("on_owned_figure_died"):
+			ctrl.on_owned_figure_died(victim)
+
+## Issue #433: does this controller play `fig` even now that fig is
+## DEAD? owns_figure() resolves through the alive-only filter, which
+## skips a figure at the moment of its death — so the death attribution
+## checks the LINKED figure (down or not) and the spawn snapshot
+## (captured by the last observation, see owns_figure()). A controller
+## that has never observed (no snapshot, no link) cannot attribute the
+## death — the training loop always observes first, so that is a
+## stand-in-only corner.
+func _owns_dead_figure(fig: Node2D) -> bool:
+	if not figure_path.is_empty():
+		var linked := get_node_or_null(figure_path)
+		if linked == fig:
+			return true
+	return fig == _spawn_figure and is_instance_valid(_spawn_figure)
+
+## Issue #433: §2.3 — flat, exactly once per death of the controlled
+## figure. Called by notify_figure_died(); foreign stand-ins without
+## this method are skipped.
+func on_owned_figure_died(fig: Node2D) -> void:
+	if not _owns_dead_figure(fig):
+		return
+	reward += DEATH_PENALTY
+	own_figure_died.emit()
+
+## Issue #433: §2.1 — proportional to the damage dealt, amortized into
+## the per-step cap (the cap, not the per-hit term, is what a multi-hit
+## step shares).
+func _credit_damage(damage: int) -> void:
+	var bonus := minf(
+			DAMAGE_REWARD_SCALE * _damage_fraction(damage),
+			DAMAGE_REWARD_STEP_CAP - _step_damage_reward)
+	if bonus <= 0.0:
+		return
+	_step_damage_reward += bonus
+	reward += bonus
+	damage_dealt.emit(bonus)
+
+## Issue #433: §2.2 — flat kill bonus on the killing blow; the §2.1
+## damage tick is deliberately NOT stacked under it (credit_combat_reward
+## routes the blow to exactly one of the two).
+func _credit_kill() -> void:
+	reward += KILL_REWARD
+	enemy_killed.emit()
+
+## Issue #433: §2.6 — proportional friendly fire, floored per step so
+## several careless blasts inside one decision step cannot bury the
+## signal (the floor mirrors the §2.1 cap).
+func _credit_friendly_fire(damage: int) -> void:
+	var penalty := maxf(
+			FRIENDLY_FIRE_SCALE * _damage_fraction(damage),
+			FRIENDLY_FIRE_STEP_FLOOR - _step_friendly_fire_reward)
+	if penalty >= 0.0:
+		return
+	_step_friendly_fire_reward += penalty
+	reward += penalty
+	friendly_fire.emit(penalty)
+
+## Issue #433: the [0, 1] damage fraction of REWARD_SPEC §1 — damage
+## relative to CharacterStats.MAX_HEALTH, never the victim's own maximum.
+func _damage_fraction(damage: int) -> float:
+	return clampf(float(damage) / float(Stats.MAX_HEALTH), 0.0, 1.0)
+
+## Issue #433: duck-typed team check — every real figure reports one of
+## the two team groups (Npc.gd issue #121, Player.gd); matching groups
+## mean the same team, so a hit between them is §2.6 friendly fire.
+static func _same_team(a: Node2D, b: Node2D) -> bool:
+	return a.is_in_group("player_team") == b.is_in_group("player_team") \
+			and a.is_in_group("enemy_team") == b.is_in_group("enemy_team")
+
+## Issue #433: health ≤ 0 means the killing blow just landed —
+## take_damage applies health before crediting, so the attribution path
+## sees the post-damage value. Duck-typed: test stand-ins report
+## `health` exactly like Player/Npc.
+static func _figure_dead(fig: Node2D) -> bool:
+	var hp = fig.get("health")
+	return hp != null and float(hp) <= 0.0
+
+## Issue #433: the framework clears the accumulator per decision step
+## (NcnnSync calls zero_reward()) — the §2.1 cap / §2.6 floor budgets
+## restart together with it.
+func zero_reward() -> void:
+	super.zero_reward()
+	_step_damage_reward = 0.0
+	_step_friendly_fire_reward = 0.0
 
 ## Issue #409: episode reset — restore the bot and its battlefield state
 ## to a clean start. The framework's share (step counter, needs_reset,
@@ -296,6 +455,11 @@ static func credit_hit_reward(attacker: Node2D) -> void:
 func reset() -> void:
 	super.reset()
 	pending_command = _idle_command()
+	# Issue #433: a fresh episode restarts the per-step cap/floor budgets
+	# together with the rest of the controller's own state (the reward
+	# accumulator itself stays the framework's to clear).
+	_step_damage_reward = 0.0
+	_step_friendly_fire_reward = 0.0
 	_restore_figure()
 
 ## Issue #409: the horizon auto-reset must restore the episode too — the

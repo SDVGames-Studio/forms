@@ -60,7 +60,7 @@ is `CharacterStats.MAX_HEALTH = 100`; the [0, 1] damage fraction is
 | Magnitude | **+0.50** flat |
 | Sign | positive |
 | Frequency | per event |
-| Rationale | a removal is worth more than the raw damage that caused it — empty slots shrink the enemy's future action budget |
+| Rationale | a removal is worth more than the raw damage that caused it — empty slots shrink the enemy's future action budget. The killing blow pays this bonus INSTEAD of the §2.1 damage tick (no stacking, issue #433), so a kill always outscores the same damage dealt non-lethally |
 
 ### 2.3 `own_figure_died` — combat
 
@@ -163,9 +163,11 @@ change.
 | `danger_tile_turn_end` | `event_bonus("danger_tile_turn_end", -0.05)` | signal at turn end from the #434 tile set |
 | `episode_outcome` | `event_bonus("episode_won"/"episode_lost", ±0.5)` | signals from the episode-end handler |
 
-None of the nine signals/value functions exist in
-`get_reward_affordances()` yet — declaring them (manifest + real signal
-emission) is precisely the #433/#434 work order. Recipes built from this
+The four combat signals (`damage_dealt`, `enemy_killed`, `own_figure_died`,
+`friendly_fire`) are declared and emitted since #433. The remaining five
+(survival, positioning Φ, idle, danger-tile, episode outcome) do not exist
+in `get_reward_affordances()` yet — declaring them (manifest + real signal
+emission) is precisely the #434 work order. Recipes built from this
 spec are validated against the manifest by `RewardRecipe.validate()`:
 an unemitted signal fails loud, so the spec and the code cannot drift
 apart silently.
