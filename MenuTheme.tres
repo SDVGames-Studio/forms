@@ -51,13 +51,6 @@ corner_radius_bottom_right = 6
 corner_radius_bottom_left = 6
 
 [sub_resource type="StyleBoxFlat" id="btn_hover_pressed"]
-## Issue #384 (rework): a CHECKED CheckButton hovered by the cursor draws
-## with the "hover_pressed" state (BaseButton.DRAW_HOVER_PRESSED). The
-## theme previously did not define it, so Godot fell back to the DEFAULT
-## theme's EMPTY StyleBox — and font_hover_pressed_color is near-black —
-## which made an enabled switch (e.g. GRAVITY FIELD) vanish completely
-## the moment the mouse touched it. Keep the pressed/checked accent fill
-## and brighten the border so hover stays visible on every button.
 content_margin_left = 22.0
 content_margin_top = 12.0
 content_margin_right = 22.0
