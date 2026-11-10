@@ -65,6 +65,12 @@ def main() -> int:
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--steps", type=int, default=96, help="Total environment steps for the short PPO run")
     parser.add_argument("--n-steps", type=int, default=32, help="PPO rollout length (per env), as in the gdrl example")
+    parser.add_argument(
+        "--expected-policies",
+        type=int,
+        default=None,
+        help="Assert this many distinct policy_name values in the handshake (issue #445); default: report only",
+    )
     args = parser.parse_args()
 
     # Be gentle on shared machines: the nets here are tiny.
@@ -74,6 +80,23 @@ def main() -> int:
     shim = make_launcher_shim(args.godot, args.scene, out_dir)
 
     base_env = StableBaselinesGodotEnv(env_path=shim, port=args.port, seed=args.seed, speedup=1)
+
+    # Issue #445: the handshake's agent_policy_names lists one policy_name per
+    # in-scene agent. Bots of the same role share a name (one shared network);
+    # distinct roles must report distinct names, and every agent sharing a name
+    # must return identical obs/action spaces (guarded game-side by
+    # tests/test_issue445.gd). SB3 itself trains a single shared policy over
+    # all agents, so the count below is the game's declared role layout.
+    policy_names = list(getattr(base_env.envs[0], "agent_policy_names", []))
+    distinct_policies = sorted(set(policy_names))
+    assert policy_names, "handshake carried no agent_policy_names"
+    assert len(policy_names) == base_env.envs[0].num_envs, (
+        f"policy names ({len(policy_names)}) do not line up with agents ({base_env.envs[0].num_envs})"
+    )
+    if args.expected_policies is not None:
+        assert len(distinct_policies) == args.expected_policies, (
+            f"expected {args.expected_policies} distinct policies, got {distinct_policies}"
+        )
 
     # Count the actual wire exchanges (each VecEnv step == one step message with
     # observations sent and actions received for every in-scene agent).
@@ -99,6 +122,10 @@ def main() -> int:
     print(
         f"CONNECTIVITY OK: {exchanges['steps']} trainer steps x {n_agents} agents "
         f"({exchanges['steps'] * n_agents} observation/action exchanges) with no socket errors"
+    )
+    print(
+        f"POLICIES OK: {len(distinct_policies)} distinct policy_name(s) across "
+        f"{len(policy_names)} agents: {', '.join(distinct_policies)} — no space-mismatch errors"
     )
     return 0
 

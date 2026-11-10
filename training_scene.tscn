@@ -15,6 +15,7 @@ control_mode = 1
 [node name="Bot" type="Node2D" parent="NcnnSync/Environment_01"]
 position = Vector2(576, 400)
 script = ExtResource("3_bot")
+policy_name = "soldier"
 
 [node name="Environment_02" parent="NcnnSync" instance=ExtResource("2_level")]
 position = Vector2(1400, 0)
@@ -22,6 +23,7 @@ position = Vector2(1400, 0)
 [node name="Bot" type="Node2D" parent="NcnnSync/Environment_02"]
 position = Vector2(576, 400)
 script = ExtResource("3_bot")
+policy_name = "soldier"
 
 [node name="Environment_03" parent="NcnnSync" instance=ExtResource("2_level")]
 position = Vector2(2800, 0)
@@ -29,3 +31,4 @@ position = Vector2(2800, 0)
 [node name="Bot" type="Node2D" parent="NcnnSync/Environment_03"]
 position = Vector2(576, 400)
 script = ExtResource("3_bot")
+policy_name = "soldier"
