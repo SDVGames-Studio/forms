@@ -33,10 +33,22 @@ extends Object
 enum SurfaceKind { SLAB_TOP, DISC_ARC, SECTOR_ARC }
 
 
+## Issue #375: a drawn surface is only USABLE when the item body
+## would clear every ground piece — see _spot_clear (issue #403).
+## Issue #403: overlapping masses are legal level authoring (issue
+## #270 counts touching/overlapping masses as ONE landmass), and parts
+## of a surface buried inside a neighbour used to host created items —
+## they appeared inside the indestructible ground. Each drop now
+## redraws until the spot is clear, at most this many tries.
+const MAX_SPOT_TRIES := 12
+
+
 ## Issue #375: create one random item at a uniformly random SURFACE
 ## point of the level — every ground piece, whatever its type, gets
 ## exactly its surface's share of the chance. Returns the item, or null
-## when the level has no measurable ground surface (menus, tests).
+## when the level has no measurable ground surface (menus, tests) or no
+## drawn spot clears the ground (issue #403: skip the drop rather than
+## bury the item).
 static func spawn_random_item(level: Node) -> LevelItem:
 	if level == null:
 		return null
@@ -53,8 +65,37 @@ static func spawn_random_item(level: Node) -> LevelItem:
 				grounds.append(ground)
 	if grounds.is_empty():
 		return null
-	# The weighted draw: a uniform roll over the total surface length
-	# walks the pieces; a piece gets exactly its surface's share.
+	# Issue #403: draw spot after spot until one clears every ground
+	# piece — the draw itself stays exactly the issue #375 uniform
+	# surface lottery, only buried spots are redrawn.
+	for _try in MAX_SPOT_TRIES:
+		var picked: Node2D = _draw_ground(grounds, total)
+		var spot := _surface_point(picked, randf())
+		var xform: Transform2D = picked.global_transform
+		var point: Vector2 = spot["point"]
+		var normal: Vector2 = xform.basis_xform(spot["normal"]).normalized()
+		# Issue #375: half the 64 px item plus a hair along the surface
+		# normal — the item starts RESTING on the ground, not inside it.
+		var gap := LevelItem.SIZE / 2.0 + 2.0
+		var at: Vector2 = xform * point + normal * gap
+		if not _spot_clear(level, at):
+			continue
+		var item := LevelItem.new()
+		item.kind = [LevelItem.Kind.FIRST_AID,
+				LevelItem.Kind.WEAPON_BUNDLE,
+				LevelItem.Kind.TOOL_BUNDLE].pick_random()
+		item.global_position = at
+		level.add_child(item)
+		DebugInfo.log("a %s appears on the field" % LevelItem.kind_name(item.kind))
+		return item
+	DebugInfo.log("no open spot for a new item this round")
+	return null
+
+
+## Issue #375: the weighted draw — a uniform roll over the total
+## surface length walks the pieces; a piece gets exactly its surface's
+## share.
+static func _draw_ground(grounds: Array[Node2D], total: float) -> Node2D:
 	var roll := randf() * total
 	var picked: Node2D = grounds[grounds.size() - 1]
 	for ground in grounds:
@@ -62,21 +103,32 @@ static func spawn_random_item(level: Node) -> LevelItem:
 		if roll <= 0.0:
 			picked = ground
 			break
-	var spot := _surface_point(picked, randf())
-	var xform: Transform2D = picked.global_transform
-	var point: Vector2 = spot["point"]
-	var normal: Vector2 = xform.basis_xform(spot["normal"]).normalized()
-	# Issue #375: half the 64 px item plus a hair along the surface
-	# normal — the item starts RESTING on the ground, not inside it.
-	var gap := LevelItem.SIZE / 2.0 + 2.0
-	var item := LevelItem.new()
-	item.kind = [LevelItem.Kind.FIRST_AID,
-			LevelItem.Kind.WEAPON_BUNDLE,
-			LevelItem.Kind.TOOL_BUNDLE].pick_random()
-	item.global_position = xform * point + normal * gap
-	level.add_child(item)
-	DebugInfo.log("a %s appears on the field" % LevelItem.kind_name(item.kind))
-	return item
+	return picked
+
+
+## Issue #403: true when the would-be item body overlaps NO ground
+## piece: its centre plus four probes just inside its 64 px edges are
+## point-queried against the physics space, which sees every ground
+## shape — rounded slab corners, discs, ring sectors, carved chunks —
+## through the collision bodies, all on layer 1.
+static func _spot_clear(level: Node, at: Vector2) -> bool:
+	var canvas := level as CanvasItem
+	if canvas == null:
+		return true
+	var space := canvas.get_world_2d().direct_space_state
+	var query := PhysicsPointQueryParameters2D.new()
+	query.collide_with_bodies = true
+	query.collide_with_areas = false
+	query.collision_mask = 1
+	var reach := LevelItem.SIZE / 2.0 - 4.0
+	var probes: Array[Vector2] = [at,
+			at + Vector2(reach, 0.0), at + Vector2(-reach, 0.0),
+			at + Vector2(0.0, reach), at + Vector2(0.0, -reach)]
+	for probe in probes:
+		query.position = probe
+		if not space.intersect_point(query, 1).is_empty():
+			return false
+	return true
 
 
 ## Issue #375: the walkable surface length of one ground piece in px —
