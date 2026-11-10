@@ -62,7 +62,38 @@ validated end-to-end connectivity harness — run it first on any new machine:
 Success = godot-rl's "connection established", PPO step logs, zero socket errors,
 and NcnnSync staying in TRAINING mode (validated in issue #356 / PR #371).
 For real training, write the same setup into a `train_forms.py` with the
-checkpointing of your choice (see godot-rl's `examples/stable_baselines3_example.py`).
+checkpointing of your choice (see godot-rl's
+`examples/stable_baselines3_example.py`).
+
+**Shared policies by role (issue #445).** Team deathmatch trains multiple
+bots of the same role on ONE shared network: every controller in the scene
+carries an explicit `policy_name` naming its role. Current role-to-policy
+mapping:
+
+| Role | `policy_name` | Controllers |
+|---|---|---|
+| soldier (scaffold training bot) | `soldier` | the 3 `Bot` nodes in `training_scene.tscn` |
+
+`NcnnSync` reports each agent's `policy_name` in the handshake's
+`agent_policy_names` field; `rl_connectivity_test.py` prints
+`POLICIES OK: N distinct policy_name(s) …` after a run (`--expected-policies`
+asserts the count). Today's single-role scene reports **1**. Rules for
+extending the roster:
+
+- Same role → same `policy_name`: the agents share network weights, which is
+  significantly more sample-efficient for homogeneous teams.
+- Distinct role (e.g. a medic with different abilities) → its own
+  `policy_name`. Multi-policy training needs RLlib, not SB3 (SB3 trains a
+  single shared policy); with SB3 keep one role per training run. For
+  separate *training identities* beyond the role name there is also
+  `NcnnSync.multi_policy = true`, which switches the wire to each agent's
+  `policy_group` (issue #73) — `policy_name` stays the role key.
+- **Critical constraint:** every agent sharing a `policy_name` must return
+  IDENTICAL `get_obs()` and `get_action_space()` shapes — the trainer builds
+  the wire spaces from the group's first agent and any drift fails the
+  pipeline with a space-mismatch error. `tests/test_issue445.gd` (headless:
+  `godot --headless res://tests/test_issue445.tscn`) guards the shipped
+  scene and demonstrates the legal two-role layout.
 
 ## 3. Export to ONNX, convert to ncnn via pnnx
 
