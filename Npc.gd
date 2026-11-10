@@ -723,6 +723,16 @@ func _wants_retreat(distance: float) -> bool:
 ## attack range (focus fire), otherwise the nearest one. Re-evaluated every
 ## frame, so when a target dies the NPC naturally switches to another.
 func _nearest_opponent() -> Node2D:
+	# Issue #446: the team blackboard's shared FOCUS TARGET wins while it
+	# is still a living opponent — the whole team converges on the same
+	# figure, and each bot needs only its OWN team id (TurnController's
+	# team_id_of), never a reference to any other bot.
+	var shared: Node2D = TeamBlackboard.get_focus_target(
+			TurnController.team_id_of(self))
+	if shared != null and not _same_side(shared):
+		var shared_hp = shared.get("health")
+		if shared_hp == null or float(shared_hp) > 0.0:
+			return shared
 	var fallback: Node2D = null
 	var nearest_distance := INF
 	var focus: Node2D = null

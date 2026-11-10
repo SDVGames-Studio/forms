@@ -533,6 +533,17 @@ func _begin_turn(team: String) -> void:
 	# Issue #104: a fresh turn always starts with switching unlocked.
 	_switch_locked = false
 	var members := _alive_of(team)
+	# Issue #446: each turn start refreshes the ACTING team's shared
+	# blackboard — once per turn, never per physics frame. Allies are the
+	# team's own alive figures; enemies are every OTHER team's alive
+	# figures (in a multi-team death-match the other AI teams count as
+	# enemies too, issue #228). The team's bots then read TeamBlackboard's
+	# statics instead of querying the world themselves.
+	var board_enemies: Array = []
+	for figure in _alive("player_team") + _alive("enemy_team"):
+		if team_id_of(figure) != team:
+			board_enemies.append(figure)
+	TeamBlackboard.update_team(team, members, board_enemies)
 	# Issue #131 rework, per-character since #143: the lock must survive
 	# the enemy turn — only the start of a fresh PLAYER turn re-enables
 	# weapon selection (for every character).

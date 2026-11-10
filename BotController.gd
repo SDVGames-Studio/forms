@@ -776,6 +776,11 @@ func zero_reward() -> void:
 ## fire in the new episode) and restores the controlled figure.
 func reset() -> void:
 	super.reset()
+	# Issue #446: the episode reset wipes the shared team blackboard — a
+	# fresh episode must not inherit the old one's focus target or HP
+	# snapshot. Idempotent: whichever controller resets first, the shared
+	# state is empty afterwards.
+	TeamBlackboard.reset_blackboard()
 	pending_command = _idle_command()
 	# Issue #433: a fresh episode restarts the per-step cap/floor budgets
 	# together with the rest of the controller's own state (the reward
