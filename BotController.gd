@@ -272,7 +272,15 @@ func get_reward() -> float:
 	# §2 combat components when this bot's figure lands a hit); the training
 	# framework clears it after each collection (NcnnSync /
 	# zero_reward()), so this reports the delta since the last step.
-	return reward
+	# Issue #436: the §3 final stage — the raw accumulator is returned
+	# HARD-CLIPPED to ±REWARD_CLIP_BOUND before the trainer sees it. By
+	# construction every non-terminal step already sits inside the bound
+	# (§3 table: best +0.92 / worst −0.90), so the clip only guards sums
+	# §3's single-kill budget cannot express — terminal steps stacking the
+	# §2.9 outcome (not yet emitted) on a combat step, or a multi-kill
+	# step. The raw accumulator is NOT touched: the clip is a read-side
+	# guarantee, the framework stays the sole owner of clearing.
+	return clampf(reward, -REWARD_CLIP_BOUND, REWARD_CLIP_BOUND)
 
 ## Issue #433: the combat reward components, magnitudes straight from
 ## REWARD_SPEC.md §2 (the damage fraction is damage / MAX_HEALTH, §1).
@@ -296,6 +304,12 @@ const SURVIVAL_REWARD := 0.02         # §2.4: +0.02 × hp_fraction per own turn
 const POSITIONING_SCALE := 0.10       # §2.5: ±0.10 × ΔΦ per decision step
 const IDLE_PENALTY := -0.05           # §2.7: flat, per idle turn
 const DANGER_TILE_PENALTY := -0.05    # §2.8: flat, per turn ended on a danger tile
+## Issue #436: REWARD_SPEC §3's magnitude budget — every non-terminal
+## per-step reward is inside [−1, +1] by construction and terminal steps
+## clip to ±1.0 before logging. Derived from §3, not chosen freely (the
+## spec's Maintenance rule): if §2 magnitudes are ever retuned, this
+## bound follows the re-derived §3 table in the same change.
+const REWARD_CLIP_BOUND := 1.0
 ## Issue #434: the ACTION_SPEC §1 enemy-visibility band — alive +
 ## opposing side + within ATTACK_REACH (the same reach the scaffold's
 ## action mask uses, TrainingBot.ATTACK_REACH: the widest AI weapon
@@ -334,6 +348,16 @@ signal danger_tile_turn_end(applied: float)
 ## accumulator (zero_reward() / reset()).
 var _step_damage_reward := 0.0
 var _step_friendly_fire_reward := 0.0
+
+## Issue #436: per-component reward log — every §2 component's signed
+## contribution since the accumulator was last cleared, keyed by the
+## spec's component names (damage_dealt, enemy_killed, survival_per_turn,
+## positioning, idling, ...), so training logs can break the step's
+## return down by category. Cheap by design: plain float adds on the
+## rare reward-event paths, no per-frame string formatting, and the
+## dictionary stays empty on quiet steps. Cleared together with the
+## `reward` property in zero_reward() (and at episode reset).
+var reward_component_log := {}
 
 ## Issue #434: own-turn bookkeeping — the shaping potential rebases at
 ## every own-turn start (§2.5), the idle audit reads the order that was
@@ -438,6 +462,7 @@ func on_owned_figure_died(fig: Node2D) -> void:
 	if not _owns_dead_figure(fig):
 		return
 	reward += DEATH_PENALTY
+	_log_reward_component("own_figure_died", DEATH_PENALTY)
 	own_figure_died.emit()
 	# Issue #434: §2.3 — after the own figure's death every further
 	# per-step component reads 0: the own-turn state closes so no idle,
@@ -456,6 +481,7 @@ func _credit_damage(damage: int) -> void:
 		return
 	_step_damage_reward += bonus
 	reward += bonus
+	_log_reward_component("damage_dealt", bonus)
 	damage_dealt.emit(bonus)
 
 ## Issue #433: §2.2 — flat kill bonus on the killing blow; the §2.1
@@ -463,6 +489,7 @@ func _credit_damage(damage: int) -> void:
 ## routes the blow to exactly one of the two).
 func _credit_kill() -> void:
 	reward += KILL_REWARD
+	_log_reward_component("enemy_killed", KILL_REWARD)
 	enemy_killed.emit()
 
 ## Issue #433: §2.6 — proportional friendly fire, floored per step so
@@ -476,6 +503,7 @@ func _credit_friendly_fire(damage: int) -> void:
 		return
 	_step_friendly_fire_reward += penalty
 	reward += penalty
+	_log_reward_component("friendly_fire", penalty)
 	friendly_fire.emit(penalty)
 
 ## Issue #433: the [0, 1] damage fraction of REWARD_SPEC §1 — damage
@@ -537,6 +565,7 @@ func on_own_turn_started() -> void:
 	if _turn_figure != null:
 		var applied := SURVIVAL_REWARD * _hp_frac(_turn_figure)
 		reward += applied
+		_log_reward_component("survival_per_turn", applied)
 		survival_per_turn.emit(applied)
 	_potential_baseline = get_tile_quality()
 
@@ -556,9 +585,11 @@ func on_own_turn_ended() -> void:
 	if _has_ordered and _command_all_neutral(_turn_command) \
 				and _enemy_in_reach(figure):
 		reward += IDLE_PENALTY
+		_log_reward_component("idling", IDLE_PENALTY)
 		idle_turn.emit(IDLE_PENALTY)
 	if _on_danger_tile(figure):
 		reward += DANGER_TILE_PENALTY
+		_log_reward_component("danger_tile_turn_end", DANGER_TILE_PENALTY)
 		danger_tile_turn_end.emit(DANGER_TILE_PENALTY)
 
 ## Issue #434: §2.5 — potential-based shaping: every decision step of
@@ -579,7 +610,16 @@ func _credit_positioning_step() -> void:
 	if is_zero_approx(applied):
 		return
 	reward += applied
+	_log_reward_component("positioning", applied)
 	positioning_credited.emit(applied)
+
+## Issue #436: record one component's signed delta in the per-component
+## debug dictionary (REWARD_SPEC §2 component names). Called only on reward events —
+## never per frame — so the log costs one float add per event and the
+## string keys are constants on the (rare) credit paths, not something
+## rebuilt every step.
+func _log_reward_component(component: String, delta: float) -> void:
+	reward_component_log[component] = reward_component_log.get(component, 0.0) + delta
 
 ## Issue #434: the §2.5 value function the manifest declares — the
 ## tile-quality potential Φ of the resolved figure's tile (0.0 in the
@@ -653,6 +693,10 @@ func zero_reward() -> void:
 	super.zero_reward()
 	_step_damage_reward = 0.0
 	_step_friendly_fire_reward = 0.0
+	# Issue #436: the per-component log is a debug view of the SAME step
+	# window as the accumulator — it clears at exactly the moment the
+	# reward property is cleared (NcnnSync calls this after collecting).
+	reward_component_log.clear()
 
 ## Issue #409: episode reset — restore the bot and its battlefield state
 ## to a clean start. The framework's share (step counter, needs_reset,
@@ -668,6 +712,10 @@ func reset() -> void:
 	# accumulator itself stays the framework's to clear).
 	_step_damage_reward = 0.0
 	_step_friendly_fire_reward = 0.0
+	# Issue #436: a fresh episode also starts with an empty per-component
+	# log — the previous episode's breakdown must not leak into the next
+	# one's training logs.
+	reward_component_log.clear()
 	# Issue #434: a fresh episode starts outside any turn — no stale order
 	# can be audited as this episode's idling, no Φ baseline leaks in.
 	_turn_active = false
