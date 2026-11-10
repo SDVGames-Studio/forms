@@ -166,8 +166,9 @@ change.
 The four combat signals (`damage_dealt`, `enemy_killed`, `own_figure_died`,
 `friendly_fire`) are declared and emitted since #433. The survival,
 positioning (Φ — minimal cover-only definition), idle and danger-tile
-signals/value functions are declared and emitted since #434; only the
-`episode_outcome` signals remain unimplemented. Recipes built from this
+signals/value functions are declared and emitted since #434; the
+`episode_outcome` signals are declared and emitted since #437 (TurnController
+→ notify_episode_outcome → game_over()). Recipes built from this
 spec are validated against the manifest by `RewardRecipe.validate()`:
 an unemitted signal fails loud, so the spec and the code cannot drift
 apart silently.

@@ -30,6 +30,10 @@ extends NcnnAIController2D
 ## implements the episode lifecycle half: reset() clears the controller's
 ## own state (a pending order) and restores its figure to a clean start —
 ## spawn position, full HP, default protection, no cooldowns, revived.
+## Issue #437 implements the terminal-outcome half: a terminal game state
+## (elimination / draw) pays the REWARD_SPEC §2.9 win/loss through the
+## framework's game_over() flags — done=true + needs_reset=true, truncated
+## stays false, and the turn-limit horizon (truncation) never pays it.
 ## The action-space declaration remains a loud stub until its own issue.
 
 const Stats := preload("res://scripts/CharacterStats.gd")
@@ -304,6 +308,12 @@ const SURVIVAL_REWARD := 0.02         # §2.4: +0.02 × hp_fraction per own turn
 const POSITIONING_SCALE := 0.10       # §2.5: ±0.10 × ΔΦ per decision step
 const IDLE_PENALTY := -0.05           # §2.7: flat, per idle turn
 const DANGER_TILE_PENALTY := -0.05    # §2.8: flat, per turn ended on a danger tile
+## Issue #437: the §2.9 terminal outcome — the ONE terminal-only component,
+# exempt from the §3 steady-state budget (terminal steps clip to ±1.0 in
+# get_reward() on read). A win pays measurably more than a timeout, which
+# pays no outcome at all (truncation must not look like a victory).
+const EPISODE_WIN_REWARD := 0.50      # §2.9: own team is the sole surviving side
+const EPISODE_LOSS_REWARD := -0.50     # §2.9: own side wiped (draw included) or lost
 ## Issue #436: REWARD_SPEC §3's magnitude budget — every non-terminal
 ## per-step reward is inside [−1, +1] by construction and terminal steps
 ## clip to ±1.0 before logging. Derived from §3, not chosen freely (the
@@ -341,6 +351,12 @@ signal survival_per_turn(applied: float)
 signal positioning_credited(applied: float)
 signal idle_turn(applied: float)
 signal danger_tile_turn_end(applied: float)
+## Issue #437: the §2.9 terminal outcome events (REWARD_SPEC §4's
+# `event_bonus("episode_won"/"episode_lost", ±0.5)` row) — payload is the
+# signed delta actually added to `reward`, same contract as every other
+# reward signal.
+signal episode_won(applied: float)
+signal episode_lost(applied: float)
 
 ## Issue #433: how much of this step's §2.1 cap / §2.6 floor budget is
 ## already spent — several hits inside ONE decision step amortize into
@@ -391,6 +407,8 @@ func get_reward_affordances() -> Dictionary:
 			"positioning_credited": "§2.5 — potential-based shaped ΔΦ credited this step (±0.10 × ΔΦ, rebased at own-turn start)",
 			"idle_turn": "§2.7 — turn ended all-neutral with an enemy in reach (−0.05, only on turns the policy ordered on)",
 			"danger_tile_turn_end": "§2.8 — turn ended inside an enemy's clear line-of-fire band (−0.05)",
+			"episode_won": "§2.9 — episode ended with own team the sole surviving side (+0.50 terminal, #437)",
+			"episode_lost": "§2.9 — episode ended with own side wiped or outlived, draw included (−0.50 terminal, #437)",
 		},
 	}
 
@@ -469,6 +487,58 @@ func on_owned_figure_died(fig: Node2D) -> void:
 	# danger-tile or shaped remainder can fire afterwards.
 	_turn_active = false
 	_turn_figure = null
+
+## Issue #437: TurnController._check_win() calls this once when the game
+# reaches a terminal state — every controller in the AGENT group gets its
+# §2.9 outcome through on_episode_outcome(). Duck-typed dispatch like
+## notify_figure_died(): foreign AGENT agents are skipped.
+static func notify_episode_outcome(winner_team: String) -> void:
+	var tree := Engine.get_main_loop() as SceneTree
+	if tree == null:
+		return
+	for ctrl in tree.get_nodes_in_group("AGENT"):
+		if ctrl != null and ctrl.has_method("on_episode_outcome"):
+			ctrl.on_episode_outcome(winner_team)
+
+## Issue #437: the §2.9 terminal credit — win (+0.50) when the own team is
+## the sole survivor, loss (−0.50) when the own side is wiped or outlived
+## (a mutual-destruction draw counts as a loss: the own side is wiped).
+## Flags ride the framework's game_over() helper: done=true + needs_reset=true,
+## truncated stays false, and the outcome rides the accumulator the Sync
+## drains on the terminal step (clipped to ±1.0 by get_reward(), §3).
+func on_episode_outcome(winner_team: String) -> void:
+	# Already ended this episode (e.g. the horizon fired earlier in the same
+	# frame): a truncation must never be upgraded into a paid win/loss.
+	if get_done():
+		return
+	var figure := _resolve_outcome_figure()
+	if figure == null:
+		return  # never observed, no side to attribute — no outcome credit
+	var won: bool = not winner_team.is_empty() \
+			and TurnController.team_id_of(figure) == winner_team
+	var delta: float = EPISODE_WIN_REWARD if won else EPISODE_LOSS_REWARD
+	game_over(delta)
+	_log_reward_component("episode_outcome", delta)
+	if won:
+		episode_won.emit(delta)
+	else:
+		episode_lost.emit(delta)
+
+## Issue #437: whose side does the outcome belong to? The LINKED figure, else
+## the spawn snapshot — both survive the figure's own death (a bot can die
+## while its team wins). Deliberately NO alive-figure fallback: after the own
+## side is wiped, _resolve_figure() would resolve an ENEMY figure and pay the
+## wiped side's controller a phantom win. A controller with neither link nor
+## snapshot cannot attribute a side at all — no credit (the training loop
+## always observes first, so real runs always have the snapshot).
+func _resolve_outcome_figure() -> Node2D:
+	if not figure_path.is_empty():
+		var linked := get_node_or_null(figure_path)
+		if linked != null and linked is Node2D:
+			return linked
+	if is_instance_valid(_spawn_figure):
+		return _spawn_figure
+	return null
 
 ## Issue #433: §2.1 — proportional to the damage dealt, amortized into
 ## the per-step cap (the cap, not the per-hit term, is what a multi-hit
