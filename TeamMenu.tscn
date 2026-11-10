@@ -1,0 +1,230 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://TeamMenu.gd" id="1_teammenu"]
+[ext_resource type="Theme" path="res://MenuTheme.tres" id="2_theme"]
+[ext_resource type="PackedScene" path="res://MenuBackground.tscn" id="3_bg"]
+
+[node name="TeamMenu" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme = ExtResource("2_theme")
+script = ExtResource("1_teammenu")
+
+[node name="Background" parent="." instance=ExtResource("3_bg")]
+
+[node name="Shadow" type="ColorRect" parent="."]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.05, 0.03, 0.1, 0.75)
+
+[node name="Layout" type="MarginContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/margin_left = 56
+theme_override_constants/margin_top = 40
+theme_override_constants/margin_right = 56
+theme_override_constants/margin_bottom = 56
+
+[node name="Columns" type="HBoxContainer" parent="Layout"]
+layout_mode = 2
+theme_override_constants/separation = 56
+
+[node name="Brand" type="VBoxContainer" parent="Layout/Columns"]
+layout_mode = 2
+size_flags_vertical = 4
+theme_override_constants/separation = 10
+
+[node name="Title" type="Label" parent="Layout/Columns/Brand"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 56
+text = "TEAMS"
+
+[node name="Subtitle" type="Label" parent="Layout/Columns/Brand"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.467, 0.49, 0.545, 1)
+theme_override_font_sizes/font_size = 17
+text = "BUILD YOUR SET OF TEAMS"
+
+[node name="AccentRule" type="ColorRect" parent="Layout/Columns/Brand"]
+custom_minimum_size = Vector2(260, 4)
+layout_mode = 2
+color = Color(0.655, 0.545, 0.98, 1)
+
+[node name="Spacer" type="Control" parent="Layout/Columns"]
+custom_minimum_size = Vector2(24, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="Column" type="VBoxContainer" parent="Layout/Columns"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+theme_override_constants/separation = 12
+
+[node name="TeamListRow" type="HBoxContainer" parent="Layout/Columns/Column"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="TeamSelect" type="OptionButton" parent="Layout/Columns/Column/TeamListRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(320, 44)
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Team 1"
+
+[node name="AddTeamButton" type="Button" parent="Layout/Columns/Column/TeamListRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(170, 44)
+layout_mode = 2
+text = "+ Add team"
+
+[node name="Scroll" type="ScrollContainer" parent="Layout/Columns/Column"]
+layout_mode = 2
+size_flags_vertical = 3
+horizontal_scroll_mode = 0
+
+[node name="Rows" type="VBoxContainer" parent="Layout/Columns/Column/Scroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 14
+
+[node name="EditingLabel" type="Label" parent="Layout/Columns/Column/Scroll/Rows"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.467, 0.49, 0.545, 1)
+theme_override_font_sizes/font_size = 15
+text = "Editing: Team 1"
+
+[node name="ShapeLabel" type="Label" parent="Layout/Columns/Column/Scroll/Rows"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+text = "Shape:"
+
+[node name="ShapePicker" type="HBoxContainer" parent="Layout/Columns/Column/Scroll/Rows"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="ColorRow" type="HBoxContainer" parent="Layout/Columns/Column/Scroll/Rows"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="ColorLabel" type="Label" parent="Layout/Columns/Column/Scroll/Rows/ColorRow"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+text = "Team color:"
+
+[node name="TeamColorPicker" type="ColorPickerButton" parent="Layout/Columns/Column/Scroll/Rows/ColorRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(120, 44)
+layout_mode = 2
+
+[node name="MembersPanel" type="PanelContainer" parent="Layout/Columns/Column/Scroll/Rows"]
+layout_mode = 2
+
+[node name="MembersBox" type="VBoxContainer" parent="Layout/Columns/Column/Scroll/Rows/MembersPanel"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="MembersHint" type="Label" parent="Layout/Columns/Column/Scroll/Rows/MembersPanel/MembersBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.467, 0.49, 0.545, 1)
+theme_override_font_sizes/font_size = 14
+text = "Members as they appear in the game — the leftmost goes first. Click a figure to remove it; + adds one on the right; click a name to edit it."
+autowrap_mode = 3
+
+[node name="MembersRow" type="HBoxContainer" parent="Layout/Columns/Column/Scroll/Rows/MembersPanel/MembersBox"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/separation = 24
+
+[node name="SkillRow" type="HBoxContainer" parent="Layout/Columns/Column/Scroll/Rows"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="SkillLabel" type="Label" parent="Layout/Columns/Column/Scroll/Rows/SkillRow"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+text = "AI skill:"
+
+[node name="SkillSlider" type="HSlider" parent="Layout/Columns/Column/Scroll/Rows/SkillRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(300, 32)
+layout_mode = 2
+size_flags_vertical = 4
+max_value = 10.0
+value = 5.0
+
+[node name="FriendlyFireRow" type="HBoxContainer" parent="Layout/Columns/Column/Scroll/Rows"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="FriendlyFireLabel" type="Label" parent="Layout/Columns/Column/Scroll/Rows/FriendlyFireRow"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+text = "Friendly fire:"
+
+[node name="FriendlyFireSlider" type="HSlider" parent="Layout/Columns/Column/Scroll/Rows/FriendlyFireRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(300, 32)
+layout_mode = 2
+size_flags_vertical = 4
+max_value = 10.0
+
+[node name="ButtonRow" type="HBoxContainer" parent="Layout/Columns/Column"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="SaveButton" type="Button" parent="Layout/Columns/Column/ButtonRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(210, 56)
+layout_mode = 2
+text = "Save"
+
+[node name="BackButton" type="Button" parent="Layout/Columns/Column/ButtonRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(210, 56)
+layout_mode = 2
+text = "Back"
+
+[node name="DeleteDialog" type="ConfirmationDialog" parent="."]
+unique_name_in_owner = true
+title = "Remove member"
+ok_button_text = "Remove"
+
+[node name="Footer" type="HBoxContainer" parent="."]
+layout_mode = 1
+anchors_preset = 2
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 32.0
+offset_top = -52.0
+offset_right = 500.0
+offset_bottom = -24.0
+grow_vertical = 0
+theme_override_constants/separation = 10
+
+[node name="Studio" type="Label" parent="Footer"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.467, 0.49, 0.545, 1)
+theme_override_font_sizes/font_size = 14
+text = "SDVGAMES"
+
+[node name="VersionLabel" type="Label" parent="Footer"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.467, 0.49, 0.545, 1)
+theme_override_font_sizes/font_size = 14
+text = "v0.1.0"

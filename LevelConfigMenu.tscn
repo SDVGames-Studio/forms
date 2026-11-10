@@ -1,0 +1,179 @@
+[gd_scene load_steps=4 format=3 uid="uid://lvlocfgmenu137"]
+
+[ext_resource type="Script" path="res://LevelConfigMenu.gd" id="1_lvcfg"]
+[ext_resource type="Theme" path="res://MenuTheme.tres" id="2_theme"]
+[ext_resource type="PackedScene" path="res://MenuBackground.tscn" id="3_bg"]
+
+[node name="LevelConfigMenu" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme = ExtResource("2_theme")
+script = ExtResource("1_lvcfg")
+
+[node name="Background" parent="." instance=ExtResource("3_bg")]
+
+[node name="Layout" type="MarginContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/margin_left = 72
+theme_override_constants/margin_top = 56
+theme_override_constants/margin_right = 72
+theme_override_constants/margin_bottom = 72
+
+[node name="Columns" type="HBoxContainer" parent="Layout"]
+layout_mode = 2
+theme_override_constants/separation = 64
+
+[node name="Brand" type="VBoxContainer" parent="Layout/Columns"]
+layout_mode = 2
+size_flags_vertical = 4
+theme_override_constants/separation = 10
+
+[node name="Title" type="Label" parent="Layout/Columns/Brand"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 56
+text = "LEVEL SETUP"
+
+[node name="Subtitle" type="Label" parent="Layout/Columns/Brand"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.467, 0.49, 0.545, 1)
+theme_override_font_sizes/font_size = 17
+text = "CONFIGURE THE SKIRMISH"
+
+[node name="AccentRule" type="ColorRect" parent="Layout/Columns/Brand"]
+custom_minimum_size = Vector2(260, 4)
+layout_mode = 2
+color = Color(0.655, 0.545, 0.98, 1)
+
+[node name="Spacer" type="Control" parent="Layout/Columns"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="Nav" type="VBoxContainer" parent="Layout/Columns"]
+layout_mode = 2
+size_flags_vertical = 4
+theme_override_constants/separation = 14
+
+[node name="Form" type="PanelContainer" parent="Layout/Columns/Nav"]
+layout_mode = 2
+
+[node name="FormBox" type="VBoxContainer" parent="Layout/Columns/Nav/Form"]
+layout_mode = 2
+theme_override_constants/separation = 14
+
+[node name="TeamSizeRow" type="HBoxContainer" parent="Layout/Columns/Nav/Form/FormBox"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="TeamSizeLabel" type="Label" parent="Layout/Columns/Nav/Form/FormBox/TeamSizeRow"]
+custom_minimum_size = Vector2(180, 0)
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+text = "Your team size"
+
+[node name="TeamSizeSpinBox" type="SpinBox" parent="Layout/Columns/Nav/Form/FormBox/TeamSizeRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(140, 0)
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+min_value = 1.0
+max_value = 3.0
+value = 3.0
+
+[node name="EnemyCountRow" type="HBoxContainer" parent="Layout/Columns/Nav/Form/FormBox"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="EnemyCountLabel" type="Label" parent="Layout/Columns/Nav/Form/FormBox/EnemyCountRow"]
+custom_minimum_size = Vector2(180, 0)
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+text = "Enemy count"
+
+[node name="EnemyCountSpinBox" type="SpinBox" parent="Layout/Columns/Nav/Form/FormBox/EnemyCountRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(140, 0)
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+min_value = 1.0
+max_value = 3.0
+value = 2.0
+
+[node name="TurnTimeRow" type="HBoxContainer" parent="Layout/Columns/Nav/Form/FormBox"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="TurnTimeLabel" type="Label" parent="Layout/Columns/Nav/Form/FormBox/TurnTimeRow"]
+custom_minimum_size = Vector2(180, 0)
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+text = "Turn time (s)"
+
+[node name="TurnTimeSpinBox" type="SpinBox" parent="Layout/Columns/Nav/Form/FormBox/TurnTimeRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(140, 0)
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+min_value = 5.0
+max_value = 120.0
+value = 15.0
+
+[node name="NightRegimeRow" type="HBoxContainer" parent="Layout/Columns/Nav/Form/FormBox"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="NightRegimeLabel" type="Label" parent="Layout/Columns/Nav/Form/FormBox/NightRegimeRow"]
+custom_minimum_size = Vector2(180, 0)
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+text = "Night regime"
+
+[node name="NightRegimeCheck" type="CheckButton" parent="Layout/Columns/Nav/Form/FormBox/NightRegimeRow"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+
+[node name="StartButton" type="Button" parent="Layout/Columns/Nav"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(340, 64)
+layout_mode = 2
+text = "START"
+
+[node name="BackButton" type="Button" parent="Layout/Columns/Nav"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(340, 64)
+layout_mode = 2
+text = "Back"
+
+[node name="Footer" type="HBoxContainer" parent="."]
+layout_mode = 1
+anchors_preset = 2
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 32.0
+offset_top = -52.0
+offset_right = 500.0
+offset_bottom = -24.0
+grow_vertical = 0
+theme_override_constants/separation = 10
+
+[node name="Studio" type="Label" parent="Footer"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.467, 0.49, 0.545, 1)
+theme_override_font_sizes/font_size = 14
+text = "SDVGAMES"
+
+[node name="VersionLabel" type="Label" parent="Footer"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.467, 0.49, 0.545, 1)
+theme_override_font_sizes/font_size = 14
+text = "v0.1.0"

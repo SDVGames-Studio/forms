@@ -1,0 +1,86 @@
+extends Node
+## Issue #33: switches which member of the player's team is controlled.
+##
+## Issue #170 rework: direct FREE N/P switching is GONE — switching is
+## the Switch TOOL in the ToolInventory (once per turn). This autoload
+## keeps only the control hand-over logic (used by the Switch tool).
+## Issue #215: the N/P keys work again as Switch-tool SHORTCUTS —
+## ToolInventory maps them to the tool, so the once-per-turn economy
+## and the move/aim lock of #170 still apply.
+## Issue #306: the N/P keys change the character only while the Switch
+## tool is CHOSEN (armed via slot/key 5); the use is spent when the
+## change is committed by an action — another switch, a move, an aim
+## or a shot.
+
+func _ready() -> void:
+	# Give control to the first team member once the scene is up.
+	call_deferred("set_active_index", 0)
+
+
+func _team() -> Array:
+	return get_tree().get_nodes_in_group("player_team")
+
+
+func _active_index() -> int:
+	var members := _team()
+	for i in members.size():
+		# Issue #187: a dead (0 HP, not yet freed) member must never count
+		# as the active one — switching would index dead characters too.
+		var hp = members[i].get("health")
+		if (hp is int) and hp <= 0:
+			continue
+		if members[i].get("controlled") == true:
+			return i
+	return -1
+
+
+## Issue #170: the Switch tool hands control to the NEXT team member.
+func switch_next() -> void:
+	var members := _team()
+	if members.is_empty():
+		return
+	var index := _active_index()
+	if index == -1:
+		index = 0
+	set_active_index((index + 1) % members.size())
+
+
+## Issue #215: the P key hands control to the PREVIOUS team member —
+## the mirror of switch_next(), with the same dead-member rules.
+func switch_prev() -> void:
+	var members := _team()
+	if members.is_empty():
+		return
+	var index := _active_index()
+	if index == -1:
+		index = 0
+	set_active_index((index - 1 + members.size()) % members.size())
+
+
+func set_active_index(index: int) -> void:
+	var members := _team()
+	if members.is_empty():
+		return
+	index = clampi(index, 0, members.size() - 1)
+	# Issue #187: control may only land on a LIVING member — a dead one
+	# (0 HP, death tween still running) can neither act nor host the view.
+	if (members[index].get("health") is int) and members[index].get("health") <= 0:
+		for i in members.size():
+			var hp = members[i].get("health")
+			if (hp is int) and hp > 0:
+				index = i
+				break
+	for i in members.size():
+		# Issue #121: AI members of the player team (Npc.gd) have no
+		# input control to hand over — skip them.
+		if members[i].has_method("set_controlled"):
+			members[i].set_controlled(i == index)
+	# Issue #183: keep TurnController.active_member in sync with control —
+	# the whole turn flow (hp watchdog, weapon lock, tools, the NPC gate)
+	# keys off active_member, so after a Switch it must point at the newly
+	# controlled member, not at the previous one.
+	if TurnController.is_player_team(TurnController.active_team):
+		var member: Node = members[index]
+		if member != null and is_instance_valid(member) \
+				and member.get("controlled") == true:
+			TurnController.active_member = member
