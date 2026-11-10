@@ -12,6 +12,11 @@ extends Node
 ## the timer finished first. Issue #312: a TRIGGERED mine counts as a
 ## pending effect too — once armed, the handover waits until it has
 ## exploded before the next turn begins.
+## Issue #413: that rule now holds for EVERY way a turn can end — a
+## shot, the expired timer, a skip, or the acting character dying
+## mid-turn — and a 30-second safety timer force-starts the next turn
+## if an action accidentally never completes, logging the force-fire
+## to the debug action log.
 ## The game runs until only one team is alive.
 ## Issue #434: every turn boundary is also a reward boundary — the acting
 ## member's agent controller (if any) is notified so the REWARD_SPEC
@@ -107,7 +112,13 @@ const EFFECT_GROUP := "turn_effects"
 ## handover never completes (tween killed, timer lost, node freed
 ## mid-animation), the game force-recovers instead of freezing forever.
 const ROLL_WATCHDOG := 3.0
-const SWITCH_WATCHDOG := 5.0
+## Issue #413: the handover's SAFETY TIMER replaces the old 5 s switch
+## watchdog — effects may legitimately run long (a high grenade lob, a
+## burning mine, a slow rocket), so the force-recovery waits a full
+## 30 s; if an action accidentally fails to complete by then, the next
+## team's turn is force-started and the force-fire is written to the
+## debug action log.
+const EFFECTS_SAFETY_TIME := 30.0
 var _roll_wait := 0.0
 var _switch_wait := 0.0
 ## Issue #85 rework 2: seconds spent with no active team — if the roll
@@ -177,12 +188,14 @@ func _process(delta: float) -> void:
 			return
 	if _level == null or game_over or _switching:
 		return
-	# The active character died mid-turn — hand over immediately.
-	# queue_free()d members must be treated as dead too (issue #85).
+	# The active character died mid-turn — hand over. Even a death must
+	# not start the next turn while actions are still running (issue
+	# #413): a mine the figure stepped on is burning, its own shot may
+	# still be flying. queue_free()d members count as dead too (issue #85).
 	if active_member != null:
 		var hp = active_member.get("health") if is_instance_valid(active_member) else 0
 		if not (hp is int) or hp <= 0:
-			_end_turn()
+			_hand_over()
 			return
 	_turn_left = maxf(0.0, _turn_left - delta)
 	_update_label()
@@ -207,7 +220,9 @@ func _unhandled_input(event: InputEvent) -> void:
 			if active_member != null and active_member.get("display_name") != null:
 				skipper = active_member.get("display_name")
 			DebugInfo.log("%s skips the turn" % str(skipper))
-			_end_turn()
+			# Issue #413: even a skip hands over through the effects wait —
+			# never start the next turn on live actions.
+			_hand_over()
 
 
 ## Issue #221: the AI analogue of the player's Tab skip (#102) — the
@@ -221,7 +236,8 @@ func skip_turn(requester: Node) -> void:
 		return
 	if requester == null or requester != active_member:
 		return
-	_end_turn()
+	# Issue #413: the AI skip hands over through the effects wait too.
+	_hand_over()
 
 
 ## Issue #104: the active player member reports a move or aim action —
@@ -267,13 +283,26 @@ func notify_shot() -> void:
 ## hand the turn over only after every effect (live projectiles,
 ## explosions) has finished. Mirrors the post-shot handover (issue #119):
 ## the shared _switching state freezes all character input while the
-## effects resolve; the SWITCH_WATCHDOG still force-recovers a stuck wait.
+## effects resolve; the #413 safety timer still force-recovers a stuck wait.
 func _begin_effects_wait() -> void:
 	_switching = true
 	_timer_wait = true
 	_after_shot_left = 0.0
 	_switch_wait = 0.0
 	_update_label()
+
+
+## Issue #413: end the turn NOW when nothing is running, or hand it
+## over through the effects wait while actions are still live (a mine
+## someone stepped on before skipping, a teleport gate mid-animation,
+## the acting character's own last shot). Every turn-ending path that
+## is not already a handover funnels through here, so the next team's
+## turn NEVER starts on a field with unfinished actions.
+func _hand_over() -> void:
+	if _pending_effects() > 0:
+		_begin_effects_wait()
+	else:
+		_end_turn()
 
 
 ## Issue #244: true while the handover blocks ALL character input —
@@ -493,10 +522,15 @@ func _process_watchdog(delta: float) -> void:
 	else:
 		_stall_wait = 0.0
 	if _switching:
-		# A shot handover must never outlive its delay (issue #85).
+		# Issue #413: the handover's SAFETY TIMER — effects may run long,
+		# so the recovery window is 30 s (issue #85's force-recovery
+		# kept, just patient). When it elapses the next turn is
+		# force-started even with actions still pending, and the
+		# force-fire goes to the debug action log.
 		_switch_wait += delta
-		if _switch_wait > SWITCH_WATCHDOG:
+		if _switch_wait > EFFECTS_SAFETY_TIME:
 			_switch_wait = 0.0
+			DebugInfo.log("safety timer (%.0f s): forcing the next turn, %d action(s) still pending" % [EFFECTS_SAFETY_TIME, _pending_effects()])
 			_end_turn()
 		return
 	# Belt-and-braces roll fallback (kept from the first rework).
