@@ -689,6 +689,15 @@ func _check_win() -> void:
 			var winner: String = alive_teams[0]
 			_label.text = "%s WINS!" % _team_name(winner)
 			_label.add_theme_color_override("font_color", _team_color(winner))
+	# Issue #437: the terminal game state ends the RL episode too — every
+	# agent controller gets its REWARD_SPEC §2.9 outcome (+0.50 win when its
+	# team is the sole survivor, −0.50 loss otherwise, draw included) and the
+	# framework's game_over flags: done=true + needs_reset=true, truncated
+	# stays false (a win/loss is never a timeout). The horizon path in the
+	# controller core flags truncation with NO outcome reward, so a timeout
+	# can never be confused with a victory.
+	BotController.notify_episode_outcome(
+			alive_teams[0] if alive_teams.size() == 1 else "")
 	# Issue #222: the game must never block after the win — figures keep
 	# idling but nobody may move, and the player keeps a live view to
 	# spectate: the shared camera stays enabled even when the whole player

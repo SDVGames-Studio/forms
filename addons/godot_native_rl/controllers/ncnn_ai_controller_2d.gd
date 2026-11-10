@@ -319,6 +319,15 @@ func set_done_false() -> void:
 func get_truncated() -> bool:
 	return _core.get_truncated()
 
+# Issue #437: task-terminal episode end — the game calls this when a terminal state is
+# reached (all enemies eliminated, own side wiped, objective completed): done=true,
+# needs_reset=true, truncated stays FALSE (a win/loss is never a timeout), and the
+# terminal reward (REWARD_SPEC §2.9-style win bonus / loss penalty) rides the same
+# accumulator NcnnSync drains on the terminal step. The horizon path (step()) adds no
+# reward, so a truncation never pays a win/loss bonus. Idempotent within an episode.
+func game_over(terminal_reward: float = 0.0) -> void:
+	_core.game_over(terminal_reward)
+
 func zero_reward() -> void:
 	_core.zero_reward()
 
@@ -335,3 +344,11 @@ func accumulate_reward() -> void:
 
 func _physics_process(_delta) -> void:
 	_core.step(reset_after)
+	# Issue #437: needs_reset (set by the horizon, by game_over(), or by the
+	# framework's reset command via NcnnSync._reset_agents) restarts the
+	# environment on the next loop iteration — the agent restores itself
+	# (subclasses' reset() also restores their world share). reset() deliberately
+	# keeps done/truncated (#379), so the Sync still reads the flags on this
+	# frame's terminal step; only needs_reset and the step counter clear.
+	if _core.needs_reset:
+		reset()
