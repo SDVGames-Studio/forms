@@ -2,7 +2,7 @@ extends Node
 ## Regression check for issue #421: OBSERVATION_SPEC.md must match the
 ## implemented get_obs() output exactly — structure (the dictionary holds
 ## exactly one "obs" key), data types (every element a GDScript float),
-## lengths (46 battlefield / 2 scaffold), order, and per-value formulas.
+## lengths (50 battlefield / 2 scaffold), order, and per-value formulas.
 ## The test drives a running episode for BOTH controllers, captures a
 ## sample observation, and reconstructs the identical vector from world
 ## state using ONLY the formulas documented in OBSERVATION_SPEC.md — the
@@ -101,8 +101,8 @@ func _spec_team_block(figs: Array, frame: Node2D) -> Array:
 	return rows
 
 func _spec_battlefield_vector() -> Array:
-	# own (4) + enemies (4x5) + allies (4x5) + cooldowns (2) = 46, in the
-	# spec's exact key order.
+	# own (4) + enemies (4x5) + allies (4x5) + cooldowns (2) + team (4)
+	# = 50, in the spec's exact key order.
 	var frame: Node2D = player
 	var enemies := _spec_sorted([enemy_a, enemy_b], frame.global_position)
 	var allies := _spec_sorted([ally_a], frame.global_position)
@@ -117,7 +117,27 @@ func _spec_battlefield_vector() -> Array:
 	rows.append_array(_spec_team_block(allies, frame))
 	rows.append(clampf(player._cooldown_left / SPEC_FIRE_CD, 0.0, 1.0))
 	rows.append(clampf(player._jump_left / SPEC_JUMP_CD, 0.0, 1.0))
+	rows.append_array(_spec_blackboard_team_block(frame))
 	return rows
+
+## Issue #447: the trailing team block, reconstructed with ONLY the
+## OBSERVATION_SPEC.md formulas — the TeamBlackboard (issue #446) is the
+## documented source: focus rel in the agent frame ((0, 0) with no
+## living focus target), board team-HP average / 100, and
+## allies / (allies + enemies), 0.5 with nobody alive.
+func _spec_blackboard_team_block(frame: Node2D) -> Array:
+	var rel := Vector2.ZERO
+	var focus := TeamBlackboard.get_focus_target("player")
+	if focus != null:
+		rel = _spec_rel(frame, focus)
+	var allies := TeamBlackboard.get_living_allies("player")
+	var enemies := TeamBlackboard.get_living_enemies("player")
+	var ratio := 0.5
+	if allies + enemies > 0:
+		ratio = float(allies) / float(allies + enemies)
+	return [rel.x, rel.y,
+		clampf(TeamBlackboard.get_team_hp_avg("player") / SPEC_MAX_HP, 0.0, 1.0),
+		ratio]
 
 ## ---- shared checks ----
 
@@ -146,9 +166,10 @@ func _compare_field_by_field(label: String, flat: Array, expected: Array) -> voi
 			failures.append("%s: obs[%d]=%s does not match the spec value %s"
 				% [label, i, str(flat[i]), str(expected[i])])
 
-## ---- battlefield episode (BotController.gd, 46 floats) ----
+## ---- battlefield episode (BotController.gd, 50 floats) ----
 
 func _check_battlefield_episode() -> void:
+	TeamBlackboard.reset_blackboard()
 	player = _figure("player", Vector2(500, 500))
 	player.rotation = PI / 2.0
 	player.health = 80
@@ -171,6 +192,10 @@ func _check_battlefield_episode() -> void:
 	bot.position = Vector2(500, 500)
 	bot.figure_path = bot.get_path_to(player)
 	await get_tree().process_frame
+	# Issue #447: the game refreshes the acting team's blackboard once per
+	# turn (TurnController, issue #446) — do the same before each sample so
+	# the team block is reconstructed from a live board, not the empty one.
+	TeamBlackboard.update_team("player", [player, ally_a], [enemy_a, enemy_b])
 	_sample_battlefield("battlefield step 0")
 
 	# Step the running episode on: damage the bound figure, drop its
@@ -181,14 +206,16 @@ func _check_battlefield_episode() -> void:
 	enemy_b.position = Vector2(530, 510)
 	enemy_b.velocity = Vector2(-320, 640)
 	await get_tree().process_frame
+	TeamBlackboard.update_team("player", [player, ally_a], [enemy_a, enemy_b])
 	_sample_battlefield("battlefield step 1")
+	TeamBlackboard.reset_blackboard()
 	for fig in [player, enemy_a, enemy_b, ally_a]:
 		fig.free()
 	bot.free()
 
 func _sample_battlefield(label: String) -> void:
 	var obs: Dictionary = bot.get_obs()
-	var flat := _structure_check(label, obs, 46)
+	var flat := _structure_check(label, obs, 50)
 	if flat.is_empty():
 		return
 	_compare_field_by_field(label, flat, _spec_battlefield_vector())

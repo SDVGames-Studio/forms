@@ -35,13 +35,19 @@ extends NcnnAIController2D
 ## framework's game_over() flags — done=true + needs_reset=true, truncated
 ## stays false, and the turn-limit horizon (truncation) never pays it.
 ## The action-space declaration remains a loud stub until its own issue.
+## Issue #447 appends the TEAM block (4 floats) on top of the local
+## observations: the shared focus target's relative position, the team's
+## average HP fraction and the living ally-to-enemy ratio — all sourced
+## from TeamBlackboard (issue #446) through the agent's OWN team id, never
+## from a fresh world query.
 
 const Stats := preload("res://scripts/CharacterStats.gd")
 
 ## Issue #381: fixed observation layout. OBS_SLOTS enemies and OBS_SLOTS
 ## allies are reported every step — nearest first, missing figures pad
 ## with zeros — so the flat vector length never changes
-## (4 + 4*5 + 4*5 + 2 = 46 floats), whatever happens on the battlefield.
+## (4 + 4*5 + 4*5 + 2 + 4 = 50 floats), whatever happens on the
+## battlefield. The trailing 4 are the issue #447 team block.
 const OBS_SLOTS := 4
 const FEATURES_PER_FIGURE := 5
 
@@ -84,6 +90,7 @@ func get_obs() -> Dictionary:
 ##   "enemies"   OBS_SLOTS x [rel_x, rel_y, hp, vel_x, vel_y]   (20)
 ##   "allies"    OBS_SLOTS x [rel_x, rel_y, hp, vel_x, vel_y]   (20)
 ##   "cooldowns" [fire_frac, jump_frac]                          (2)
+##   "team"      [focus_x, focus_y, team_hp, ally_enemy_ratio]   (4)
 ## Issue #419: every offset and velocity is expressed in the agent's
 ## LOCAL frame (local +X = the figure's facing direction); see
 ## _local_position() / _local_velocity(). Forms has no AP stat, so the shield flag (issue #221: it blocks one
@@ -102,6 +109,7 @@ func _collect_obs_parts() -> Dictionary:
 		"enemies": _team_features(_enemy_group(figure), origin, figure, frame),
 		"allies": _team_features(_ally_group(figure), origin, figure, frame),
 		"cooldowns": _cooldown_features(figure),
+		"team": _team_blackboard_features(figure, frame),
 	}
 
 ## Issue #409: capture `figure`'s current pose as the spawn snapshot —
@@ -232,10 +240,51 @@ func _cooldown_features(figure: Node2D) -> Array:
 		_cd_frac(figure.get("_jump_left"), JUMP_CD_MAX),
 	]
 
-## Issue #381: fixed key order -> a deterministic flat layout (46 floats).
+## Issue #447: TEAM-level block (4 floats) sourced from the TeamBlackboard
+## (issue #446), NOT from a fresh world query — TurnController refreshes the
+## acting team's board once per TURN, so these slots report the team's
+## shared turn-level picture: [focus_x, focus_y, team_hp, ally_enemy_ratio].
+## focus_x/focus_y — the TEAM-SHARED focus target's offset from the agent in
+## the same agent-local frame and [-1, 1] normalization as the enemy slots
+## (0.0, 0.0 while the board holds no living focus target); team_hp and
+## ally_enemy_ratio via the helpers below. Without a bound figure the block
+## falls back to [0.0, 0.0, 1.0, 0.5] — no focus target, a healthy team, an
+## even ratio — the same well-formed neutral convention as _own_features'
+## fully-healed stationary bot.
+func _team_blackboard_features(figure: Node2D, frame: Node2D) -> Array:
+	if figure == null:
+		return [0.0, 0.0, 1.0, 0.5]
+	var team_id := TurnController.team_id_of(figure)
+	var rel := Vector2.ZERO
+	var focus := TeamBlackboard.get_focus_target(team_id)
+	if focus != null:
+		rel = _norm_rel(_local_position(focus, frame))
+	return [rel.x, rel.y, _team_hp_frac(team_id), _ally_enemy_ratio(team_id)]
+
+## Issue #447: the board's average HP over the team's LIVING allies as a
+## [0, 1] fraction of MAX_HEALTH — the same scale as the per-figure
+## hp_frac slots; raw HP values never leave the controller.
+func _team_hp_frac(team_id: String) -> float:
+	return clampf(
+		TeamBlackboard.get_team_hp_avg(team_id) / float(Stats.MAX_HEALTH),
+		0.0, 1.0)
+
+## Issue #447: living allies / (living allies + living enemies) from the
+## board's counts — 1.0 = only allies alive, 0.0 = only enemies, 0.5 with
+## nobody (an even, empty match keeps the slot neutral).
+func _ally_enemy_ratio(team_id: String) -> float:
+	var allies := TeamBlackboard.get_living_allies(team_id)
+	var enemies := TeamBlackboard.get_living_enemies(team_id)
+	var total := allies + enemies
+	if total <= 0:
+		return 0.5
+	return clampf(float(allies) / float(total), 0.0, 1.0)
+
+## Issue #381: fixed key order -> a deterministic flat layout (50 floats;
+## the trailing "team" block is issue #447).
 func _flatten_parts(parts: Dictionary) -> Array:
 	var flat: Array = []
-	for key in ["own", "enemies", "allies", "cooldowns"]:
+	for key in ["own", "enemies", "allies", "cooldowns", "team"]:
 		flat.append_array(parts[key])
 	return flat
 
