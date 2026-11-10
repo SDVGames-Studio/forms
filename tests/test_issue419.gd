@@ -5,15 +5,17 @@ extends Node
 ## reports rel_x > 0 at ANY agent rotation, velocities rotate with the
 ## frame, the whole observation is invariant to a uniform battlefield
 ## rotation, and rotation 0 keeps the world-frame numbers of issue #381.
-## The flat 46-float layout never changes.
+## The flat 50-float layout never changes (issue #447 appended the
+## trailing team block).
 ##
 ## Run headless: godot --headless res://tests/test_issue419.tscn
 ## Exit code 0 = pass.
 
 const BotControllerScript := preload("res://BotController.gd")
 
-# Layout mirrors BotController.gd (issue #381): 4 + 4*5 + 4*5 + 2 = 46.
-const EXPECTED_SIZE := 46
+# Layout mirrors BotController.gd (issue #381 + #447):
+# 4 + 4*5 + 4*5 + 2 + 4 = 50.
+const EXPECTED_SIZE := 50
 const NORM_HALF_W := 576.0
 const VEL_NORM := 320.0
 
@@ -159,7 +161,7 @@ func _check_zero_rotation_matches_world_frame() -> void:
 
 func _report() -> void:
 	if failures.is_empty():
-		print("ISSUE419 OK: observations are agent-local (facing = +X), rotation-invariant, 46-float layout intact")
+		print("ISSUE419 OK: observations are agent-local (facing = +X), rotation-invariant, 50-float layout intact")
 	else:
 		for f in failures:
 			print("ISSUE419 FAIL: " + f)
