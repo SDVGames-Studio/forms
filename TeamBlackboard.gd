@@ -13,6 +13,16 @@ extends RefCounted
 ## and an agent reads the statics from its OWN team id alone — no direct
 ## reference to any other bot, which keeps the AI decision code decoupled
 ## from world queries and easy to test.
+##
+## Issue #449: the focus target is assigned by the shared FOCUS-FIRE
+## HEURISTIC — a deterministic scored rule that runs inside every
+## update_team() call (i.e. once per team turn, TurnController's _begin_turn)
+## and writes its pick to the board. See _pick_focus_target() for the
+## scoring; there is no per-agent override and no retention state — the
+## same inputs always produce the same target, and a team that focus-
+## fires a target keeps re-selecting it because its HP only drops.
+
+const Stats := preload("res://scripts/CharacterStats.gd")
 
 ## Record keys of one team's board.
 const FOCUS_TARGET := "focus_target"
@@ -29,10 +39,13 @@ static var _boards: Dictionary = {}
 ## Issue #446: refresh one team's record — called by TurnController at the
 ## START of the team's turn (once per turn, not per frame). `allies` and
 ## `enemies` are that team's alive figures; this class never touches the
-## scene tree. The focus target is TEAM-shared: it is kept while it is
-## still one of the living enemies, otherwise the living enemy nearest to
-## the ally centroid is assigned (deterministic — scene-name tie-break),
-## so the whole team converges on one opponent.
+## scene tree.
+## Issue #449: the focus target is the focus-fire heuristic's pick —
+## RE-ASSIGNED on every call (every team turn), never retained: a wounded
+## enemy stays the pick while the team shoots it (its HP term only rises),
+## and once it dies the next turn's update re-targets deterministically.
+## Deterministic — identical inputs give the identical pick (scene-name
+## tie-break), so the whole team converges on one opponent.
 static func update_team(team_id: String, allies: Array, enemies: Array) -> void:
 	var hp_sum := 0.0
 	var centroid := Vector2.ZERO
@@ -53,9 +66,9 @@ static func update_team(team_id: String, allies: Array, enemies: Array) -> void:
 		if enemy is Node2D and _alive(enemy):
 			positions.append(enemy.global_position)
 
-	var focus := get_focus_target(team_id)
-	if not (focus != null and _alive(focus) and enemies.has(focus)):
-		focus = _nearest_to_centroid(centroid, enemies)
+	# Issue #449: the shared focus target is the heuristic's pick for THIS
+	# turn — no retention, no world query, deterministic.
+	var focus := _pick_focus_target(centroid, enemies)
 
 	_boards[team_id] = {
 		FOCUS_TARGET: focus,
@@ -119,15 +132,65 @@ static func _alive(figure: Node) -> bool:
 	return hp == null or float(hp) > 0.0
 
 
-static func _nearest_to_centroid(centroid: Vector2, enemies: Array) -> Node2D:
-	var best: Node2D = null
-	var best_distance := INF
+## Issue #449: the focus-fire heuristic — which living enemy the whole
+## team shoots at this turn. A deterministic, cheap score over the
+## OBSERVABLE state only (each candidate's HP and its distance to the
+## team's own centroid — the "key position" the issue names):
+##
+##   score = FOCUS_WEIGHT_HP * (1 - hp_fraction)
+##         + FOCUS_WEIGHT_PROXIMITY * proximity_fraction
+##
+##   hp_fraction        — health / CharacterStats.MAX_HEALTH, clamped to
+##                        [0, 1]; a missing `health` (nothing observable)
+##                        scores like a fully-healed enemy and never wins
+##                        the HP term.
+##   proximity_fraction — the candidate's distance to the ally centroid,
+##                        normalized across the living candidates so the
+##                        closest reads 1.0 and the farthest 0.0 (all
+##                        equidistant candidates read 1.0).
+##
+## The HP term dominates by weight: an enemy at ≤ ~33% HP outranks even a
+## full-HP enemy right next to the team, while at even HP the proximity
+## term decides. Equal scores fall to the deterministic scene-name
+## tie-break, so identical inputs always pick the identical target.
+## O(living enemies), no world queries — a heuristic that seeds
+## coordination, not a learned component. The issue's optional per-agent
+## override is deliberately NOT implemented (nothing overrides the team
+## pick); the cover/exposure criterion stays future work until a cover
+## score exists (Phase 3 — see BotController._tile_quality's fallback).
+const FOCUS_WEIGHT_HP := 0.6
+const FOCUS_WEIGHT_PROXIMITY := 0.4
+
+static func _pick_focus_target(centroid: Vector2, enemies: Array) -> Node2D:
+	var candidates: Array = []
 	for enemy in enemies:
-		if not (enemy is Node2D) or not _alive(enemy):
-			continue
+		if enemy is Node2D and _alive(enemy):
+			candidates.append(enemy)
+	if candidates.is_empty():
+		return null
+	# Proximity normalization band across the living candidates.
+	var min_d := INF
+	var max_d := -INF
+	for enemy in candidates:
 		var d: float = centroid.distance_squared_to(enemy.global_position)
-		if best == null or d < best_distance \
-				or (d == best_distance and String(enemy.name) < String(best.name)):
+		min_d = minf(min_d, d)
+		max_d = maxf(max_d, d)
+	var best: Node2D = null
+	var best_score := -INF
+	for enemy in candidates:
+		var hp = enemy.get("health")
+		var hp_term := 0.0
+		if hp != null:
+			hp_term = 1.0 - clampf(float(hp) / float(Stats.MAX_HEALTH), 0.0, 1.0)
+		var d: float = centroid.distance_squared_to(enemy.global_position)
+		var prox_term := 1.0
+		if max_d > min_d:
+			prox_term = (max_d - d) / (max_d - min_d)
+		var score: float = FOCUS_WEIGHT_HP * hp_term \
+				+ FOCUS_WEIGHT_PROXIMITY * prox_term
+		if best == null or score > best_score \
+				or (is_equal_approx(score, best_score) \
+					and String(enemy.name) < String(best.name)):
 			best = enemy
-			best_distance = d
+			best_score = score
 	return best
