@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://tests/test_issue464_fileio.gd" id="1_fileio"]
+
+[node name="Issue464FileioTest" type="Node"]
+script = ExtResource("1_fileio")

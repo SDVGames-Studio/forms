@@ -9,6 +9,11 @@ class_name GameConfig
 ## Path of the level the player picked in the levels menu.
 static var level_path := ""
 
+## Issue #464 rework: stem of the editor-authored level (under
+## user://levels/) the player picked in the levels menu — read by
+## CustomLevel.gd to build the playable scene from the JSON.
+static var custom_level_name := ""
+
 ## Members of the player's team including the hero (1..3; the scenes
 ## pre-place the hero plus Teammate1/Teammate2).
 static var team_size := 3
