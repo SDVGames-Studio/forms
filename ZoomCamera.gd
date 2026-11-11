@@ -13,7 +13,8 @@ extends Camera2D
 ##
 ## Issue #126: in spectator mode (no controlled member — e.g. the AI vs AI
 ## duel) the camera does not follow anyone, so it can be panned freely:
-## hold the left mouse button and drag on PC, or drag a finger across the
+## hold the left or right mouse button and drag on PC (issue #456 added the
+## right button), or drag a finger across the
 ## screen on touch devices. Input events consumed by UI (virtual stick,
 ## buttons) never reach _unhandled_input, so panning never fights them.
 ##
@@ -172,11 +173,21 @@ func _unhandled_input(event: InputEvent) -> void:
 		if (event is InputEventMouseButton and event.pressed) \
 				or (event is InputEventScreenTouch and event.pressed):
 			return
-	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
-		_dragging = event.pressed
-		if _dragging:
+	# Issue #456: the camera pans with EITHER mouse button — hold the left
+	# OR the right button and drag; both behave identically.
+	if event is InputEventMouseButton \
+			and (event.button_index == MOUSE_BUTTON_LEFT \
+			or event.button_index == MOUSE_BUTTON_RIGHT):
+		if event.pressed:
+			_dragging = true
 			_drag_last = event.position
 			get_viewport().set_input_as_handled()
+		elif not Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT) \
+				and not Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT):
+			# A release only ends the drag when the other pan button is not
+			# still held (pressing both buttons, then releasing one, keeps
+			# panning).
+			_dragging = false
 	elif event is InputEventScreenTouch:
 		# Screen-drag panning (issue #126); touches on the virtual stick or
 		# buttons are consumed as GUI input and never arrive here.
@@ -185,7 +196,9 @@ func _unhandled_input(event: InputEvent) -> void:
 			_drag_last = event.position
 	elif event is InputEventScreenDrag and _dragging:
 		_pan_by(event.relative)
-	elif event is InputEventMouseMotion and _dragging and Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
+	elif event is InputEventMouseMotion and _dragging \
+			and (Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT) \
+			or Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT)):
 		_pan_by(event.relative)
 
 
