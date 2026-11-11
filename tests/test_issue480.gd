@@ -6,8 +6,12 @@ extends Node
 ## RECTANGLE. Verified against synthetic copies of Level2's hills:
 ##  - probes inside a hill's AABB but OUTSIDE the hill itself (the old
 ##    rectangular hole) must land on fresh soil,
-##  - no fresh strip may overlap either hill (bordering is fine),
 ##  - every strip corner stays within PRECISION of the disk circle.
+## Issue #480 rework: existing soil is no longer banned — the crumble
+## covers it (same material, invisible) so the initial ground and the
+## disk read as ONE body: every grid sample inside the disk (clear of
+## the rim, where strips legally end on the circle) must be hill soil
+## or fresh crumble soil — NO seam anywhere between them.
 ##
 ## Run headless: godot --headless res://tests/test_issue480.tscn
 ## Exit code 0 = pass.
@@ -97,13 +101,34 @@ func _check_crumble(at: Vector2) -> bool:
 			if over > PRECISION:
 				print("ISSUE480 FAIL corner ", over, " px past the disk: ", corner)
 				good = false
-		for hill in hills:
-			# BORDER_TOLERANCE: strips are spawned to BORDER existing soil
-			# exactly, so the check shrinks the strip first — only a real
-			# overlap (deeper than the tolerance) fails.
-			if _rect_hits_polygon(rect.grow(-0.5), hill):
-				print("ISSUE480 FAIL strip overlaps a hill: ", chunk.position)
+	# Rework contract: hill soil ∪ fresh crumble soil must cover the whole
+	# disk (minus a rim margin, where strips legally end ON the circle) —
+	# a wedge or staircase gap along a hill's slanted edge reads as a
+	# border between the initial ground and the crumble and fails here.
+	var rim := ProjectileBody.ROCK_GROUND_RADIUS - 9.0
+	var samples := 0
+	for gy in range(int(-rim), int(rim) + 1, 6):
+		for gx in range(int(-rim), int(rim) + 1, 6):
+			var probe := at + Vector2(gx, gy)
+			if probe.distance_to(at) > rim:
+				continue
+			samples += 1
+			var covered := false
+			for hill in hills:
+				if _point_in_polygon(probe, hill):
+					covered = true
+					break
+			if not covered:
+				for chunk in fresh:
+					var r := Rect2(chunk.position - chunk.rect_size / 2.0,
+							chunk.rect_size)
+					if r.has_point(probe):
+						covered = true
+						break
+			if not covered:
+				print("ISSUE480 FAIL seam/hole inside the disk at ", probe)
 				good = false
+	print("ISSUE480 seam samples at ", at, ": ", samples)
 	# The old bug's signature: probes inside a hill's AABB but OUTSIDE
 	# the hill itself used to stay empty. They must be covered now.
 	var holes := 0
@@ -155,34 +180,6 @@ func _outline_world(poly: PackedVector2Array, at: Vector2) -> PackedVector2Array
 	return world
 
 
-## True when an axis-aligned strip rect touches a polygon's interior
-## (a shared border alone is fine: vertices ON the outline and edges
-## that merely run along it do not count).
-func _rect_hits_polygon(rect: Rect2, pts: PackedVector2Array) -> bool:
-	var inner := rect.grow(-0.01)
-	for p in pts:
-		if inner.has_point(p):
-			return true
-	for corner in [rect.position, rect.end,
-			Vector2(rect.position.x, rect.end.y),
-			Vector2(rect.end.x, rect.position.y)]:
-		if _point_in_polygon(corner, pts):
-			return true
-	var edges: Array = [
-		[rect.position, Vector2(rect.end.x, rect.position.y)],
-		[Vector2(rect.end.x, rect.position.y), rect.end],
-		[rect.end, Vector2(rect.position.x, rect.end.y)],
-		[Vector2(rect.position.x, rect.end.y), rect.position]]
-	var n := pts.size()
-	for i in n:
-		var a := pts[i]
-		var b := pts[(i + 1) % n]
-		for e in edges:
-			if _segments_cross(a, b, e[0], e[1]):
-				return true
-	return false
-
-
 func _point_in_polygon(p: Vector2, pts: PackedVector2Array) -> bool:
 	var inside := false
 	var n := pts.size()
@@ -211,16 +208,3 @@ func _point_near_polygon(p: Vector2, pts: PackedVector2Array,
 		if p.distance_to(a + ab * t) <= margin:
 			return true
 	return false
-
-
-func _segments_cross(a: Vector2, b: Vector2, c: Vector2, d: Vector2) -> bool:
-	var d1 := _cross(c, d, a)
-	var d2 := _cross(c, d, b)
-	var d3 := _cross(a, b, c)
-	var d4 := _cross(a, b, d)
-	return ((d1 > 0 and d2 < 0) or (d1 < 0 and d2 > 0)) \
-			and ((d3 > 0 and d4 < 0) or (d3 < 0 and d4 > 0))
-
-
-func _cross(o: Vector2, a: Vector2, b: Vector2) -> float:
-	return (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x)
