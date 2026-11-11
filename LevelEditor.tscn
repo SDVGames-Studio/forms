@@ -113,6 +113,10 @@ layout_mode = 2
 clip_contents = true
 script = ExtResource("4_canvas")
 
+[node name="FileOps" type="HBoxContainer" parent="Layout/MainBox"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
 [node name="Bottom" type="HBoxContainer" parent="Layout/MainBox"]
 layout_mode = 2
 theme_override_constants/separation = 12
@@ -153,9 +157,35 @@ custom_minimum_size = Vector2(120, 48)
 layout_mode = 2
 text = "BACK"
 
+[node name="LoadFileButton" type="Button" parent="Layout/MainBox/FileOps"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(140, 48)
+layout_mode = 2
+text = "LOAD FILE…"
+
+[node name="DownloadButton" type="Button" parent="Layout/MainBox/FileOps"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(140, 48)
+layout_mode = 2
+text = "DOWNLOAD"
+
 [node name="StatusText" type="Label" parent="Layout/MainBox"]
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_colors/font_color = Color(0.467, 0.49, 0.545, 1)
 theme_override_font_sizes/font_size = 14
 text = ""
+
+[node name="OpenDialog" type="FileDialog" parent="."]
+unique_name_in_owner = true
+title = "Load a Level File"
+file_mode = 0
+access = 2
+filters = PackedStringArray("*.json ; Forms level")
+
+[node name="SaveDialog" type="FileDialog" parent="."]
+unique_name_in_owner = true
+title = "Download the Level File"
+file_mode = 4
+access = 2
+filters = PackedStringArray("*.json ; Forms level")

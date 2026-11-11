@@ -104,6 +104,18 @@ custom_minimum_size = Vector2(340, 56)
 layout_mode = 2
 text = "Duel 3v3 (spectate)"
 
+[node name="CustomLabel" type="Label" parent="Layout/Columns/Nav"]
+unique_name_in_owner = true
+visible = false
+theme_override_colors/font_color = Color(0.467, 0.49, 0.545, 1)
+theme_override_font_sizes/font_size = 13
+text = "CUSTOM LEVELS"
+
+[node name="CustomLevels" type="VBoxContainer" parent="Layout/Columns/Nav"]
+unique_name_in_owner = true
+visible = false
+theme_override_constants/separation = 12
+
 [node name="BackButton" type="Button" parent="Layout/Columns/Nav"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(340, 56)

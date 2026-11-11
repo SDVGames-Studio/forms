@@ -1,9 +1,16 @@
 extends Control
 ## Levels menu for Forms (issue #32).
 ##
-## Shown when the player presses "New game" in the main menu. Level buttons
-## start the level configuration menu (issue #137); Back returns to the
-## main menu.
+## Shown when the player presses "New game" in the main menu. Level
+## buttons start the level configuration menu (issue #137); Back
+## returns to the main menu.
+##
+## Issue #464 rework: every level saved in the editor
+## (user://levels/*.json) appears here as its own button under CUSTOM
+## LEVELS and starts like a stock level — GameConfig.custom_level_name
+## picks the file, CustomLevel.tscn builds the playable scene from it.
+
+const LEVELS_DIR := "user://levels"
 
 @onready var _level1_button: Button = %Level1Button
 @onready var _level2_button: Button = %Level2Button
@@ -12,6 +19,8 @@ extends Control
 @onready var _level5_button: Button = %Level5Button
 @onready var _duel_button: Button = %DuelButton
 @onready var _duel3_button: Button = %Duel3v3Button
+@onready var _custom_label: Label = %CustomLabel
+@onready var _custom_box: VBoxContainer = %CustomLevels
 @onready var _back_button: Button = %BackButton
 
 
@@ -25,6 +34,38 @@ func _ready() -> void:
 	_duel3_button.pressed.connect(_on_duel3_pressed)
 	_back_button.pressed.connect(_on_back_pressed)
 	_level1_button.grab_focus()
+	_rebuild_custom_levels()
+
+
+## Issue #464 rework: one button per editor-saved level, under a
+## CUSTOM LEVELS heading (hidden while the player has saved none).
+## Saved levels play through CustomLevel.tscn — the level
+## configuration menu and the game flow beyond it are unchanged.
+func _rebuild_custom_levels() -> void:
+	for child in _custom_box.get_children():
+		child.queue_free()
+	var stems: Array[String] = []
+	if DirAccess.dir_exists_absolute(LEVELS_DIR):
+		for fname in DirAccess.get_files_at(LEVELS_DIR):
+			if fname.ends_with(".json"):
+				stems.append(fname.get_basename())
+	stems.sort()
+	_custom_label.visible = not stems.is_empty()
+	_custom_box.visible = not stems.is_empty()
+	for stem in stems:
+		var button := Button.new()
+		button.text = stem.replace("_", " ")
+		button.custom_minimum_size = Vector2(340, 56)
+		button.pressed.connect(_on_custom_level_pressed.bind(stem))
+		_custom_box.add_child(button)
+
+
+## Start a custom level: remember which JSON to build from, then the
+## usual level configuration menu → game flow takes over.
+func _on_custom_level_pressed(stem: String) -> void:
+	GameConfig.custom_level_name = stem
+	GameConfig.level_path = "res://CustomLevel.tscn"
+	get_tree().change_scene_to_file("res://LevelConfigMenu.tscn")
 
 
 func _on_level1_pressed() -> void:
