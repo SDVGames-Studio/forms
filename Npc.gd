@@ -146,6 +146,14 @@ const VIEW_MAX := Stats.VIEW_MAX
 ## Issue #66: the weapon carried by this NPC (created in _ready).
 var _weapon: Node2D
 
+## Issue #481: this NPC already fired this turn — the weapon choice is
+## locked until its next turn begins. The player-side rule of issues
+## #131/#143 (the FIRST shot of the turn fixes the weapon for that
+## character) now applies to the computer too: the distance-based
+## re-pick must never swap guns after a shot has left, so an AI can no
+## longer thrust the spear and finish the same turn with the shotgun.
+var _weapon_locked := false
+
 
 ## Issue #277: the gravity unit vector the last physics frame used — the
 ## frame the aim/view lives in (see aim_dir). Mirrors Player.
@@ -603,6 +611,9 @@ func _physics_process(delta: float) -> void:
 ## would lose. Easy AI (difficulty 0) skips the tool play.
 func _begin_my_turn() -> void:
 	_tool_used = false
+	# Issue #481: a fresh turn unlocks the weapon choice — the lock is
+	# per turn, exactly like the player's WeaponInventory lock reset.
+	_weapon_locked = false
 	_turn_stall = 0.0
 	_last_pos = global_position
 	if difficulty < 1 \
@@ -788,6 +799,13 @@ func _same_side(other: Node2D) -> bool:
 func _pick_weapon(distance: float, height_diff: float = 0.0) -> void:
 	if _weapon == null:
 		return
+	# Issue #481: a shot already left this NPC's hands this turn — the
+	# weapon in hands stays. The first-shot lock of issues #131/#143 is
+	# the player's rule; the computer re-picking by distance on every
+	# attempt silently bypassed it (spear thrust, then two shotgun shots
+	# in one turn on LevelDuelBig). While locked, the re-pick is a no-op.
+	if _weapon_locked:
+		return
 	if distance <= SPEAR_RANGE_NPC:
 		_weapon.selected_weapon = 3  # spear (melee)
 	elif distance <= SHOTGUN_CLOSE_NPC:
@@ -816,11 +834,14 @@ func _pick_weapon(distance: float, height_diff: float = 0.0) -> void:
 		_weapon.selected_weapon = 3
 
 
-## Issue #66: fire through the carried Weapon (it owns the cooldown, the
-## projectile types and the shooter pass-through from issue #57).
-func _shoot() -> void:
+## Issue #66: fire through the carried Weapon (it owns the cooldown,
+## the projectile types and the shooter pass-through from issue #57).
+## Issue #481: returns whether a shot really left — every hold-fire
+## path reports false, so the caller (and the tests) can tell a locked
+## held shot from a committed one.
+func _shoot() -> bool:
 	if _weapon == null:
-		return
+		return false
 	# Issue #99: hand the current target to the weapon so grenades are
 	# lobbed ballistically at it (see Weapon._fire_grenade).
 	_weapon.npc_target = _target
@@ -837,21 +858,49 @@ func _shoot() -> void:
 	if cares and _weapon.selected_weapon != 2 and _teammate_blocks_shot():
 		if _target != null and is_instance_valid(_target) \
 				and global_position.distance_to(_target.global_position) > 160.0:
-			_weapon.selected_weapon = 2
+			# Issue #481: locked to the gun already fired — hold fire instead
+			# of arcing the grenade over the teammate.
+			if not _switch_weapon(2):
+				return false
 		else:
-			return
+			return false
 	# Issue #120: never lob a grenade that would land inside our own blast
 	# radius — hold fire at point-blank range instead (and switch to the
 	# spear so the next in-range tick closes the gap rather than re-throwing).
 	if cares and _weapon.selected_weapon == 2 and _grenade_unsafe():
-		_weapon.selected_weapon = 3
-		return
+		# Issue #481: the swap is refused while locked — a locked AI holds
+		# fire at point-blank (the stall watchdog ends its turn) instead of
+		# trading the locked grenade for the spear.
+		_switch_weapon(3)
+		return false
 	# Issue #305: never hand the weapon a gun the team can't pay for —
 	# the grenade fallback above (and any stale pick) may be spent.
 	if not WeaponInventory.can_spend_weapon(
 			TurnController.team_id_of(self), _weapon.selected_weapon):
-		_weapon.selected_weapon = 3
-	_weapon.npc_fire()
+		# Issue #481: locked to a gun the team can no longer pay for — hold
+		# fire rather than swapping to the spear; nothing useful is left, so
+		# the stall watchdog hands the turn over.
+		if not _switch_weapon(3):
+			return false
+	# Issue #481: lock the choice the moment a shot REALLY leaves —
+	# npc_fire() reports the commit (it can refuse on quota, cooldown or
+	# budget), and a refused order must not freeze the choice it never
+	# fired with.
+	var fired: bool = _weapon.npc_fire()
+	if fired:
+		_weapon_locked = true
+	return fired
+
+
+## Issue #481: change the held weapon — refused once this NPC has fired
+## this turn (the one-weapon-per-turn rule of issues #131/#143, applied to
+## the AI: no weapon change after the use). Returns true when the switch
+## actually happened.
+func _switch_weapon(id: int) -> bool:
+	if _weapon_locked:
+		return false
+	_weapon.selected_weapon = id
+	return true
 
 
 ## Issue #120: true when the grenade would land within our own blast
