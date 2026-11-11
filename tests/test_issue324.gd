@@ -14,7 +14,7 @@ const ProjectileBodyScript := preload("res://ProjectileBody.gd")
 ## Same value as ProjectileBody.ROCK_CHAR_CLEAR (1.3 x the 64 px shape).
 const CLEAR := 1.3 * 64.0
 ## Issue #324 contract: no strip corner may reach farther than this past
-## the disk radius (chord rows of ROCK_ROW = 10 px keep corners within
+## the disk radius (chord rows of ROCK_ROW px keep corners within
 ## ~4.8 px; the old 25 px cells overshot by up to ~18 px).
 const PRECISION := 5.0
 
@@ -96,7 +96,7 @@ func _check_crumble(level: Node, at: Vector2, chars: Array,
 			# A probe may stay soil-free when a strip covering it could not
 			# exist: some exclusion (figure clearance, indestructible
 			# ground, existing soil) reaches the probe's COLUMN across its
-			# whole 10 px row band — the strip that would span that band is
+			# whole ROCK_ROW row band — the strip that would span that band is
 			# banned. Test the vertical sliver at the probe's x.
 			var rel_y := probe.y - at.y
 			var sliver := Rect2(Vector2(probe.x,
