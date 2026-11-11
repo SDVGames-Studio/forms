@@ -70,10 +70,12 @@ func _unhandled_input(event: InputEvent) -> void:
 
 ## Issue #121: spectate a computer-vs-computer duel — no player team.
 func _on_duel_pressed() -> void:
+	MusicManager.play_for_level("res://LevelDuel.tscn")
 	get_tree().change_scene_to_file("res://LevelDuel.tscn")
 
 
 ## Issue #366: the same spectated computer-vs-computer duel, but with
 ## bigger teams — three AI figures per side on a wider battlefield.
 func _on_duel3_pressed() -> void:
+	MusicManager.play_for_level("res://LevelDuelBig.tscn")
 	get_tree().change_scene_to_file("res://LevelDuelBig.tscn")

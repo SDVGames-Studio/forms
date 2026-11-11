@@ -19,4 +19,7 @@ func _on_body_entered(body: Node2D) -> void:
 		var celebration: CanvasLayer = CELEBRATION_SCRIPT.new()
 		add_child(celebration)
 		await celebration.finished
+		# Issue #463: the next scene's own track (or silence on menus —
+		# play_for_level stops when the path has no track).
+		MusicManager.play_for_level(next_scene)
 		get_tree().change_scene_to_file(next_scene)
