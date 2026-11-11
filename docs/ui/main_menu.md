@@ -108,17 +108,19 @@ Optional footer text:
 
 ### 4.3 Main menu options
 
-The main menu must contain exactly three primary options:
+The main menu must contain exactly four primary options:
 
 1. NEW GAME
-2. SETTINGS
-3. QUIT
+2. LEVEL EDITOR
+3. SETTINGS
+4. QUIT
 
 Do not display Level Selection or Continue on the main menu.
 
 ### 4.4 Button behavior
 
 - **New Game:** Opens the existing level selection flow.
+- **Level Editor:** Opens the level editor screen (issue #464).
 - **Settings:** Opens the Settings screen.
 - **Quit:** Requests application exit.
 
@@ -331,9 +333,9 @@ If an existing requirement conflicts with this specification, stop and request c
 
 - [ ] Main menu displays the Forms title and subtitle.
 - [ ] Background is completely static.
-- [ ] Main menu contains exactly New Game, Settings, and Quit.
+- [ ] Main menu contains exactly New Game, Level Editor, Settings, and Quit.
 - [ ] No gameplay HUD is visible.
-- [ ] All three options work.
+- [ ] All four options work.
 - [ ] Visual style follows the approved dark minimalist direction.
 
 ### New Game

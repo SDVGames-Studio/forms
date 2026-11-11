@@ -68,6 +68,12 @@ custom_minimum_size = Vector2(340, 64)
 layout_mode = 2
 text = "NEW GAME"
 
+[node name="LevelEditorButton" type="Button" parent="Layout/Columns/Nav"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(340, 64)
+layout_mode = 2
+text = "LEVEL EDITOR"
+
 [node name="SettingsButton" type="Button" parent="Layout/Columns/Nav"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(340, 64)
