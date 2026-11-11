@@ -31,11 +31,39 @@ const TOOL_SHIELD := 2
 const TOOL_ROCK := 3
 const TOOLS := ["Switch", "Teleport", "Shield", "Rock"]
 
+## Issue #475 (godot-sound-work skill): the teleport hop sound —
+## preloaded once, never loaded per teleport at runtime.
+const TELEPORT_SOUND := preload("res://assets/audio/tools/teleport.wav")
+
 ## Tool armed for the next click (teleport) or for the N/P character
 ## change (switch, issue #306); the rock waits for the charged throw.
 var armed_tool := -1
 
+## Issue #475: teleport SFX player on the SFX bus. This autoload owns
+## it — one player per sound category; teleports are sparse, so a
+## single global player never overlaps itself.
+var _teleport_player: AudioStreamPlayer
+
 var _used: Dictionary = {}
+
+func _ready() -> void:
+	# Issue #475: build the teleport player once — the autoload persists
+	# for the whole session, so the player does too.
+	_teleport_player = AudioStreamPlayer.new()
+	_teleport_player.stream = TELEPORT_SOUND
+	_teleport_player.bus = "SFX"
+	add_child(_teleport_player)
+
+
+## Issue #475 (godot-sound-work skill): play the teleport hop. Public —
+## Npc's teleport-away shortcut (issue #221) calls the same sound so
+## every teleport in the game is audible. Random pitch 0.95–1.05:
+## repeated hops in a row must not sound like a metronome.
+func play_teleport_sound() -> void:
+	if _teleport_player == null:
+		return
+	_teleport_player.pitch_scale = randf_range(0.95, 1.05)
+	_teleport_player.play()
 
 ## Issue #306: one character change made with the armed Switch tool that
 ## has not been PAID yet — the use is spent by the first subsequent
@@ -285,6 +313,7 @@ func _unhandled_input(event: InputEvent) -> void:
 				return
 			teleporter.global_position = destination
 			member.velocity = Vector2.ZERO
+			play_teleport_sound()
 			_mark_used(member, TOOL_TELEPORT)
 			armed_tool = -1
 			refresh_slots()
