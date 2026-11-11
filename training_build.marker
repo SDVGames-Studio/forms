@@ -1,0 +1,3 @@
+Packed ONLY into "Training (Linux)" export-preset builds via that preset's
+include_filter (issue #465) — see Boot.gd: its presence tells the boot router
+to start the training scene instead of the main menu.
