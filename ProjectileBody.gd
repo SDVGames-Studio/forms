@@ -64,7 +64,10 @@ const ROCK_GROUND_RADIUS := 110.0
 ## cell grid kept whole cells by their centre and left a chunky staircase
 ## that erred by up to ~18 px per axis; rows of 10 px keep every strip
 ## corner within ~5 px of the true circle.
-const ROCK_ROW := 10.0
+## Issue #480: rows halved to 4 px — the 10 px staircase read as a rough
+## outline at play zoom; 4 px keeps corners within ~2 px, matching the
+## 2 px crispness standard the craters set in issue #299.
+const ROCK_ROW := 4.0
 const ROCK_CHAR_CLEAR := 1.3 * 64.0
 ## Issue #216: grenade acceleration matches the figures (Stats.GRAVITY).
 const Stats := preload("res://scripts/CharacterStats.gd")
@@ -385,6 +388,10 @@ func _play_blast_sound() -> void:
 ##    size) — ground is created AROUND a figure, never on it, and
 ##  - never overlaps indestructible ground (slab or disc) or existing
 ##    soil — it borders them instead of covering them.
+## Issue #480: polygon and ring-sector soil is banned by its ACTUAL
+## outline, clipped per row — the old AABB ban covered empty air beside
+## the dome/trapezoid hills and left an unfilled rectangle inside the
+## disk wherever it touched a hill's bounding box.
 func _create_ground() -> void:
 	var parent := get_parent()
 	if parent == null:
@@ -400,9 +407,15 @@ func _create_ground() -> void:
 			if body != null and is_instance_valid(body):
 				circles.append(Vector3(body.global_position.x - origin.x,
 						body.global_position.y - origin.y, ROCK_CHAR_CLEAR))
-	# Solid terrain the new soil must never overlap.
+	# Solid terrain the new soil must never overlap: indestructible
+	# ground stays axis-exact (slab rects / clearance discs), while
+	# existing destructible soil contributes its true OUTLINE polygon
+	# (issue #480 — the AABB of a dome or trapezoid hill is a rectangle
+	# of thin air beside the hill; banning it punched a rectangular hole
+	# into the disk).
 	var solids: Array[Rect2] = []
 	var discs: Array[Vector3] = []
+	var soils: Array[PackedVector2Array] = []
 	for node in get_tree().get_nodes_in_group("indestructible_ground"):
 		var ground := node as IndestructibleGround
 		if ground == null or not is_instance_valid(ground):
@@ -415,12 +428,12 @@ func _create_ground() -> void:
 						- origin, ground.rect_size))
 	for node in get_tree().get_nodes_in_group("destructible_ground"):
 		var soil := node as DestructibleGround
-		if soil != null and is_instance_valid(soil):
-			# Issue #376: polygon hills carry their own bounds — never assume
-			# the rect of `rect_size` (wrong for shaped chunks).
-			var bounds := soil.local_bounds()
-			solids.append(Rect2(soil.position + bounds.position - origin,
-					bounds.size))
+		if soil == null or not is_instance_valid(soil):
+			continue
+		var outline := PackedVector2Array()
+		for p in soil.local_outline():
+			outline.append(p + soil.position - origin)
+		soils.append(outline)
 	# Row by row: the true chord of the disk minus the x-intervals the
 	# exclusions ban from that row — one exact strip per remaining span.
 	var rows := int(ceilf(ROCK_GROUND_RADIUS / ROCK_ROW))
@@ -443,6 +456,10 @@ func _create_ground() -> void:
 			_ban_from_circle(circle, y0, y1, bans)
 		for disc in discs:
 			_ban_from_circle(disc, y0, y1, bans)
+		for outline in soils:
+			var span := _band_x_span(outline, y0, y1)
+			if not is_nan(span.x) and not is_nan(span.y):
+				bans.append([span.x, span.y])
 		# Sweep the bans left to right and spawn the gaps that remain.
 		bans.sort_custom(func(a, b): return a[0] < b[0])
 		var cursor := -half
@@ -468,6 +485,44 @@ func _ban_from_circle(circle: Vector3, y0: float, y1: float,
 		return
 	var half := sqrt(under)
 	bans.append([circle.x - half, circle.x + half])
+
+
+## Issue #480: x-span [min, max] of a soil outline's slice through the
+## horizontal band [y0, y1] — the polygon clipped top and bottom, then
+## projected on x (the authored hills are convex, so their slice is one
+## interval; a concave outline could only err towards banning MORE,
+## which stays safe — soil never overlaps soil). Returns NAN when the
+## outline never crosses the band.
+func _band_x_span(pts: PackedVector2Array, y0: float,
+		y1: float) -> Vector2:
+	var slice := _clip_y(_clip_y(pts, y0, true), y1, false)
+	if slice.size() < 3:
+		return Vector2(NAN, NAN)
+	var lo := slice[0].x
+	var hi := slice[0].x
+	for p in slice:
+		lo = minf(lo, p.x)
+		hi = maxf(hi, p.x)
+	return Vector2(lo, hi)
+
+
+## Sutherland–Hodgman clip of the polygon against one horizontal
+## half-plane: keep the part with y >= t (`keep_above`) or y <= t.
+func _clip_y(pts: PackedVector2Array, t: float,
+		keep_above: bool) -> PackedVector2Array:
+	var out := PackedVector2Array()
+	var n := pts.size()
+	for i in n:
+		var cur := pts[i]
+		var nxt := pts[(i + 1) % n]
+		var cur_in := (cur.y >= t) if keep_above else (cur.y <= t)
+		var nxt_in := (nxt.y >= t) if keep_above else (nxt.y <= t)
+		if cur_in:
+			out.append(cur)
+		if cur_in != nxt_in:
+			var f := (t - cur.y) / (nxt.y - cur.y)
+			out.append(Vector2(cur.x + (nxt.x - cur.x) * f, t))
+	return out
 
 
 ## One exact soil strip on the row starting at `y0`: x from `x0` to `x1`,
