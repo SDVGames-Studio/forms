@@ -52,10 +52,11 @@ func _ready() -> void:
 	ok = _expect(TeamBlackboard.get_focus_target("enemy") == near,
 			"focus target is the nearest living enemy") and ok
 
-	# --- The focus target is RETAINED while it still lives. ---
+	# --- Identical turn inputs deterministically re-pick the same focus ---
+	# --- (issue #449 re-runs the heuristic each turn; no retention state) ---
 	TeamBlackboard.update_team("enemy", [ally_a, ally_b], [near, far])
 	ok = _expect(TeamBlackboard.get_focus_target("enemy") == near,
-			"living focus target retained across updates") and ok
+			"identical turn inputs re-pick the same focus target") and ok
 
 	# --- It dies: the next update reassigns and drops the corpse. ---
 	near.health = 0
