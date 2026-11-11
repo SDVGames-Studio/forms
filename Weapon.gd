@@ -592,11 +592,26 @@ func _play_shot_sound() -> void:
 
 ## Issue #66: NPC entry point — the enemy AI fires through the same weapon
 ## (same cooldown, same projectiles, same shooter pass-through).
-func npc_fire() -> void:
+## Issue #481: returns whether a shot really committed — _fire() can
+## still refuse (a tool already used this turn, the team budget spent),
+## and the caller locks its weapon choice only on a real shot.
+func npc_fire() -> bool:
 	if _cooldown_left > 0.0 or _shot_delay_left > 0.0 \
 			or _shots_used[clampi(selected_weapon, 0, _shots_used.size() - 1)] >= _shot_limit():
-		return
+		return false
+	var before := _total_shots_used()
 	_fire()
+	return _total_shots_used() > before
+
+
+## Issue #481: every committed shot of this turn, across ALL weapons —
+## the committed-shot signal npc_fire() reports to the NPC AI (whose
+## own fire gate cannot see inside _fire's early returns).
+func _total_shots_used() -> int:
+	var total := 0
+	for used in _shots_used:
+		total += used
+	return total
 
 
 ## Issue #368: brief muzzle flash where a shot leaves the barrel — a
