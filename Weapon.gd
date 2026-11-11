@@ -35,6 +35,12 @@ const ProjectileScript := preload("res://Projectile.gd")
 ## Issue #114: rockets and grenades spawn as real rigid bodies.
 const ProjectileBodyScript := preload("res://ProjectileBody.gd")
 
+## Owner task 2026-11-11 (godot-sound-work skill): the shot sound —
+## preloaded once, never loaded per shot at runtime.
+const SHOT_SOUND := preload("res://assets/audio/weapons/shot.wav")
+## One AudioStreamPlayer per sound category, on the SFX bus.
+var _shot_player: AudioStreamPlayer
+
 const COOLDOWN := 0.3
 
 ## Issue #101: shots each weapon allows during ONE turn (index = weapon:
@@ -297,6 +303,12 @@ func _ready() -> void:
 	# Issue #354: start EMPTY-HANDED — the weapon enters the hands only
 	# when this member becomes the acting one (see _is_acting).
 	_held.visible = _is_acting()
+	# Owner task 2026-11-11: shot SFX player on the SFX bus (default 0 dB;
+	# volume tweaks only if a sound measures out of line — see the skill).
+	_shot_player = AudioStreamPlayer.new()
+	_shot_player.stream = SHOT_SOUND
+	_shot_player.bus = "SFX"
+	add_child(_shot_player)
 
 
 func _physics_process(delta: float) -> void:
@@ -549,6 +561,9 @@ func _fire(power := 1.0) -> void:
 	DebugInfo.log("%s fires %s" % [str(who),
 			WeaponInventory.WEAPONS[clampi(selected_weapon, 0,
 				WeaponInventory.WEAPONS.size() - 1)]])
+	# Owner task 2026-11-11: the shot sound fires through the shared
+	# player on every committed shot (all weapons, player and NPC alike).
+	_play_shot_sound()
 	match selected_weapon:
 		0: _fire_shotgun()
 		1: _fire_rocket(power)
@@ -561,6 +576,13 @@ func _fire(power := 1.0) -> void:
 	# with quota remaining the character keeps acting after the pause.
 	if _shots_used[clampi(selected_weapon, 0, _shots_used.size() - 1)] >= _shot_limit():
 		TurnController.notify_shot()
+
+
+## Owner task 2026-11-11 (godot-sound-work skill): play the shot sound.
+## The small random pitch (0.95–1.05) keeps rapid fire from fatiguing.
+func _play_shot_sound() -> void:
+	_shot_player.pitch_scale = randf_range(0.95, 1.05)
+	_shot_player.play()
 
 
 ## Issue #66: NPC entry point — the enemy AI fires through the same weapon

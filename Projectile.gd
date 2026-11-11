@@ -20,6 +20,14 @@ var shooter: Node2D = null
 var _size := Vector2(12, 6)
 var _color := Color.WHITE
 
+## Owner task 2026-11-11 (godot-sound-work skill): the explosion sound —
+## preloaded once, never loaded per blast at runtime.
+const EXPLOSION_SOUND := preload("res://assets/audio/explosions/explosion.wav")
+## One AudioStreamPlayer per sound category, on the SFX bus. Each
+## projectile owns its player so simultaneous blasts never cut each
+## other short; it is freed together with the projectile.
+var _explosion_player: AudioStreamPlayer
+
 
 func setup(p_type: int, p_velocity: Vector2, p_damage: int, p_lifetime: float, p_size: Vector2, p_color: Color, p_blast_radius: float = 0.0) -> void:
 	type = p_type
@@ -63,6 +71,13 @@ func _ready() -> void:
 		2.0 if type != Type.PELLET else 1.6))
 
 	get_tree().create_timer(lifetime).timeout.connect(_on_expire)
+
+	# Owner task 2026-11-11: explosion SFX player on the SFX bus
+	# (default 0 dB; fixed 1.0 pitch — one blast per projectile).
+	_explosion_player = AudioStreamPlayer.new()
+	_explosion_player.stream = EXPLOSION_SOUND
+	_explosion_player.bus = "SFX"
+	add_child(_explosion_player)
 
 
 func _physics_process(delta: float) -> void:
@@ -110,7 +125,18 @@ func _on_body_entered(body: Node2D) -> void:
 	queue_free()
 
 
+## Owner task 2026-11-11 (godot-sound-work skill): play the explosion
+## sound. Fixed 1.0 pitch — blasts are one-per-projectile, so the
+## rapid-fire pitch variation the skill allows does not apply.
+func _play_explosion_sound() -> void:
+	_explosion_player.play()
+
+
 func _explode() -> void:
+	# Owner task 2026-11-11: the explosion sound plays from the real
+	# blast entry path — ground carving, area damage and chain reactions
+	# all happen below while the sound runs.
+	_play_explosion_sound()
 	# Issue #190: explosions carve destructible terrain in the blast radius.
 	for ground in get_tree().get_nodes_in_group("destructible_ground"):
 		ground.apply_blast(global_position, blast_radius)
