@@ -65,6 +65,33 @@ For real training, write the same setup into a `train_forms.py` with the
 checkpointing of your choice (see godot-rl's
 `examples/stable_baselines3_example.py`).
 
+**Standalone training executable (issue #465).** The "Training (Linux)" export
+preset in `export_presets.cfg` builds the subprocess binary the Python trainer
+launches (godot-rl expects an `*.x86_64` executable) — no editor needed, so
+`n_parallel` is no longer capped at 1:
+
+```bash
+godot --headless --export-debug "Training (Linux)"
+# → builds/training/forms_training.x86_64 (+ .pck and the GDExtension .so)
+```
+
+- Needs the Godot **4.7.2 export templates** installed
+  (`~/.local/share/godot/export_templates/4.7.2.stable/`).
+- Export presets cannot override `application/run/main_scene`, so the
+  `TrainingBoot` autoload (`scripts/TrainingBoot.gd`) routes exported builds
+  that carry `training_build.marker` (packed only by this preset's
+  `include_filter`) to `training_scene.tscn`. Every other build — the editor,
+  and the normal Linux/Windows/Web/Android exports — boots the main menu
+  unchanged (verified: the marker is absent from their `.pck`).
+- The three `Environment_*` instances in `training_scene.tscn` are tiled
+  **3200 units apart** (the 3000+ required so physics never crosses between
+  parallel environments); `NcnnSync.control_mode = 1` (TRAINING).
+- Sanity check without a trainer: launch the binary — it runs without crashing
+  and NcnnSync logs it couldn't connect to the Python server ("Start training
+  with `gdrl`"). With a trainer listening on the default port **11008**
+  (`--port` overrides), NcnnSync connects and handshakes; point godot-rl at the
+  binary via `StableBaselinesGodotEnv(environment_path=...)`.
+
 **Shared policies by role (issue #445).** Team deathmatch trains multiple
 bots of the same role on ONE shared network: every controller in the scene
 carries an explicit `policy_name` naming its role. Current role-to-policy
