@@ -69,6 +69,17 @@ const ROCK_CHAR_CLEAR := 1.3 * 64.0
 ## Issue #216: grenade acceleration matches the figures (Stats.GRAVITY).
 const Stats := preload("res://scripts/CharacterStats.gd")
 const GRAVITY := Stats.GRAVITY
+
+## Issue #475 (godot-sound-work skill): the blast/crumble sounds —
+## preloaded once, never loaded per blast at runtime. The rocket keeps
+## its current silent blast (not part of the issue's scope).
+const GRENADE_SOUND := preload("res://assets/audio/explosions/grenade.wav")
+const MINE_SOUND := preload("res://assets/audio/explosions/mine.wav")
+const ROCK_SOUND := preload("res://assets/audio/tools/rock_crumble.wav")
+## One AudioStreamPlayer per projectile, on the SFX bus (the kind is
+## known at _ready, so the stream is picked once there) — each blast
+## owns its player so simultaneous explosions never cut each other short.
+var _blast_player: AudioStreamPlayer
 ## Issue #293: no gravity context is captured from the wielder anymore —
 ## gravity is sampled every step from the level's indestructible grounds
 ## (the same terrain rule the figures follow).
@@ -172,6 +183,20 @@ func _ready() -> void:
 		get_tree().create_timer(MINE_SETTLE_WATCHDOG).timeout.connect(_on_mine_watchdog)
 	else:
 		get_tree().create_timer(lifetime).timeout.connect(_on_fuse)
+
+	# Issue #475: blast SFX player on the SFX bus (default 0 dB; fixed
+	# 1.0 pitch — blasts are one-per-projectile, so the rapid-fire pitch
+	# variation the sound skill allows does not apply).
+	_blast_player = AudioStreamPlayer.new()
+	match kind:
+		Kind.GRENADE:
+			_blast_player.stream = GRENADE_SOUND
+		Kind.MINE:
+			_blast_player.stream = MINE_SOUND
+		Kind.ROCK:
+			_blast_player.stream = ROCK_SOUND
+	_blast_player.bus = "SFX"
+	add_child(_blast_player)
 
 
 func _physics_process(delta: float) -> void:
@@ -283,6 +308,10 @@ func _explode() -> void:
 	if _exploded:
 		return
 	_exploded = true
+	# Issue #475: every detonation/crumble is audible from here — the
+	# sound starts before the ground carving, damage and chain reactions
+	# below run while it plays.
+	_play_blast_sound()
 	# Issue #227: the rock never explodes — its "fuse moment" crumbles it
 	# into destructible ground instead (no damage, no blast).
 	if kind == Kind.ROCK:
@@ -331,6 +360,19 @@ func _explode() -> void:
 	_spawn_blast_visual()
 	queue_free()
 
+
+## Issue #475 (godot-sound-work skill): play this projectile's blast
+## sound. The body itself is queue_free()d at the end of _explode(), so
+## the player is re-homed to the level FIRST — otherwise it would be
+## freed with the body and the sound would be cut to a single frame.
+## Afterwards the player frees itself when the stream finishes.
+func _play_blast_sound() -> void:
+	if _blast_player == null or _blast_player.stream == null:
+		return
+	if get_parent() != null:
+		_blast_player.reparent(get_parent())
+		_blast_player.finished.connect(_blast_player.queue_free)
+	_blast_player.play()
 
 ## Issue #227: the rock's "explosion" — a disk of destructible ground
 ## around the resting point. Issue #324 rework: the disk is filled row by

@@ -638,6 +638,9 @@ func _try_teleport_away(enemy: Node2D) -> bool:
 				continue
 			global_position = candidate
 			velocity = Vector2.ZERO
+			# Issue #475: the NPC hop uses the same teleport sound as the
+			# player tool (ToolInventory owns the player).
+			ToolInventory.play_teleport_sound()
 			return true
 	return false
 
