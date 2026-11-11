@@ -27,7 +27,9 @@ const ATTACK_RANGE := 500.0
 const KEEP_DISTANCE := 140.0
 ## Issue #66: aim slew speed (rad/s) and per-weapon range bands.
 const SPEAR_RANGE_NPC := 90.0
-const SHOTGUN_RANGE_NPC := 360.0
+## Issue #430: raised to the shotgun's real flight range (900 px/s *
+## 0.5 s = 450; the band claimed 360 while pellets only flew 315).
+const SHOTGUN_RANGE_NPC := 450.0
 const ROCKET_RANGE_NPC := 620.0
 
 ## Issue #35: team coordination constants.

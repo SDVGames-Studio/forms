@@ -5,7 +5,8 @@ extends Node2D
 ## (keys 1–4 and 9, HUD on the right side of the screen). The controlled
 ## member fires with the "shoot" action (F). Each weapon has different
 ## physics:
-##  1 Shotgun       — spread of 5 fast pellets, short range, low damage each
+##  1 Shotgun       — spread of 5 fast pellets, mid range (450 px,
+##                    issue #430), low damage each
 ##  2 Rocket        — fast rocket that keeps its launch speed but arcs
 ##                    under the level's gravity (issue #245), big blast
 ##  3 Grenade       — lobbed arc with gravity, explodes on fuse or impact
@@ -51,7 +52,11 @@ const SHOTS_PER_TURN: Array = [2, 1, 1, 2, 1, 1, 1]
 const SHOT_DELAY := 3.0
 
 const PELLET_SPEED := 900.0
-const PELLET_LIFETIME := 0.35
+## Issue #430: pellet flight time raised 0.35 s -> 0.5 s, so a pellet
+## now covers 900 px/s * 0.5 s = 450 px (was 315) — the whole Npc.gd
+## shotgun band (issue #66 said 360 while pellets only flew 315) and
+## beyond, still the shortest ranged shot after the melee spear.
+const PELLET_LIFETIME := 0.5
 const PELLET_DAMAGE := 6
 const ROCKET_SPEED := 700.0
 const ROCKET_DAMAGE := 35

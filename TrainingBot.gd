@@ -63,8 +63,8 @@ func get_action_space() -> Dictionary:
 
 ## Issue #410: the weapon slots don't name weapons yet, so the scaffold's
 ## attack reach is the game's widest AI weapon band — Npc.gd's per-weapon
-## ranges (issue #66): spear 90, shotgun 360, rocket 620. Any firing action
-## is legal while at least one alive opposing figure stands inside it.
+## ranges (issues #66/#430): spear 90, shotgun 450, rocket 620. Any firing
+## action is legal while at least one alive opposing figure stands inside it.
 const ATTACK_REACH := 620.0
 
 ## Issue #410: per-decision-step legality mask — one boolean array per
