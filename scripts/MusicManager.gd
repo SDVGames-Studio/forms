@@ -1,14 +1,17 @@
 extends Node
-## Endless per-level background music (issue #463).
+## Endless background music (issues #463, #476).
 ##
 ## Autoloaded singleton: owns ONE AudioStreamPlayer on the Music bus and
 ## keeps playing across scene changes. Every playable level gets its own
-## endless track via play_for_level() — the loops are baked into the WAV
+## endless track via play_for_level(), and the main menu has its own
+## theme (#476) started by Main.gd — the loops are baked into the WAV
 ## imports (loop_mode = forward), so playback repeats forever without
-## retrigger clicks. Leaving a level to a menu stops the music; finishing
-## a level switches to the next scene's track (or stops on non-levels).
+## retrigger clicks. Finishing a level switches to the next scene's
+## track; scenes without a track (submenus, credits, unknown scenes)
+## stop the music.
 
 const TRACKS := {
+	"res://Main.tscn": preload("res://assets/audio/music/menu.wav"),
 	"res://Level.tscn": preload("res://assets/audio/music/level1.wav"),
 	"res://Level2.tscn": preload("res://assets/audio/music/level2.wav"),
 	"res://Level3.tscn": preload("res://assets/audio/music/level3.wav"),
@@ -46,8 +49,9 @@ func _on_player_finished() -> void:
 		_player.play()
 
 
-## Play (and keep looping) the track of the given level scene. A path
-## without a track (menus, credits, unknown scenes) stops the music —
+## Play (and keep looping) the track of the given scene: a level's own
+## track, or the main-menu theme for the main menu (#476). A path
+## without a track (submenus, credits, unknown scenes) stops the music —
 ## no music is better than the wrong music.
 func play_for_level(level_path: String) -> void:
 	var stream: AudioStream = TRACKS.get(level_path)
@@ -67,6 +71,6 @@ func stop() -> void:
 	_current_path = ""
 
 
-## Currently looping level path ("" when stopped) — for tests/OSD.
+## Currently looping scene path ("" when stopped) — for tests/OSD.
 func current_level() -> String:
 	return _current_path
