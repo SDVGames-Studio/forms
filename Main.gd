@@ -17,6 +17,9 @@ func _ready() -> void:
 	# Issue #252: the debug-mode switch (and any future setting) loads
 	# before any level can build its figures.
 	GameConfig.load_settings()
+	# Issue #476: the main menu's endless theme — starts on every entry
+	# into the main menu; starting a level swaps in the level's track.
+	MusicManager.play_for_level("res://Main.tscn")
 	_version_label.text = "v%s" % ProjectSettings.get_setting(
 		"application/config/version", "0.0.0")
 	_new_game_button.pressed.connect(_on_new_game_pressed)

@@ -6,7 +6,8 @@ extends Node
 ## a FORWARD loop baked in (endless playback, no retrigger); all seven
 ## tracks are distinct; the MusicManager autoload owns one player on the
 ## Music bus; play_for_level() starts the right track, keeps it on
-## repeats, and stops on non-level paths (menus). Headless audio runs on
+## repeats, and stops on trackless menu paths (issue #476 gave the
+## main menu its own theme, so the stop check uses a submenu). Headless audio runs on
 ## the dummy driver — playback STATE is asserted, not audible output
 ## (documented limitation in the PR).
 ##
@@ -98,8 +99,9 @@ class MusicDriver extends Node:
 		manager.play_for_level("res://LevelDuel.tscn")
 		var switches: bool = player.playing \
 			and player.stream == MusicManager.TRACKS["res://LevelDuel.tscn"]
-		# ...and stops on non-level paths (menus).
-		manager.play_for_level("res://Main.tscn")
+		# ...and stops on trackless menu paths (the main menu itself now
+		# has a theme — issue #476 — so a submenu proves the stop path).
+		manager.play_for_level("res://SettingsMenu.tscn")
 		var stops: bool = not player.playing and manager.current_level() == ""
 		# A finish after stop() must NOT resurrect the music.
 		player.finished.emit()
@@ -109,11 +111,14 @@ class MusicDriver extends Node:
 			" stays_stopped=", stays_stopped)
 		ok = ok and plays and keeps and switches and stops and stays_stopped
 
-		# --- Track list covers every playable level scene. ---
+		# --- Track list covers every playable level scene plus the
+		# main-menu theme (issue #476). ---
 		var cover_ok := true
 		for path in LEVELS:
 			cover_ok = cover_ok and MusicManager.TRACKS.has(path)
-		cover_ok = cover_ok and MusicManager.TRACKS.size() == LEVELS.size()
+		cover_ok = cover_ok and MusicManager.TRACKS.has("res://Main.tscn")
+		cover_ok = cover_ok \
+			and MusicManager.TRACKS.size() == LEVELS.size() + 1
 		print("ISSUE463 covers_all_levels=", cover_ok)
 		ok = ok and cover_ok
 

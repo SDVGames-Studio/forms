@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 'use strict';
 // Procedural background-music generator for Forms (issue #463,
-// godot-sound-work skill). One endless loop per playable level.
+// godot-sound-work skill). One endless loop per playable level, plus
+// the main-menu theme (issue #476).
 //
 // Deterministic: seeded PRNG, no dependencies, no network — identical
 // bytes on every run. License-free (generated, not sampled).
@@ -14,6 +15,8 @@
 // so playback loops forever without retriggering.
 //
 // Moods (distinct key/tempo/texture per level):
+//   menu      "title"    76 BPM  F major — warm pad chords, gentle
+//                          pentatonic plucks, no drums (main menu)
 //   level1    "meadow"   80 BPM  C major pentatonic — gentle plucks, pad
 //   level2    "cliff"   104 BPM  D minor — bouncy bass, light ticks
 //   level3    "cavern"  120 BPM  E minor — driving 8th-note bass pulse
@@ -27,6 +30,7 @@ const path = require('node:path');
 
 const SR = 44100;
 const OUT = {
+	menu: 'assets/audio/music/menu.wav',
 	level1: 'assets/audio/music/level1.wav',
 	level2: 'assets/audio/music/level2.wav',
 	level3: 'assets/audio/music/level3.wav',
@@ -212,6 +216,36 @@ function render(bpm, bars, arrange) {
 }
 
 // --- Tracks ----------------------------------------------------------------
+
+// menu "title" — 76 BPM, F major: the main-menu theme (issue #476).
+// Warm pad chords (F - Bb - C - F), soft bass roots, gentle half-note
+// pentatonic melody plucks; no drums — calm and welcoming, distinct
+// from every level mood.
+function makeMenu() {
+	const rnd = prng(0x4761);
+	const root = 53; // F3
+	const pent = [0, 2, 4, 7, 9, 12, 14, 16]; // F major pentatonic
+	const chords = [[0, 4, 7], [5, 9, 12], [7, 11, 14], [0, 4, 7]]; // F Bb C F
+	return render(76, 8, (buf, B) => {
+		for (let bar = 0; bar < 8; bar++) {
+			const t0 = Math.floor(bar * 4 * B * SR);
+			// Warm pad chord swelling across the bar.
+			pad(buf, t0, 4 * B, chords[bar % 4].map((s) => hz(root + s)), 0.15);
+			// Soft bass root at each bar start.
+			pluck(buf, t0, hz(root - 12 + chords[bar % 4][0]), 2.0, 0.14, rnd);
+			// Gentle half-note melody plucks wandering the pentatonic
+			// scale, answered by a faint tick every other bar.
+			const deg = [0, 2, 1, 3, 2, 4, 3, 5][bar];
+			pluck(buf, t0 + Math.floor(B * SR),
+				hz(root + 12 + pent[deg]), 1.6, 0.14, rnd);
+			pluck(buf, t0 + Math.floor(3 * B * SR),
+				hz(root + 12 + pent[deg + 2]), 1.2, 0.10, rnd);
+			if (bar % 2 === 1) {
+				tick(buf, t0 + Math.floor(3.5 * B * SR), 0.12, rnd, 'hat');
+			}
+		}
+	});
+}
 
 // level1 "meadow" — 80 BPM, C major pentatonic: gentle plucked arpeggio
 // over slow pad swells; no drums.
@@ -417,6 +451,7 @@ function makeDuelBig() {
 	});
 }
 
+writeWav(OUT.menu, makeMenu());
 writeWav(OUT.level1, makeLevel1());
 writeWav(OUT.level2, makeLevel2());
 writeWav(OUT.level3, makeLevel3());
