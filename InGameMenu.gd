@@ -178,6 +178,8 @@ func _make_button(button_name: String, label: String, handler: Callable) -> Butt
 
 func _on_main_menu_pressed() -> void:
 	_close()
+	# Issue #463: leaving the level stops its background music.
+	MusicManager.stop()
 	get_tree().change_scene_to_file("res://Main.tscn")
 
 

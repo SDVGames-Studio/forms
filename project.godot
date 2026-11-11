@@ -24,6 +24,7 @@ WeaponInventory="*res://WeaponInventory.gd"
 ToolInventory="*res://ToolInventory.gd"
 TouchControls="*res://TouchControls.gd"
 TurnController="*res://TurnController.gd"
+MusicManager="*res://scripts/MusicManager.gd"
 
 [display]
 
