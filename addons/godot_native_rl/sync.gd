@@ -7,6 +7,7 @@ const PolicyNames = preload("res://addons/godot_native_rl/policy_names.gd")
 const StepProfiler = preload("res://addons/godot_native_rl/net/step_profiler.gd")
 const DemoRecorder = preload("res://addons/godot_native_rl/training/demo_recorder.gd")
 const RunSpeed = preload("res://addons/godot_native_rl/training/run_speed.gd")
+const TurnCoordinator = preload("res://addons/godot_native_rl/training/turn_coordinator.gd")
 
 var agents_training: Array[Node] = []
 var _action_space: Dictionary = {}
@@ -61,6 +62,16 @@ signal step_sent(rewards: Array, dones: Array) ## per step message sent to the t
 ## false keeps godot_rl's shared-policy behavior (reads `policy_name`); set true on a multi-policy
 ## training scene so the seeker/hider (etc.) report separate policies — no `--multi-policy` cmdline.
 @export var multi_policy: bool = false
+## Issue #448: opt-in one-agent-per-step turn sequencing for TURN-BASED training scenes.
+## Default false keeps godot_rl's stock batched loop (every agent acts every decision step —
+## the correct behavior for parallel single-bot environments such as training_scene.tscn:
+## those are independent arenas batched for data, NOT bots sharing one battlefield, and
+## sequencing them would only slow training down). When true, the Sync keeps a
+## TurnCoordinator over agents_training: each decision step only the ACTIVE bot's
+## set_action() is applied, the turn advances immediately after (before the next get_obs()
+## batch — the tree unpaused in between has ticked the applied action), and the turn log
+## records every applied turn so each bot can be seen acting exactly once per round.
+@export var turn_based_sequencing: bool = false
 # Socket timeouts (seconds). <= 0 disables the timeout (waits forever).
 # read_timeout default 60s matches godot_rl's DEFAULT_TIMEOUT.
 @export var connect_timeout_sec := 10.0
@@ -100,6 +111,8 @@ var _recorder = null
 var _record_agent = null
 var _record_action_space: Dictionary = {}
 var _demos_saved := false
+# Issue #448: the turn queue when turn_based_sequencing is on; null = stock batched loop.
+var _turn_coordinator = null
 
 func _ready() -> void:
 	# The Sync node must keep ticking while the SceneTree is paused.
@@ -140,6 +153,10 @@ func _initialize() -> void:
 	initialized = true
 
 func _initialize_training_agents() -> void:
+	# Issue #448: build the turn queue before the first obs batch is collected, so the
+	# very first decision step already applies only the first active bot's action.
+	if turn_based_sequencing:
+		_ensure_turn_coordinator()
 	if agents_training.size() > 0:
 		_obs_space = agents_training[0].get_obs_space()
 		_action_space = agents_training[0].get_action_space()
@@ -410,6 +427,10 @@ func _reset_agents_if_done(agents: Array) -> void:
 func _reset_agents() -> void:
 	for agent in all_agents:
 		agent.needs_reset = true
+	# Issue #448: a fresh episode starts a fresh turn order — round 1, first agent
+	# active, empty turn log.
+	if _turn_coordinator != null:
+		_turn_coordinator.reset()
 
 func _get_obs_from_agents(agents: Array) -> Array:
 	var obs := []
@@ -448,8 +469,39 @@ func _get_info_from_agents() -> Array:
 	return infos
 
 func _set_agent_actions(actions, agents: Array) -> void:
+	# Issue #448: in a turn-based scene only the ACTIVE bot's action is applied. The trainer
+	# still samples an action for every agent slot (the wire batch is fixed at n_agents), but
+	# the inactive bots' actions are dropped and their set_action() is never called — no bot
+	# ever moves on another bot's turn. The turn advances HERE, in the same step as the active
+	# bot's set_action(): the next obs batch is collected on the NEXT decision step, after the
+	# tree was unpaused and the world ticked action_repeat frames with this action applied —
+	# never from a state the previous bot's action has not updated.
+	if _turn_coordinator != null:
+		var active = _turn_coordinator.current_agent()
+		for i in range(actions.size()):
+			if i < agents.size() and agents[i] == active:
+				agents[i].set_action(actions[i])
+		var entry: Dictionary = _turn_coordinator.record_action_and_advance()
+		if not entry.is_empty():
+			print("NcnnSync: [turn] round %d — %s acted" % [entry["round"], entry["agent"]])
+		return
 	for i in range(actions.size()):
 		agents[i].set_action(actions[i])
+
+## Issue #448: (re)build the turn coordinator over the training agents in stable tree
+## order. Called once at init; tests drive it directly on a bare NcnnSync instance.
+func _ensure_turn_coordinator() -> void:
+	if _turn_coordinator == null:
+		_turn_coordinator = TurnCoordinator.new()
+	_turn_coordinator.setup(agents_training)
+
+## Issue #448: whose turn it is in a turn_based_sequencing scene (the only controller the
+## Sync lets act; null when sequencing is off or nobody is alive). Game-side managers can
+## query this to mirror the training turn order.
+func get_current_turn_agent() -> Node:
+	if _turn_coordinator == null:
+		return null
+	return _turn_coordinator.current_agent()
 
 func _get_args() -> Dictionary:
 	return RunSpeed.parse_cmdline_args()
