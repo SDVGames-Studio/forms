@@ -400,6 +400,10 @@ func _play_blast_sound() -> void:
 ## the slice's outermost point while the hill itself only reached part
 ## of the band, so a visible BORDER stayed between the initial ground
 ## and the crumble.
+## Issue #480 rework 2: the indestructible-slab ban follows the slab's
+## EFFECTIVE rounded rectangle (issue #270 corner arcs), not the
+## authored AABB — the raw-rect ban cut the crumble on a straight
+## line and left an air wedge at every rounded corner (level 3).
 func _create_ground() -> void:
 	var parent := get_parent()
 	if parent == null:
@@ -416,11 +420,16 @@ func _create_ground() -> void:
 				circles.append(Vector3(body.global_position.x - origin.x,
 						body.global_position.y - origin.y, ROCK_CHAR_CLEAR))
 	# Solid terrain the new soil must never overlap: indestructible
-	# ground stays axis-exact (slab rects / clearance discs). Existing
-	# destructible soil is deliberately NOT banned (issue #480 rework):
-	# the crumble covers it — same material, invisible overlap — so no
-	# seam can open between the initial ground and the crumble disk.
-	var solids: Array[Rect2] = []
+	# ground stays axis-exact. Existing destructible soil is deliberately
+	# NOT banned (issue #480 rework): the crumble covers it — same
+	# material, invisible overlap — so no seam can open between the
+	# initial ground and the crumble disk.
+	# Issue #480 rework 2: slabs ban by their EFFECTIVE rounded rectangle
+	# (the issue #270 geometry — thickness guard + corner arcs), not the
+	# authored AABB. Banning the raw rect cut the crumble on a straight
+	# line while the slab's rounded corner receded, leaving an air WEDGE
+	# between the crumble and the corner (level 3's slab walls).
+	var slabs: Array = []
 	var discs: Array[Vector3] = []
 	for node in get_tree().get_nodes_in_group("indestructible_ground"):
 		var ground := node as IndestructibleGround
@@ -430,8 +439,15 @@ func _create_ground() -> void:
 			discs.append(Vector3(ground.position.x - origin.x,
 						ground.position.y - origin.y, ground.radius))
 		else:
-			solids.append(Rect2(ground.position - ground.rect_size / 2.0
-						- origin, ground.rect_size))
+			# Slab centre (the #270 thickness guard shifts the body DOWN by
+			# `effective_offset`) and its half-size, in impact space.
+			var size := ground.effective_size()
+			if size == Vector2.ZERO:
+				size = ground.rect_size
+			slabs.append([Vector2(
+						ground.position.x - origin.x,
+						ground.position.y + ground.effective_offset() - origin.y),
+					size / 2.0, ground.corner_radius()])
 	# Row by row: the true chord of the disk minus the x-intervals the
 	# exclusions ban from that row — one exact strip per remaining span.
 	var rows := int(ceilf(ROCK_GROUND_RADIUS / ROCK_ROW))
@@ -443,13 +459,12 @@ func _create_ground() -> void:
 				ROCK_GROUND_RADIUS * ROCK_GROUND_RADIUS - cy * cy))
 		if half <= 0.0:
 			continue
-		# X-intervals this row must not touch.
+		# X-intervals this row must not touch. Bordering is fine (strict
+		# tests, like Rect2.intersects): a slab or disc sharing only the
+		# row's edge bans nothing.
 		var bans: Array = []
-		for solid in solids:
-			# Bordering is fine (strict test, like Rect2.intersects): a
-			# slab sharing only the row's edge bans nothing.
-			if solid.position.y < y1 and solid.end.y > y0:
-				bans.append([solid.position.x, solid.end.x])
+		for slab in slabs:
+			_ban_from_slab(slab, y0, y1, bans)
 		for circle in circles:
 			_ban_from_circle(circle, y0, y1, bans)
 		for disc in discs:
@@ -465,6 +480,35 @@ func _create_ground() -> void:
 				break
 		if cursor < half:
 			_spawn_soil_strip(parent, cursor, half, y0)
+
+
+## Add to `bans` the x-interval a slab bites out of the row band
+## [y0, y1] — the slab's EFFECTIVE rounded rectangle (issue #270);
+## nothing when the band lies outside the slab entirely. `slab` is
+## [centre, half_size, corner]: a band crossing the straight midline
+## bans the full width; a band up in a corner arc bans only the arc's
+## chord at the band's INNERMOST row (its widest cross-section, so a
+## strip never overlaps even where the band's farther rows recede) —
+## the fill hugs the rounded corner exactly like `_ban_from_circle`
+## hugs a disc (issue #480: the raw-rect ban left an air wedge at
+## every rounded corner, reading as a border on level 3).
+func _ban_from_slab(slab: Array, y0: float, y1: float,
+		bans: Array) -> void:
+	var centre: Vector2 = slab[0]
+	var half: Vector2 = slab[1]
+	var corner: float = slab[2]
+	if y1 <= centre.y - half.y or y0 >= centre.y + half.y:
+		return
+	var d := 0.0
+	if centre.y < y0:
+		d = y0 - centre.y
+	elif centre.y > y1:
+		d = centre.y - y1
+	var reach := half.x
+	if corner > 0.0 and d > half.y - corner:
+		var e := d - (half.y - corner)
+		reach = half.x - corner + sqrt(maxf(0.0, corner * corner - e * e))
+	bans.append([centre.x - reach, centre.x + reach])
 
 
 ## Add to `bans` the x-interval a keep-out circle bites out of the row band
