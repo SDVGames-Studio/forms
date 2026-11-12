@@ -22,6 +22,16 @@ issue #467 (learning_rate 5e-4, ent_coef 0.01, [128, 128] MLP, n_steps 2048,
 batch_size 256); every value and its rationale is documented in
 HYPERPARAMETERS.md and each is overridable on the command line for sweeps.
 
+Observations and rewards are normalized with SB3's VecNormalize wrapper
+(issue #468): norm_obs=True, norm_reward=True, clip_obs=10.0,
+clip_reward=10.0. The running statistics are saved to
+<experiment_dir>/vecnormalize.pkl next to the model checkpoint and MUST be
+replayed at inference time (ncnn sidecar via obs_norm_stats_path — see
+DEPLOYMENT.md); without them the policy receives out-of-distribution inputs
+and behaves unpredictably. After training, a sample batch of normalized
+observations is checked to have a mean close to 0 and a standard deviation
+close to 1 (Definition of Done, issue #468).
+
 Arguments:
   --env_path        exported training executable. The wrapper appends the
                     platform-specific suffix (.x86_64 / .exe / .app) if the
@@ -55,8 +65,10 @@ import os
 import pathlib
 import sys
 
+import numpy as np
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env.vec_monitor import VecMonitor
+from stable_baselines3.common.vec_env.vec_normalize import VecNormalize
 
 from godot_rl.wrappers.stable_baselines_wrapper import StableBaselinesGodotEnv
 
@@ -100,6 +112,38 @@ def resolve_env_path(env_path: str) -> str:
         f"  builds/training/forms_training.x86_64 next to its .pck and the\n"
         f"  libncnn_runner shared library."
     )
+
+
+def _obs_keys(obs) -> dict:
+    """Return the observation batch split per key: the raw dict for Dict
+    spaces, or {"obs": obs} for a flat Box so the sanity check below works
+    for both shapes."""
+    return dict(obs) if isinstance(obs, dict) else {"obs": obs}
+
+
+def check_normalized_stats(norm_env: VecNormalize, sample_steps: int = 64) -> None:
+    """Issue #468 Definition of Done: after training, a sample batch of
+    observations normalized by VecNormalize must have a mean close to 0 and
+    a standard deviation close to 1 (checked per observation key)."""
+    obs = _obs_keys(norm_env.reset())
+    batch = {key: [value] for key, value in obs.items()}
+    for _ in range(sample_steps):
+        actions = np.array(
+            [norm_env.action_space.sample() for _ in range(norm_env.num_envs)]
+        )
+        obs = _obs_keys(norm_env.step(actions)[0])
+        for key, value in obs.items():
+            batch[key].append(value)
+    for key, chunks in batch.items():
+        stacked = np.concatenate(chunks, axis=0)
+        mean, std = float(stacked.mean()), float(stacked.std())
+        print(f"VECNORMALIZE {key}: mean={mean:+.4f} std={std:.4f}")
+        if abs(mean) > 0.5 or abs(std - 1.0) > 0.5:
+            sys.exit(
+                f"train.py: normalized observations for '{key}' are not ~N(0, 1) "
+                f"(mean {mean:+.4f}, std {std:.4f}); the VecNormalize running "
+                f"statistics have not settled — train longer before deploying."
+            )
 
 
 def main() -> int:
@@ -184,6 +228,22 @@ def main() -> int:
     )
     env = VecMonitor(env)
 
+    # VecNormalize (issue #468): running-mean normalization of observations
+    # and rewards. Critical for PPO stability — raw rewards may have large
+    # magnitudes or high variance across components, and without this any
+    # single component can dominate the gradient updates. clip_obs/clip_reward
+    # bound extreme values at +-10.0. The statistics are saved to
+    # vecnormalize.pkl below and MUST be replayed at inference (ncnn sidecar,
+    # obs_norm_stats_path — see DEPLOYMENT.md §4).
+    env = VecNormalize(
+        env,
+        norm_obs=True,
+        norm_reward=True,
+        clip_obs=10.0,
+        clip_reward=10.0,
+    )
+    norm_env = env
+
     # PPO configuration for the MultiDiscrete action space (issue #467, full
     # rationale in HYPERPARAMETERS.md): 5e-4 learning rate and 0.01 entropy
     # coefficient for the discrete heads, a small [128, 128] MLP for both
@@ -212,11 +272,21 @@ def main() -> int:
     )
     try:
         model.learn(total_timesteps=args.timesteps)
+        # Definition of Done (issue #468): prove the normalization statistics
+        # are sane before saving anything — a sample batch of normalized
+        # observations must be ~N(0, 1).
+        check_normalized_stats(norm_env)
     finally:
         env.close()
 
     model_path = experiment_dir / "final_model"
     model.save(str(model_path))
+    # Save the normalization statistics NEXT TO the checkpoint: inference
+    # must apply exactly these running mean/var values to observations before
+    # the ncnn forward pass (DEPLOYMENT.md §4); reload for resumed training
+    # with VecNormalize.load(str(stats_path), venv).
+    stats_path = experiment_dir / "vecnormalize.pkl"
+    norm_env.save(str(stats_path))
     print(
         f"TRAINING OK: {args.timesteps} timesteps over {args.n_parallel} parallel "
         f"environment(s) at speedup {args.speedup}, no socket errors."
@@ -227,6 +297,7 @@ def main() -> int:
         f"batch_size={args.batch_size} (see HYPERPARAMETERS.md)"
     )
     print(f"MODEL: {model_path}.zip")
+    print(f"VECNORMALIZE: {stats_path} (replay at inference — DEPLOYMENT.md §4)")
     print(f"TENSORBOARD: {experiment_dir} (inspect with: tensorboard --logdir {experiment_dir})")
     return 0
 

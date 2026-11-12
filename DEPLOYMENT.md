@@ -51,9 +51,18 @@ registers itself in the `AGENT` group at `_ready()` for NcnnSync discovery).
 Game-specific observations, reward shaping, and actions are layered on in
 follow-up issues; the training scene needs no changes for the pipeline itself.
 
-**Trainer side.** The stock godot-rl flow: `StableBaselinesGodotEnv` →
-`VecMonitor` → SB3 `PPO` ("MultiInputPolicy"). The repo already contains the
-validated end-to-end connectivity harness — run it first on any new machine:
+**Trainer side.** The stock godot-rl flow, as wired up by
+[`train.py`](train.py) (issues #466/#467): `StableBaselinesGodotEnv` →
+`VecMonitor` → `VecNormalize` → SB3 `PPO` ("MultiInputPolicy"). **VecNormalize
+(issue #468)** normalizes both observations and rewards with running statistics
+(`norm_obs=True`, `norm_reward=True`, `clip_obs=10.0`, `clip_reward=10.0`) —
+critical for PPO stability, since raw rewards may have large magnitudes or high
+variance across components and would otherwise let a single component dominate
+the gradient updates. `train.py` saves the running statistics to
+`<experiment_dir>/vecnormalize.pkl` next to `final_model.zip`, and after every
+run verifies a sample batch of normalized observations has mean ≈ 0 and
+std ≈ 1. The repo also ships the validated end-to-end connectivity harness —
+run it first on any new machine:
 
 ```bash
 .venv-train/bin/python rl_connectivity_test.py --godot /usr/local/bin/godot --steps 96
@@ -61,9 +70,8 @@ validated end-to-end connectivity harness — run it first on any new machine:
 
 Success = godot-rl's "connection established", PPO step logs, zero socket errors,
 and NcnnSync staying in TRAINING mode (validated in issue #356 / PR #371).
-For real training, write the same setup into a `train_forms.py` with the
-checkpointing of your choice (see godot-rl's
-`examples/stable_baselines3_example.py`).
+For real training run `train.py` (see its `--help`; hyperparameters in
+[`HYPERPARAMETERS.md`](HYPERPARAMETERS.md)).
 
 **Standalone training executable (issue #465).** The "Training (Linux)" export
 preset in `export_presets.cfg` builds the subprocess binary the Python trainer
@@ -126,7 +134,11 @@ extending the roster:
 
 1. **Export the trained policy to ONNX** (standard `torch.onnx.export` of the SB3
    policy network — `model.policy`, `torch.onnx.export(policy, dummy_obs,
-   "policy.onnx")`; an LSTM-free MLP policy exports cleanly).
+   "policy.onnx")`; an LSTM-free MLP policy exports cleanly). **When trained
+   with `train.py`, the policy expects VecNormalize-normalized observations**, so
+   feed the network the *normalized* dummy obs and do NOT bake the
+   normalization into the graph — the game replays it pre-inference via the
+   `obs_norm_stats_path` sidecar (step 4).
 2. **Convert** with pnnx (from the convert venv). `inputshape` must match the
    bot's observation size:
 
@@ -179,6 +191,42 @@ Optional sidecars (same folder, JSON): `obs_norm_stats_path` (VecNormalize),
 `action_dist_stats_path` (continuous DiagGaussian std), `recurrent_stats_path`
 (LSTM hidden-state carry). `deterministic_inference = true` (default) takes the
 argmax action; set `inference_seed >= 0` for reproducible eval runs.
+
+**VecNormalize statistics are REQUIRED for inference (issue #468).** `train.py`
+normalizes observations and rewards with SB3's VecNormalize, so the ncnn model
+expects *normalized* inputs. If the game feeds raw `get_obs()` values to a
+policy trained this way, the policy receives out-of-distribution inputs and
+behaves unpredictably. Convert the saved `vecnormalize.pkl` into the JSON
+sidecar the controller replays pre-inference (the exact transform —
+`(obs - mean) / sqrt(var + epsilon)`, clamped to `clip_obs` — is mirrored by
+[`addons/godot_native_rl/controllers/obs_normalize.gd`):
+
+```bash
+.venv-train/bin/python - <<'EOF'
+import json, pickle
+with open("runs/tdm_v1/vecnormalize.pkl", "rb") as f:
+    norm = pickle.load(f)  # VecNormalize.save() pickles the wrapper itself
+rms = norm.obs_rms
+# Dict observation space (godot-rl: {"obs": flat_vector}) -> per-key stats;
+# the in-game controller consumes the flattened "obs" vector.
+if isinstance(rms, dict):
+    rms = rms["obs"]
+sidecar = {
+    "obs_size": int(rms.mean.size),
+    "mean": rms.mean.tolist(),
+    "var": rms.var.tolist(),
+    "epsilon": float(norm.epsilon),
+    "clip_obs": float(norm.clip_obs),  # exactly what training clipped to
+}
+with open("models/policy.norm.json", "w") as f:
+    json.dump(sidecar, f)
+EOF
+```
+
+Then set `obs_norm_stats_path = res://models/policy.norm.json` on the controller
+node alongside `model_param_path`/`model_bin_path`. Skipping this sidecar on a
+VecNormalize-trained policy silently degrades the bot (no load error — just
+out-of-distribution inputs).
 
 The plugin must be **enabled** (Project → Project Settings → Plugins → *Godot
 Native RL*): it auto-packs `*.ncnn.param` / `*.ncnn.bin` into every export —
