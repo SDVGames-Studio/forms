@@ -32,6 +32,15 @@ and behaves unpredictably. After training, a sample batch of normalized
 observations is checked to have a mean close to 0 and a standard deviation
 close to 1 (Definition of Done, issue #468).
 
+Checkpoints (issue #471): every --checkpoint_every timesteps the model is
+saved to <experiment_dir>/checkpoints/rl_model_<timesteps>_steps.zip (SB3
+CheckpointCallback naming) together with a matching
+rl_model_<timesteps>_steps_vecnormalize.pkl snapshot, so any intermediate
+checkpoint can be resumed or exported like the final model. At the end of
+training the final policy lands at <experiment_dir>/final_model.zip via
+model.save() with vecnormalize.pkl next to it — the exact artifacts the
+Phase 7 export pipeline consumes (see DEPLOYMENT.md §2/§3).
+
 Arguments:
   --env_path        exported training executable. The wrapper appends the
                     platform-specific suffix (.x86_64 / .exe / .app) if the
@@ -63,6 +72,11 @@ Arguments:
                     distribution per head, per-component reward breakdown —
                     see training_metrics.py; SB3's own standard metrics are
                     logged by PPO regardless).
+  --checkpoint_every timesteps between model checkpoints (issue #471:
+                    SB3 CheckpointCallback writes
+                    <experiment_dir>/checkpoints/rl_model_<steps>_steps.zip,
+                    each with a co-located *_vecnormalize.pkl snapshot;
+                    0 disables checkpointing).
   --seed            RNG seed for the policy-side generators (torch /
                     numpy / python random — policy init and action
                     sampling). The godot-rl VecEnv exposes no env seed, so
@@ -78,6 +92,7 @@ import sys
 
 import numpy as np
 from stable_baselines3 import PPO
+from stable_baselines3.common.callbacks import CheckpointCallback
 from stable_baselines3.common.vec_env.vec_monitor import VecMonitor
 from stable_baselines3.common.vec_env.vec_normalize import VecNormalize
 
@@ -125,6 +140,17 @@ def resolve_env_path(env_path: str) -> str:
         f"  builds/training/forms_training.x86_64 next to its .pck and the\n"
         f"  libncnn_runner shared library."
     )
+
+
+def checkpoint_save_freq(checkpoint_every: int, n_envs: int) -> int | None:
+    """Convert a timestep cadence into SB3 CheckpointCallback's save_freq
+    (issue #471). One callback call == one VecEnv step == n_envs timesteps,
+    so the SB3 docs' conversion is max(checkpoint_every // n_envs, 1); the
+    floor makes the effective cadence up to n_envs - 1 timesteps shorter
+    than requested. None disables checkpointing (--checkpoint_every 0)."""
+    if checkpoint_every <= 0 or n_envs <= 0:
+        return None
+    return max(checkpoint_every // n_envs, 1)
 
 
 def _obs_keys(obs) -> dict:
@@ -229,6 +255,12 @@ def main() -> int:
         help="timesteps between TensorBoard team-deathmatch metric dumps (issue #469: win rate, episode length, action distribution, reward breakdown)",
     )
     parser.add_argument(
+        "--checkpoint_every",
+        type=int,
+        default=100_000,
+        help="timesteps between model checkpoints (issue #471: rl_model_<steps>_steps.zip + vecnormalize snapshot in <experiment_dir>/checkpoints/; 0 disables)",
+    )
+    parser.add_argument(
         "--seed",
         type=int,
         default=None,
@@ -330,7 +362,26 @@ def main() -> int:
             metrics_every=args.metrics_every,
             head_names=head_names,
         )
-        model.learn(total_timesteps=args.timesteps, callback=[metrics_callback])
+        callbacks = [metrics_callback]
+        # Issue #471: periodic checkpoints. CheckpointCallback counts
+        # callback calls, not timesteps (one call == one VecEnv step ==
+        # num_envs timesteps), so convert the --checkpoint_every cadence
+        # first. save_vecnormalize co-locates a normalization snapshot with
+        # every checkpoint, making each one independently resumable and
+        # exportable for Phase 7 just like final_model.zip.
+        save_freq = checkpoint_save_freq(args.checkpoint_every, env.num_envs)
+        checkpoints_dir: pathlib.Path | None = None
+        if save_freq is not None:
+            checkpoints_dir = experiment_dir / "checkpoints"
+            callbacks.append(
+                CheckpointCallback(
+                    save_freq=save_freq,
+                    save_path=str(checkpoints_dir),
+                    name_prefix="rl_model",
+                    save_vecnormalize=True,
+                )
+            )
+        model.learn(total_timesteps=args.timesteps, callback=callbacks)
         # Definition of Done (issue #468): prove the normalization statistics
         # are sane before saving anything — a sample batch of normalized
         # observations must be ~N(0, 1).
@@ -357,6 +408,13 @@ def main() -> int:
     )
     print(f"MODEL: {model_path}.zip")
     print(f"VECNORMALIZE: {stats_path} (replay at inference — DEPLOYMENT.md §4)")
+    if checkpoints_dir is not None:
+        n_checkpoints = len(list(checkpoints_dir.glob("rl_model_*_steps.zip")))
+        print(
+            f"CHECKPOINTS: {checkpoints_dir} ({n_checkpoints} rl_model_*_steps.zip, "
+            f"every ~{args.checkpoint_every} steps + per-checkpoint "
+            f"vecnormalize snapshots)"
+        )
     print(
         f"METRICS: team-deathmatch metrics every {args.metrics_every} steps "
         f"(issue #469; heads: {head_names or 'head_i (names unavailable)'} — "
