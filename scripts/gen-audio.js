@@ -14,6 +14,18 @@
 //             decay under a closing lowpass (700 Hz -> 90 Hz), a sub-bass
 //             rumble (~48 Hz with a slow frequency wobble) and a shallow
 //             ~5.5 Hz amplitude wobble for texture. ~1.2 s total.
+//   rocket    (issue #495) warhead detonation — a brighter initial crack
+//             (~2.2 kHz noise dying in ~30 ms) over a bigger, deeper body
+//             than the grenade: closing lowpass 1.0 kHz -> 70 Hz (~0.38 s
+//             tau) plus a ~40 Hz rumble with a long 0.75 s tail. ~1.3 s.
+//   mineTimer (issue #495) the armed mine's fuse — an accelerating beep
+//             train (1.55 kHz sine blips, gaps shrinking geometrically
+//             0.34 s * 0.82^i) running exactly the 2.0 s MINE_FUSE, the
+//             last ~150 ms silent before the detonation takes over.
+//   jackhammer (issue #495) seamless 0.8 s pneumatic drill loop — a 25 Hz
+//             impact train (sharp noise click + 105 Hz thump + rattle per
+//             hit, per-hit jitter seeded by impact index so the loop
+//             stays identical every cycle). Imported loop_mode=Forward.
 //
 // Output: 16-bit PCM mono 44.1 kHz WAV files under assets/audio/.
 
@@ -28,6 +40,9 @@ const OUT = {
 	mine: 'assets/audio/explosions/mine.wav',
 	teleport: 'assets/audio/tools/teleport.wav',
 	rock: 'assets/audio/tools/rock_crumble.wav',
+	rocket: 'assets/audio/explosions/rocket.wav',
+	mineTimer: 'assets/audio/explosions/mine_timer.wav',
+	jackhammer: 'assets/audio/weapons/jackhammer.wav',
 };
 
 // mulberry32 — tiny deterministic PRNG (fixed seeds per sound).
@@ -253,9 +268,108 @@ function makeRockCrumble() {
 	return normalize(out, 0.85);
 }
 
+// Issue #495: rocket warhead detonation — brighter opening crack and a
+// deeper, longer body than the grenade (the rocket is the big weapon).
+function makeRocket() {
+	const n = Math.floor(1.3 * SR);
+	const rnd = prng(0x40c8e7); // fixed seed -> deterministic asset
+	const out = new Float64Array(n);
+	let lp = 0.0;
+	let crackLp = 0.0;
+	let rumblePhase = 0.0;
+	for (let i = 0; i < n; i++) {
+		const t = i / SR;
+		// 5 ms attack then ~0.38 s exponential decay.
+		const env = Math.min(1.0, t / 0.005) * Math.exp(-t / 0.38);
+		// Closing lowpass 1.0 kHz -> 70 Hz.
+		const cutoff = 70 + 930 * Math.exp(-t / 0.22);
+		lp += (rnd() * 2 - 1 - lp) * lpCoef(cutoff);
+		// Bright opening crack: ~2.2 kHz noise dying within ~30 ms.
+		crackLp += (rnd() * 2 - 1 - crackLp) * lpCoef(2200);
+		const crack = crackLp * Math.exp(-t / 0.030) * 0.75;
+		// Deep rumble: ~40 Hz with a +-3 Hz wobble (~2.0 Hz), long 0.75 s tail.
+		const rumbleF = 40 + 3.0 * Math.sin(2 * Math.PI * 2.0 * t);
+		rumblePhase += rumbleF / SR;
+		const rumble =
+			Math.sin(2 * Math.PI * rumblePhase) * Math.exp(-t / 0.75);
+		// Shallow ~5 Hz amplitude wobble for texture.
+		const wobble = 0.87 + 0.13 * Math.sin(2 * Math.PI * 5.0 * t);
+		out[i] = (lp * 0.8 + rumble * 0.85 + crack) * env * wobble;
+	}
+	return normalize(out, 0.96);
+}
+
+// Issue #495: the armed mine's TIMER — an accelerating beep train across
+// exactly the 2.0 s MINE_FUSE (ProjectileBody.MINE_FUSE). The last ~150 ms
+// fall silent so the detonation (mine.wav, issue #475) takes over cleanly.
+function makeMineTimer() {
+	const n = Math.floor(2.0 * SR);
+	const out = new Float64Array(n);
+	// Beep schedule: gaps shrink geometrically (0.34 s * 0.82^i) — a calm
+	// tick tick that quickens into a solid trill right before the blast.
+	const beeps = [];
+	let t0 = 0.04;
+	for (let gap = 0.34; t0 < 1.82; gap *= 0.82) {
+		beeps.push(t0);
+		t0 += gap;
+	}
+	for (const start of beeps) {
+		const i0 = Math.floor(start * SR);
+		const len = Math.floor(0.055 * SR);
+		for (let i = 0; i < len && i0 + i < n; i++) {
+			const t = i / SR;
+			// 1.55 kHz blip: 4 ms attack, ~30 ms exponential decay.
+			const env = Math.min(1.0, t / 0.004) * Math.exp(-t / 0.030);
+			out[i0 + i] += Math.sin(2 * Math.PI * 1550 * t) * env;
+		}
+	}
+	return normalize(out, 0.72); // a warning beep — quieter than the blast
+}
+
+// Issue #495: the jackhammer's ground drilling — a seamless 0.8 s loop:
+// a 25 Hz impact train (period exactly 1764 samples at 44.1 kHz), every
+// hit a sharp noise click + a 105 Hz thump + a mid rattle, with a small
+// per-hit jitter (seeded BY IMPACT INDEX, never per-run) so the loop
+// bytes repeat identically every cycle and the loop point is silent.
+function makeJackhammer() {
+	const period = SR / 25; // 1764 samples exactly
+	const hits = 20; // 0.8 s total
+	const n = period * hits;
+	const out = new Float64Array(n);
+	for (let h = 0; h < hits; h++) {
+		const rnd = prng(0x3ac9 ^ (h * 0x9e37)); // deterministic per-hit seed
+		const gain = 0.85 + 0.15 * rnd(); // per-hit loudness jitter
+		const i0 = h * period;
+		let clickLp = 0.0;
+		let rattleLp = 0.0;
+		let thumpPhase = 0.0;
+		const len = period; // every layer dies well within one period
+		for (let i = 0; i < len; i++) {
+			const t = i / SR;
+			// 2 ms attack then a fast exponential body.
+			const env = Math.min(1.0, t / 0.002) * Math.exp(-t / 0.028);
+			// Sharp bit-on-rock click: ~2.8 kHz noise, ~6 ms.
+			clickLp += (rnd() * 2 - 1 - clickLp) * lpCoef(2800);
+			const click = clickLp * Math.exp(-t / 0.006) * 0.8;
+			// Mechanical rattle: ~600 Hz noise, ~25 ms.
+			rattleLp += (rnd() * 2 - 1 - rattleLp) * lpCoef(600);
+			const rattle = rattleLp * Math.exp(-t / 0.025) * 0.55;
+			// Body thump: 105 Hz, ~12 ms.
+			thumpPhase += 105 / SR;
+			const thump =
+				Math.sin(2 * Math.PI * thumpPhase) * Math.exp(-t / 0.012);
+			out[i0 + i] += (click + rattle + thump * 0.9) * env * gain;
+		}
+	}
+	return normalize(out, 0.9);
+}
+
 writeWav(OUT.shot, makeShot());
 writeWav(OUT.explosion, makeExplosion());
 writeWav(OUT.grenade, makeGrenade());
 writeWav(OUT.mine, makeMine());
 writeWav(OUT.teleport, makeTeleport());
 writeWav(OUT.rock, makeRockCrumble());
+writeWav(OUT.rocket, makeRocket());
+writeWav(OUT.mineTimer, makeMineTimer());
+writeWav(OUT.jackhammer, makeJackhammer());

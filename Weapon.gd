@@ -39,8 +39,16 @@ const ProjectileBodyScript := preload("res://ProjectileBody.gd")
 ## Owner task 2026-11-11 (godot-sound-work skill): the shot sound —
 ## preloaded once, never loaded per shot at runtime.
 const SHOT_SOUND := preload("res://assets/audio/weapons/shot.wav")
+## Issue #495: the jackhammer's ground-drilling loop — the drill IS the
+## weapon's sound: played for the drill's whole run (started by
+## _start_jackhammer, stopped by _end_jackhammer). The 0.8 s asset is
+## looped at runtime (see _ready) so it covers the 1–3 s drill.
+const JACKHAMMER_SOUND := preload("res://assets/audio/weapons/jackhammer.wav")
 ## One AudioStreamPlayer per sound category, on the SFX bus.
 var _shot_player: AudioStreamPlayer
+## Issue #495: the jackhammer drill loop player (weapons/tools category,
+## SFX bus) — the firing shot bang is skipped for the jackhammer in _fire.
+var _drill_player: AudioStreamPlayer
 
 const COOLDOWN := 0.3
 
@@ -314,6 +322,19 @@ func _ready() -> void:
 	_shot_player.stream = SHOT_SOUND
 	_shot_player.bus = "SFX"
 	add_child(_shot_player)
+	# Issue #495: the drill loop player — created once with the weapon,
+	# played per drill. The stream is a per-instance DUPLICATE with the
+	# loop set in code: Godot 4.7's headless wav import does not honor
+	# edit/loop_mode sidecar pins (verified — compress pins apply, loop
+	# pins do not), and each Weapon instance must own its loop points.
+	var drill_stream: AudioStreamWAV = JACKHAMMER_SOUND.duplicate()
+	drill_stream.loop_mode = AudioStreamWAV.LOOP_FORWARD
+	drill_stream.loop_begin = 0
+	drill_stream.loop_end = drill_stream.data.size() / 2  # 16-bit mono
+	_drill_player = AudioStreamPlayer.new()
+	_drill_player.stream = drill_stream
+	_drill_player.bus = "SFX"
+	add_child(_drill_player)
 
 
 func _physics_process(delta: float) -> void:
@@ -568,7 +589,10 @@ func _fire(power := 1.0) -> void:
 				WeaponInventory.WEAPONS.size() - 1)]])
 	# Owner task 2026-11-11: the shot sound fires through the shared
 	# player on every committed shot (all weapons, player and NPC alike).
-	_play_shot_sound()
+	# Issue #495: EXCEPT the jackhammer (weapon 5) — firing it starts the
+	# drill loop instead (see _start_jackhammer), no gunshot bang on top.
+	if selected_weapon != 5:
+		_play_shot_sound()
 	match selected_weapon:
 		0: _fire_shotgun()
 		1: _fire_rocket(power)
@@ -805,6 +829,10 @@ func _start_jackhammer(power: float = 1.0) -> void:
 		_drill_effect.add_to_group(TurnController.EFFECT_GROUP)
 		if parent != null and parent.get_parent() != null:
 			parent.get_parent().add_child(_drill_effect)
+	# Issue #495: the drill is audible from its first tick — the loop
+	# runs until _end_jackhammer stops it.
+	if _drill_player != null:
+		_drill_player.play()
 
 
 ## Issue #307: one physics tick of the drill — carve, damage, push, and
@@ -910,6 +938,9 @@ func _jackhammer_sweep_hit(parent: Node2D, delta: float) -> void:
 ## gate so the handover can pass the turn.
 func _end_jackhammer() -> void:
 	_drill_left = 0.0
+	# Issue #495: the drill loop ends with the drill.
+	if _drill_player != null and _drill_player.playing:
+		_drill_player.stop()
 	var parent := get_parent() as CharacterBody2D
 	if parent != null and is_instance_valid(parent):
 		parent.velocity = Vector2.ZERO
