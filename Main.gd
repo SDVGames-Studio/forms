@@ -22,6 +22,9 @@ func _ready() -> void:
 	# Main-menu spec §6.3 (M3): apply the persisted display settings at
 	# boot, right after they load (fullscreen/windowed, size, vsync).
 	GameConfig.apply_display_settings()
+	# Issue #472: apply the persisted audio settings at boot (bus
+	# volumes for Master/Music/SFX), right after they load.
+	GameConfig.apply_audio_settings()
 	# Issue #476: the main menu's endless theme — starts on every entry
 	# into the main menu; starting a level swaps in the level's track.
 	MusicManager.play_for_level("res://Main.tscn")

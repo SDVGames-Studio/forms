@@ -10,7 +10,10 @@ extends Control
 ## their own DEBUG category screen (DebugMenu) instead of on this root.
 ## Milestone M3 (2026-11-12): the GRAPHICS category (spec §6.3) opens
 ## GraphicsMenu — hidden on touch devices (owner decision Q2: display
-## settings are not meaningful there).
+## settings are not meaningful there). Issue #472: the AUDIO category
+## opens AudioMenu (one volume slider per bus: Master/Music/SFX) —
+## audio settings matter on EVERY device, so the button stays visible
+## on touch devices too.
 ## Back returns to the main menu.
 ## Issue #304: the SAME screen is reused inside the in-game pause overlay
 ## — with in_game set, navigation happens inside the overlay (the running
@@ -36,6 +39,7 @@ const SHADOW_COLOR := Color(0.05, 0.03, 0.1, 0.75)
 @onready var _team_button: Button = %TeamButton
 @onready var _hotkeys_button: Button = %HotkeysButton
 @onready var _graphics_button: Button = %GraphicsButton
+@onready var _audio_button: Button = %AudioButton
 @onready var _debug_button: Button = %DebugButton
 @onready var _back_button: Button = %BackButton
 ## Issue #348: the screen follows the main-menu template (MenuBackground
@@ -67,6 +71,9 @@ func _ready() -> void:
 	if GameConfig.is_touch_device():
 		_graphics_button.visible = false
 	_graphics_button.pressed.connect(_on_graphics_pressed)
+	# Issue #472: the audio screen — visible on every device (audio
+	# settings are as meaningful on touch devices as on desktop).
+	_audio_button.pressed.connect(_on_audio_pressed)
 	# Owner decision Q1: the debug switches live under their own category.
 	_debug_button.pressed.connect(_on_debug_pressed)
 	_back_button.pressed.connect(_on_back_pressed)
@@ -94,6 +101,13 @@ func _on_graphics_pressed() -> void:
 	if _open_submenu("res://GraphicsMenu.tscn"):
 		return
 	get_tree().change_scene_to_file("res://GraphicsMenu.tscn")
+
+
+## Issue #472: open the audio settings screen.
+func _on_audio_pressed() -> void:
+	if _open_submenu("res://AudioMenu.tscn"):
+		return
+	get_tree().change_scene_to_file("res://AudioMenu.tscn")
 
 
 ## Owner decision Q1 (2026-11-06): open the debug settings screen — the

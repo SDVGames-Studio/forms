@@ -149,11 +149,12 @@ Level Selection must only be accessible through the New Game flow.
 
 ## 6. Settings
 
-The Settings screen must contain three categories:
+The Settings screen must contain four categories:
 
 1. Teams Customization
 2. Controls
 3. Graphics
+4. Audio
 
 Each category must open its corresponding settings screen.
 
@@ -214,6 +215,7 @@ If a setting cannot be implemented reliably, report the limitation instead of ex
 - Teams Customization opens the existing TeamMenu.
 - Controls opens the existing HotkeysMenu.
 - Graphics opens the new Graphics settings screen.
+- Audio opens the audio settings screen.
 - Every settings screen must provide a way to return to Settings.
 - Settings must provide a way to return to the main menu.
 
@@ -228,6 +230,22 @@ Do not create a third independent implementation of settings.
 Where practical, share UI components and settings logic between the main menu and in-game settings overlay. Ensure that settings changed in either location remain consistent.
 
 Do not modify the pause-menu behavior unnecessarily.
+
+### 6.6 Audio
+
+The audio settings screen (issue #472) exposes one volume slider per audio bus of the project's `default_bus_layout.tres`:
+
+- Master volume.
+- Music volume.
+- SFX volume.
+
+Requirements:
+
+- Persist user-selected volumes in `settings.cfg`.
+- Apply changes immediately through `AudioServer` bus volumes.
+- 0% is silence (the -80 dB hard-mute floor).
+- Sensible defaults keep today's authored mix (Master 100%, Music 50%, SFX 100%).
+- The category stays available on touch devices.
 
 ## 7. Navigation and state management
 

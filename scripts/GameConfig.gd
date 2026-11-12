@@ -87,6 +87,44 @@ static var window_size := Vector2i(1152, 648)
 ## VSync on/off.
 static var vsync := true
 
+## Issue #472: audio settings — chosen in the audio settings screen
+## (AudioMenu), persisted in settings.cfg next to the display settings
+## and applied at boot plus on every change
+## (GameConfig.apply_audio_settings). Linear 0..1 slider values mapped
+## onto the audio buses' volume in dB. The defaults keep today's mix
+## exactly: Master and SFX ride their authored 0 dB, Music its authored
+## -6 dB (0.5 linear is -6.02 dB).
+static var master_volume := 1.0
+
+## Music bus volume (MusicManager rides the Music bus).
+static var music_volume := 0.5
+
+## SFX bus volume (the sound effects ride the SFX bus).
+static var sfx_volume := 1.0
+
+## Issue #472: push the persisted audio settings to the AudioServer —
+## called at boot (Main, after load_settings) and on every change in
+## AudioMenu. Linear 0..1 maps through linear_to_db(); 0 is floored to
+## the -80 dB hard-mute threshold because linear_to_db(0) is -INF.
+## Safe on the dummy audio driver (headless): wiring and persistence
+## are asserted, not sound.
+static func apply_audio_settings() -> void:
+	_set_bus_volume("Master", master_volume)
+	_set_bus_volume("Music", music_volume)
+	_set_bus_volume("SFX", sfx_volume)
+
+
+## Issue #472: set one bus' linear volume on the AudioServer; unknown
+## bus names (no matching bus in default_bus_layout.tres) are skipped.
+static func _set_bus_volume(bus_name: String, linear: float) -> void:
+	var index := AudioServer.get_bus_index(bus_name)
+	if index < 0:
+		return
+	var clamped := clampf(linear, 0.0, 1.0)
+	var db := -80.0 if clamped <= 0.0001 else linear_to_db(clamped)
+	AudioServer.set_bus_volume_db(index, db)
+
+
 ## Owner decision Q2 (2026-11-06): the graphics category is HIDDEN on
 ## touch devices — display mode/resolution/vsync are not meaningful
 ## there. Detected through OS features so it works before any scene.
@@ -303,6 +341,11 @@ static func load_settings() -> void:
 	window_size = cfg.get_value("settings", "window_size",
 		Vector2i(1152, 648))
 	vsync = cfg.get_value("settings", "vsync", true)
+	# Issue #472: audio settings, same defaults as the statics when the
+	# keys are missing (first boot, older settings.cfg).
+	master_volume = cfg.get_value("settings", "master_volume", 1.0)
+	music_volume = cfg.get_value("settings", "music_volume", 0.5)
+	sfx_volume = cfg.get_value("settings", "sfx_volume", 1.0)
 	# Issue #294: custom hotkeys — snapshot the authored defaults FIRST,
 	# then apply whatever was saved over them.
 	capture_hotkey_defaults()
@@ -322,6 +365,10 @@ static func save_settings() -> void:
 	cfg.set_value("settings", "display_mode", display_mode)
 	cfg.set_value("settings", "window_size", window_size)
 	cfg.set_value("settings", "vsync", vsync)
+	# Issue #472: audio settings.
+	cfg.set_value("settings", "master_volume", master_volume)
+	cfg.set_value("settings", "music_volume", music_volume)
+	cfg.set_value("settings", "sfx_volume", sfx_volume)
 	cfg.save(SETTINGS_PATH)
 
 
