@@ -63,6 +63,12 @@ Arguments:
                     distribution per head, per-component reward breakdown —
                     see training_metrics.py; SB3's own standard metrics are
                     logged by PPO regardless).
+  --seed            RNG seed for the policy-side generators (torch /
+                    numpy / python random — policy init and action
+                    sampling). The godot-rl VecEnv exposes no env seed, so
+                    environment-level stochasticity is not covered. Sweep
+                    runs (issue #470) reuse ONE seed across every
+                    combination so only the hyperparameters differ.
 """
 
 import argparse
@@ -222,6 +228,12 @@ def main() -> int:
         default=DEFAULT_METRICS_EVERY,
         help="timesteps between TensorBoard team-deathmatch metric dumps (issue #469: win rate, episode length, action distribution, reward breakdown)",
     )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        help="PPO RNG seed; hyperparameter sweeps (issue #470) reuse one seed across combinations",
+    )
     args = parser.parse_args()
 
     # Be gentle on shared machines: the nets here are tiny (mirrors
@@ -282,6 +294,22 @@ def main() -> int:
             f"buffer (n_steps {args.n_steps} x n_envs {env.num_envs} = "
             f"{rollout_size}); pick a batch_size that divides {rollout_size}."
         )
+    # Seeding for sweeps (issue #470): seed the RNGs DIRECTLY instead of
+    # PPO(seed=...) — SB3's set_random_seed calls VecEnv.seed(), which
+    # godot-rl's StableBaselinesGodotEnv does not implement (NotImplemented-
+    # Error). Manual torch/numpy/random seeding makes policy init and action
+    # sampling reproducible across runs; the Godot env itself exposes no
+    # seed, so env-level stochasticity stays unseeded (documented in
+    # HYPERPARAMETERS.md).
+    if args.seed is not None:
+        import random as _random
+
+        import torch as _th
+
+        _random.seed(args.seed)
+        np.random.seed(args.seed)
+        _th.manual_seed(args.seed)
+
     policy_kwargs = {"net_arch": {"pi": args.net_arch, "vf": args.net_arch}}
     model = PPO(
         "MultiInputPolicy",
@@ -324,7 +352,7 @@ def main() -> int:
     )
     print(
         f"CONFIG: lr={args.learning_rate} ent_coef={args.ent_coef} "
-        f"net_arch={args.net_arch} n_steps={args.n_steps} "
+        f"seed={args.seed} net_arch={args.net_arch} n_steps={args.n_steps} "
         f"batch_size={args.batch_size} (see HYPERPARAMETERS.md)"
     )
     print(f"MODEL: {model_path}.zip")

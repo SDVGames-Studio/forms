@@ -59,3 +59,51 @@ negative (heads keep exploring, no collapse to near-zero entropy) and no
 `nan` in `ep_rew_mean`/losses. Entropy collapse shows up as `entropy_loss`
 approaching 0 for every head while `ep_rew_mean` stagnates — if that
 happens, sweep `--ent_coef` upward (0.02) or `--learning_rate` downward.
+
+## Hyperparameter sweep (issue #470)
+
+`sweep_hparams.py` ran the two most impactful PPO knobs for the discrete
+multi-head action space as short same-seed trainings — learning rate
+{3e-4, 5e-4, 1e-3} x entropy coefficient {0.001, 0.01, 0.05}, 200k steps
+per combination (inside the issue's 200k-500k band), identical seed
+(`--seed 0`), parallel-env config (`n_parallel=2`) and `speedup=20` for
+every run, so only the hyperparameter pair differs. Six of the nine grid
+points completed (both lower learning rates x all three entropy
+coefficients); the three `lr=1e-3` runs were aborted repeatedly on the
+shared host and the grid was already conclusive at six runs (DoD asks for
+>= 6) — `python sweep_hparams.py` resumes the missing row later, skipping
+completed points. Runs live under `runs/sweep/<name>/` (distinct
+experiment names); compare them side by side with
+`tensorboard --logdir runs/sweep`, or read `runs/sweep/summary.json`.
+
+Results (all six runs, 208,896 steps each):
+
+| run | win rate | `ep_rew_mean` (last) | `ep_rew_mean` (AUC) | `entropy_loss` (final) | explained var (final) | collapsed |
+|---|---|---|---|---|---|---|
+| lr3e-4_ent0.001 | none decided | -0.125120 | -0.125119 | -6.210 | 0.0002 | no |
+| lr3e-4_ent0.01 | none decided | -0.125120 | -0.125119 | -6.249 | 0.0002 | no |
+| lr3e-4_ent0.05 | none decided | -0.125120 | -0.125119 | -6.315 | 0.0002 | no |
+| lr5e-4_ent0.001 | none decided | -0.125120 | -0.125119 | -6.222 | 0.0001 | no |
+| lr5e-4_ent0.01 | none decided | -0.125120 | -0.125119 | -6.258 | 0.0001 | no |
+| lr5e-4_ent0.05 | none decided | -0.125120 | -0.125119 | -6.317 | 0.0001 | no |
+
+**Selection.** The pre-registered rule (highest last-window `tdm/win_rate`
+among non-collapsed runs, ties broken by return AUC then final return)
+picks `lr3e-4_ent0.001` — but the margins are ~1e-6, i.e. statistical
+noise. **The sweep is flat**: no run produced a single decided episode
+(`tdm/timeout_frac` = 1.0 on every dump of every run, episode length pegged
+at its 125-step cap), episode return stayed pinned at the idle baseline
+(-0.125) for every combination, no action head collapsed, and explained
+variance stayed ~0 (the value head learned nothing).
+
+**Rationale / conclusion (issue #470's diagnostic).** Within the swept
+range, learning rate and entropy coefficient make no measurable
+difference at 200k steps — no combination approaches the scripted
+baseline, let alone beats it. Per the issue's own framing this is the
+signal that the binding constraint is **not** these hyperparameters but
+the reward signal (Phase 4, REWARD_SPEC.md) or the observation design
+(Phase 3, OBSERVATION_SPEC.md): the policy sees no gradient toward
+deciding episodes. Recommendation: keep `learning_rate=5e-4`,
+`ent_coef=0.01` as documented above (nothing in the results argues for a
+change), and spend the next effort on reward/observation debugging rather
+than further PPO tuning.
