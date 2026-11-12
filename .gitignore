@@ -14,9 +14,10 @@
 *.swp
 .DS_Store
 
-# Export builds
-export/
-builds/
+# Export builds (root-anchored: an unanchored `export/` swallowed
+# addons/godot_native_rl/export/ during the v0.4.0 install — PR #349)
+/export/
+/builds/
 *.exe
 *.pck
 *.zip
