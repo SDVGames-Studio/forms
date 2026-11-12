@@ -74,15 +74,24 @@ const Stats := preload("res://scripts/CharacterStats.gd")
 const GRAVITY := Stats.GRAVITY
 
 ## Issue #475 (godot-sound-work skill): the blast/crumble sounds —
-## preloaded once, never loaded per blast at runtime. The rocket keeps
-## its current silent blast (not part of the issue's scope).
+## preloaded once, never loaded per blast at runtime. Issue #495 adds
+## the rocket's warhead blast (silent until now) and the mine TIMER
+## beep that runs while the armed fuse counts down to that blast.
 const GRENADE_SOUND := preload("res://assets/audio/explosions/grenade.wav")
 const MINE_SOUND := preload("res://assets/audio/explosions/mine.wav")
 const ROCK_SOUND := preload("res://assets/audio/tools/rock_crumble.wav")
+const ROCKET_SOUND := preload("res://assets/audio/explosions/rocket.wav")
+## Issue #495: the armed mine's fuse — an accelerating beep train sized
+## to exactly MINE_FUSE (2.0 s) that falls silent for the detonation
+## (MINE_SOUND) — Worms-style: the blink now has a voice.
+const MINE_TIMER_SOUND := preload("res://assets/audio/explosions/mine_timer.wav")
 ## One AudioStreamPlayer per projectile, on the SFX bus (the kind is
 ## known at _ready, so the stream is picked once there) — each blast
 ## owns its player so simultaneous explosions never cut each other short.
 var _blast_player: AudioStreamPlayer
+## Issue #495: the mine's timer beep — its own player (created for mines
+## in _ready), started when the fuse arms, stopped by the detonation.
+var _timer_player: AudioStreamPlayer
 ## Issue #293: no gravity context is captured from the wielder anymore —
 ## gravity is sampled every step from the level's indestructible grounds
 ## (the same terrain rule the figures follow).
@@ -198,8 +207,18 @@ func _ready() -> void:
 			_blast_player.stream = MINE_SOUND
 		Kind.ROCK:
 			_blast_player.stream = ROCK_SOUND
+		Kind.ROCKET:
+			_blast_player.stream = ROCKET_SOUND
 	_blast_player.bus = "SFX"
 	add_child(_blast_player)
+
+	# Issue #495: the mine's TIMER beep — its own SFX-bus player, played
+	# when the fuse arms (see _physics_process) and stopped by _explode.
+	if kind == Kind.MINE:
+		_timer_player = AudioStreamPlayer.new()
+		_timer_player.stream = MINE_TIMER_SOUND
+		_timer_player.bus = "SFX"
+		add_child(_timer_player)
 
 
 func _physics_process(delta: float) -> void:
@@ -231,6 +250,10 @@ func _physics_process(delta: float) -> void:
 					_mine_light = ShotLight.create(
 						Color(1.0, 0.2, 0.1), 80.0, 1.2)
 					add_child(_mine_light)
+					# Issue #495: the fuse is audible — the accelerating timer
+					# beep runs the full MINE_FUSE countdown.
+					if _timer_player != null:
+						_timer_player.play()
 					return
 	else:
 		# Armed: blink red while the fuse counts down, then explode.
@@ -311,6 +334,10 @@ func _explode() -> void:
 	if _exploded:
 		return
 	_exploded = true
+	# Issue #495: a mine detonated mid-fuse (damaged by another blast)
+	# must not stack its timer beep on the detonation — stop it first.
+	if _timer_player != null and _timer_player.playing:
+		_timer_player.stop()
 	# Issue #475: every detonation/crumble is audible from here — the
 	# sound starts before the ground carving, damage and chain reactions
 	# below run while it plays.
