@@ -8,7 +8,9 @@ extends Control
 ## is the CONTROLS category. Main-menu spec M2 (owner decision Q1,
 ## 2026-11-06): the Debug Mode and Gravity Field switches live under
 ## their own DEBUG category screen (DebugMenu) instead of on this root.
-## The GRAPHICS category (spec §6.3) arrives with milestone M3.
+## Milestone M3 (2026-11-12): the GRAPHICS category (spec §6.3) opens
+## GraphicsMenu — hidden on touch devices (owner decision Q2: display
+## settings are not meaningful there).
 ## Back returns to the main menu.
 ## Issue #304: the SAME screen is reused inside the in-game pause overlay
 ## — with in_game set, navigation happens inside the overlay (the running
@@ -33,6 +35,7 @@ const SHADOW_COLOR := Color(0.05, 0.03, 0.1, 0.75)
 
 @onready var _team_button: Button = %TeamButton
 @onready var _hotkeys_button: Button = %HotkeysButton
+@onready var _graphics_button: Button = %GraphicsButton
 @onready var _debug_button: Button = %DebugButton
 @onready var _back_button: Button = %BackButton
 ## Issue #348: the screen follows the main-menu template (MenuBackground
@@ -57,6 +60,13 @@ func _ready() -> void:
 	_team_button.pressed.connect(_on_team_pressed)
 	# Issue #294: the hotkeys screen — rebindable, persisted key bindings.
 	_hotkeys_button.pressed.connect(_on_hotkeys_pressed)
+	# Main-menu spec §6.3 (M3): the graphics screen. Owner decision Q2:
+	# hidden on touch devices — display settings are not meaningful there
+	# (the button stays for desktop; hiding, not disabling, per spec §6.3
+	# "only expose settings that can actually be applied").
+	if GameConfig.is_touch_device():
+		_graphics_button.visible = false
+	_graphics_button.pressed.connect(_on_graphics_pressed)
 	# Owner decision Q1: the debug switches live under their own category.
 	_debug_button.pressed.connect(_on_debug_pressed)
 	_back_button.pressed.connect(_on_back_pressed)
@@ -77,6 +87,13 @@ func _on_hotkeys_pressed() -> void:
 	if _open_submenu("res://HotkeysMenu.tscn"):
 		return
 	get_tree().change_scene_to_file("res://HotkeysMenu.tscn")
+
+
+## Main-menu spec §6.3 (M3): open the graphics settings screen.
+func _on_graphics_pressed() -> void:
+	if _open_submenu("res://GraphicsMenu.tscn"):
+		return
+	get_tree().change_scene_to_file("res://GraphicsMenu.tscn")
 
 
 ## Owner decision Q1 (2026-11-06): open the debug settings screen — the

@@ -19,6 +19,9 @@ func _ready() -> void:
 	# Issue #252: the debug-mode switch (and any future setting) loads
 	# before any level can build its figures.
 	GameConfig.load_settings()
+	# Main-menu spec §6.3 (M3): apply the persisted display settings at
+	# boot, right after they load (fullscreen/windowed, size, vsync).
+	GameConfig.apply_display_settings()
 	# Issue #476: the main menu's endless theme — starts on every entry
 	# into the main menu; starting a level swaps in the level's track.
 	MusicManager.play_for_level("res://Main.tscn")

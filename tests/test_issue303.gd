@@ -32,6 +32,9 @@ class Issue303Driver extends Node:
 		# Main-menu spec M2 (Q1): the debug switches live under their own
 		# category screen — Escape returns to the settings screen.
 		["res://DebugMenu.tscn", "res://SettingsMenu.tscn"],
+		# Main-menu spec M3 (§6.3): the graphics screen follows the same
+		# Escape-as-Back rule.
+		["res://GraphicsMenu.tscn", "res://SettingsMenu.tscn"],
 	]
 
 
