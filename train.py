@@ -58,6 +58,11 @@ Arguments:
                     sample efficiency and update stability).
   --batch_size      minibatch size per gradient step (256; must divide
                     n_steps × n_envs).
+  --metrics_every   timesteps between TensorBoard team-deathmatch metric
+                    dumps (issue #469: win rate, avg episode length, action
+                    distribution per head, per-component reward breakdown —
+                    see training_metrics.py; SB3's own standard metrics are
+                    logged by PPO regardless).
 """
 
 import argparse
@@ -71,6 +76,8 @@ from stable_baselines3.common.vec_env.vec_monitor import VecMonitor
 from stable_baselines3.common.vec_env.vec_normalize import VecNormalize
 
 from godot_rl.wrappers.stable_baselines_wrapper import StableBaselinesGodotEnv
+
+from training_metrics import DEFAULT_METRICS_EVERY, TeamDeathmatchMetricsCallback
 
 # Mirrors GodotEnv._set_platform_suffix: the suffix godot-rl appends to a
 # suffix-less --env_path per platform.
@@ -209,6 +216,12 @@ def main() -> int:
         default=256,
         help="minibatch size per gradient step (must divide n_steps * n_envs)",
     )
+    parser.add_argument(
+        "--metrics_every",
+        type=int,
+        default=DEFAULT_METRICS_EVERY,
+        help="timesteps between TensorBoard team-deathmatch metric dumps (issue #469: win rate, episode length, action distribution, reward breakdown)",
+    )
     args = parser.parse_args()
 
     # Be gentle on shared machines: the nets here are tiny (mirrors
@@ -226,6 +239,17 @@ def main() -> int:
         n_parallel=args.n_parallel,
         speedup=args.speedup,
     )
+    # Issue #469: recover the NAMED action heads (move/aim/attack/target)
+    # from the handshake's per-agent Dict spaces — the combined
+    # MultiDiscrete the policy trains on keeps the head order but not the
+    # names. Best effort: anything unexpected falls back to head_0..n and
+    # the metrics still log with generic names.
+    head_names = None
+    try:
+        named_spaces = env.envs[0].action_spaces[0]
+        head_names = list(named_spaces.keys())
+    except (AttributeError, IndexError, KeyError, TypeError):
+        head_names = None
     env = VecMonitor(env)
 
     # VecNormalize (issue #468): running-mean normalization of observations
@@ -271,7 +295,14 @@ def main() -> int:
         tensorboard_log=str(experiment_dir),
     )
     try:
-        model.learn(total_timesteps=args.timesteps)
+        # Issue #469: the team-deathmatch TensorBoard metrics (win rate,
+        # episode length, action distribution per head, per-component
+        # reward breakdown) alongside SB3's standard curves.
+        metrics_callback = TeamDeathmatchMetricsCallback(
+            metrics_every=args.metrics_every,
+            head_names=head_names,
+        )
+        model.learn(total_timesteps=args.timesteps, callback=[metrics_callback])
         # Definition of Done (issue #468): prove the normalization statistics
         # are sane before saving anything — a sample batch of normalized
         # observations must be ~N(0, 1).
@@ -298,6 +329,11 @@ def main() -> int:
     )
     print(f"MODEL: {model_path}.zip")
     print(f"VECNORMALIZE: {stats_path} (replay at inference — DEPLOYMENT.md §4)")
+    print(
+        f"METRICS: team-deathmatch metrics every {args.metrics_every} steps "
+        f"(issue #469; heads: {head_names or 'head_i (names unavailable)'} — "
+        f"see training_metrics.py)"
+    )
     print(f"TENSORBOARD: {experiment_dir} (inspect with: tensorboard --logdir {experiment_dir})")
     return 0
 

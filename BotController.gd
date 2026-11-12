@@ -424,6 +424,13 @@ var _step_friendly_fire_reward := 0.0
 ## `reward` property in zero_reward() (and at episode reset).
 var reward_component_log := {}
 
+## Issue #469: the snapshot of the per-step breakdown that rides the
+## training step message. NcnnSync collects one step in a fixed order —
+## get_reward() + zero_reward() first, get_info() after — so zero_reward()
+## copies the window HERE before clearing it and get_info() ships the copy
+## (the live log is already empty by the time it runs).
+var _step_reward_components := {}
+
 ## Issue #434: own-turn bookkeeping — the shaping potential rebases at
 ## every own-turn start (§2.5), the idle audit reads the order that was
 ## pending when the turn began (what the game loop will consume at turn
@@ -740,6 +747,21 @@ func _credit_positioning_step() -> void:
 func _log_reward_component(component: String, delta: float) -> void:
 	reward_component_log[component] = reward_component_log.get(component, 0.0) + delta
 
+## Issue #469: ship the per-step reward breakdown (REWARD_SPEC §2 component
+## names) in the training info dict — the wire the Python-side TensorBoard
+## callback aggregates into tdm/reward/<component> curves and the win rate
+## (the §2.9 episode_outcome value marks decided episodes). The Sync drains
+## the accumulator (get_reward → zero_reward) BEFORE collecting info, so the
+## value comes from the snapshot taken in zero_reward(); the live log is
+## empty by the time this runs. An empty window (quiet step, nothing fired)
+## ships no key — the trainer aggregates only what the env reports. Calls
+## super so the base contract (action mask, #410) stays merged in.
+func get_info() -> Dictionary:
+	var info := super.get_info()
+	if not _step_reward_components.is_empty():
+		info["reward_components"] = _step_reward_components.duplicate()
+	return info
+
 ## Issue #434: the §2.5 value function the manifest declares — the
 ## tile-quality potential Φ of the resolved figure's tile (0.0 in the
 ## no-figure fallback state, a constant so a death never shapes).
@@ -809,6 +831,10 @@ func _command_all_neutral(command: Dictionary) -> bool:
 ## (NcnnSync calls zero_reward()) — the §2.1 cap / §2.6 floor budgets
 ## restart together with it.
 func zero_reward() -> void:
+	# Issue #469: snapshot the per-step breakdown BEFORE the clear — the
+	# Sync collects get_reward()/zero_reward() first and get_info() after,
+	# so this copy is what the step message ships to the trainer.
+	_step_reward_components = reward_component_log.duplicate()
 	super.zero_reward()
 	_step_damage_reward = 0.0
 	_step_friendly_fire_reward = 0.0
