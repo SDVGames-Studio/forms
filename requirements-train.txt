@@ -7,6 +7,7 @@ stable-baselines3==2.4.0        # godot-rl 0.8.2 declares stable-baselines3<=2.4
 gymnasium==1.0.0                # godot-rl 0.8.2 declares gymnasium<=1.0.0
 torch>=2.3,<3                   # CPU wheels suffice (validated on CPU, PR #371)
 numpy
+tensorboard==2.21.0               # SB3 tensorboard_log writer — train.py event files (issue #466)
 # --- export + conversion-parity check only (not needed to train) ---
 onnx==1.23.2
 onnxruntime==1.31.1

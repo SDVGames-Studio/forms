@@ -2,6 +2,11 @@
 .godot/
 /android/
 
+# Training outputs: exported training builds (issue #465) and SB3
+# experiment directories with TensorBoard logs + final_model.zip (issue #466)
+/builds/
+/runs/
+
 # Godot editor/user artifacts
 *.tmp
 *.bak
