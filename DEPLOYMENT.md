@@ -64,6 +64,32 @@ run verifies a sample batch of normalized observations has mean ≈ 0 and
 std ≈ 1. The repo also ships the validated end-to-end connectivity harness —
 run it first on any new machine:
 
+### Checkpoints and final artifacts (issue #471)
+
+Every `--checkpoint_every` timesteps (default 100 000, `0` disables)
+`train.py` saves a checkpoint into `<experiment_dir>/checkpoints/` using SB3's
+standard `CheckpointCallback` naming — `rl_model_<timesteps>_steps.zip`, each
+with a co-located `rl_model_<timesteps>_steps_vecnormalize.pkl` normalization
+snapshot, so any intermediate checkpoint can be resumed or exported exactly
+like the final model (with the default 500 k `--timesteps` that is 5
+checkpoints per run). The checkpoint directory lives inside the experiment
+directory — this repo's SB3-convention experiment root (`runs/<experiment_name>/`,
+the role `./logs/sb3/<experiment_name>/` plays in the upstream examples) — so
+TensorBoard event files, checkpoints, model and statistics all sit under one
+path per experiment and stay discoverable together.
+
+At the end of training the deployment artifacts are written to the same
+experiment directory:
+
+| Artifact | Path |
+|---|---|
+| final policy (`model.save()`) | `runs/<experiment_name>/final_model.zip` |
+| VecNormalize statistics (REQUIRED at inference) | `runs/<experiment_name>/vecnormalize.pkl` |
+
+**These two files are the input to the Phase 7 export pipeline (§3)** — e.g. for
+the default experiment `runs/tdm_v1/final_model.zip` +
+`runs/tdm_v1/vecnormalize.pkl`.
+
 ### Monitoring training (issue #469)
 
 Watch every experiment live with TensorBoard pointed at the runs directory:
@@ -163,7 +189,9 @@ extending the roster:
 
 1. **Export the trained policy to ONNX** (standard `torch.onnx.export` of the SB3
    policy network — `model.policy`, `torch.onnx.export(policy, dummy_obs,
-   "policy.onnx")`; an LSTM-free MLP policy exports cleanly). **When trained
+   "policy.onnx")`; an LSTM-free MLP policy exports cleanly). Input artifacts
+   (issue #471): `runs/<experiment_name>/final_model.zip` plus its co-located
+   `runs/<experiment_name>/vecnormalize.pkl` (§2). **When trained
    with `train.py`, the policy expects VecNormalize-normalized observations**, so
    feed the network the *normalized* dummy obs and do NOT bake the
    normalization into the graph — the game replays it pre-inference via the
