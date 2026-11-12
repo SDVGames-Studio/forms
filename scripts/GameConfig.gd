@@ -72,6 +72,45 @@ static var debug_mode := true
 ## where gravity pulls a figure there (see scripts/GravityFieldDebug.gd).
 static var debug_gravity_field := false
 
+## Main-menu spec §6.3 (milestone M3, 2026-11-12): display settings —
+## chosen in the graphics settings screen (GraphicsMenu), persisted in
+## settings.cfg next to the debug switches and applied at boot plus on
+## every change (GameConfig.apply_display_settings).
+## display_mode: 0 = windowed, 1 = fullscreen. Defaults keep today's
+## behavior: windowed, base resolution, vsync on.
+static var display_mode := 0
+
+## Windowed resolution preset (16:9 list; fullscreen uses the desktop
+## resolution, so this only applies while windowed).
+static var window_size := Vector2i(1152, 648)
+
+## VSync on/off.
+static var vsync := true
+
+## Owner decision Q2 (2026-11-06): the graphics category is HIDDEN on
+## touch devices — display mode/resolution/vsync are not meaningful
+## there. Detected through OS features so it works before any scene.
+static func is_touch_device() -> bool:
+	return OS.has_feature("android") or OS.has_feature("ios") \
+		or OS.has_feature("mobile")
+
+
+## Main-menu spec §6.3: push the persisted display settings to the
+## DisplayServer — called at boot (Main, after load_settings) and on
+## every change in GraphicsMenu. Headless runs sit on the dummy
+## renderer: the calls are safe no-ops there (tests assert wiring and
+## persistence, not pixels).
+static func apply_display_settings() -> void:
+	if vsync:
+		DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_ENABLED)
+	else:
+		DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
+	if display_mode == 1:
+		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
+	else:
+		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED)
+		DisplayServer.window_set_size(window_size)
+
 ## Issue #294: custom hotkeys — a PHYSICAL keycode per action name,
 ## persisted under [hotkeys] in settings.cfg and applied over the project
 ## defaults when the game starts (the hotkeys screen edits this map).
@@ -258,6 +297,12 @@ static func load_settings() -> void:
 		return
 	debug_mode = cfg.get_value("settings", "debug_mode", true)
 	debug_gravity_field = cfg.get_value("settings", "gravity_field", false)
+	# Main-menu spec §6.3 (M3): display settings, same defaults as the
+	# statics when the keys are missing (first boot, older settings.cfg).
+	display_mode = cfg.get_value("settings", "display_mode", 0)
+	window_size = cfg.get_value("settings", "window_size",
+		Vector2i(1152, 648))
+	vsync = cfg.get_value("settings", "vsync", true)
 	# Issue #294: custom hotkeys — snapshot the authored defaults FIRST,
 	# then apply whatever was saved over them.
 	capture_hotkey_defaults()
@@ -273,6 +318,10 @@ static func save_settings() -> void:
 	cfg.load(SETTINGS_PATH)  # keep any other keys; missing file is fine
 	cfg.set_value("settings", "debug_mode", debug_mode)
 	cfg.set_value("settings", "gravity_field", debug_gravity_field)
+	# Main-menu spec §6.3 (M3): display settings.
+	cfg.set_value("settings", "display_mode", display_mode)
+	cfg.set_value("settings", "window_size", window_size)
+	cfg.set_value("settings", "vsync", vsync)
 	cfg.save(SETTINGS_PATH)
 
 
