@@ -12,6 +12,11 @@ extends Node
 ## disk read as ONE body: every grid sample inside the disk (clear of
 ## the rim, where strips legally end on the circle) must be hill soil
 ## or fresh crumble soil — NO seam anywhere between them.
+## Issue #480 rework 2: the indestructible-slab ban follows the slab's
+## EFFECTIVE rounded rectangle (#270 corner arcs) — the corner recess
+## (inside the authored AABB, outside the rounded polygon, inside the
+## disk) must be FILLED, and no strip may poke into the polygon; the
+## old raw-rect ban left an air wedge at every rounded corner.
 ##
 ## Run headless: godot --headless res://tests/test_issue480.tscn
 ## Exit code 0 = pass.
@@ -29,6 +34,10 @@ const DOME := Vector2(2000, 0)
 const TRAP := Vector2(1000, 0)
 
 var _level: Node2D
+## Issue #480 rework 2: the rounded slab whose top-left corner the third
+## crumble hugs (authored 600 x 448 — corner arcs of 192 px, the exact
+## geometry every level slab gets from the #270 rules).
+var _slab: IndestructibleGround
 
 
 func _ready() -> void:
@@ -45,6 +54,13 @@ func _ready() -> void:
 	ok = ok and await _check_crumble(Vector2(1165, -200))
 	# Impact beside the dome, inside its square AABB but outside the disc.
 	ok = ok and await _check_crumble(Vector2(2235, -180))
+	# Issue #480 rework 2: impact beside a slab's rounded top-left corner,
+	# where the raw-rect ban left the wedge-shaped air gap.
+	_slab = IndestructibleGround.new()
+	_slab.rect_size = Vector2(600, 448)
+	_slab.position = Vector2(1100, 640)
+	_level.add_child(_slab)
+	ok = ok and await _check_corner_crumble(Vector2(880, 360))
 	print("ISSUE480 ok=", ok)
 	get_tree().quit(0 if ok else 1)
 
@@ -147,6 +163,72 @@ func _check_crumble(at: Vector2) -> bool:
 	return good and holes > 0
 
 
+## Crumble a rock beside the slab's ROUNDED corner (issue #480 rework 2)
+## and verify both directions of the contract: the corner recess gets
+## filled (the raw-rect ban left an air wedge there) and no strip pokes
+## into the rounded polygon (bordering it is legal and required).
+func _check_corner_crumble(at: Vector2) -> bool:
+	var before: Array = get_tree().get_nodes_in_group("destructible_ground").duplicate()
+	var rock := RigidBody2D.new()
+	rock.set_script(ProjectileBodyScript)
+	rock.setup(ProjectileBody.Kind.ROCK, Vector2.ZERO, 0, 3.0,
+		Vector2(16, 16), Color.GRAY, ProjectileBody.ROCK_GROUND_RADIUS, 0.8)
+	_level.add_child(rock)
+	rock.global_position = at
+	rock._explode()
+	for i in 5:
+		await get_tree().physics_frame
+	var fresh: Array = []
+	for chunk in get_tree().get_nodes_in_group("destructible_ground"):
+		if not before.has(chunk):
+			fresh.append(chunk)
+	print("ISSUE480 corner crumble at ", at, " new_soil=", fresh.size())
+	var good := fresh.size() >= 3
+	var poly := _outline_world(IndestructibleGround.rounded_rect_polygon(
+				_slab.effective_size(), _slab.corner_radius(),
+				_slab.effective_offset()), _slab.position)
+	var aabb := Rect2(_slab.position - _slab.rect_size / 2.0,
+			_slab.rect_size)
+	# 1) The corner recess — inside the authored AABB, outside the
+	# rounded polygon (clear of its outline by a row band), inside the
+	# disk clear of the rim — must be fresh crumble soil, not air.
+	var rim := ProjectileBody.ROCK_GROUND_RADIUS - 9.0
+	var recess := 0
+	for gy in range(int(-rim), int(rim) + 1, 4):
+		for gx in range(int(-rim), int(rim) + 1, 4):
+			var probe := at + Vector2(gx, gy)
+			if probe.distance_to(at) > rim or not aabb.has_point(probe):
+				continue
+			if _point_in_polygon(probe, poly) or _point_near_polygon(probe,
+					poly, ProjectileBody.ROCK_ROW + 0.5):
+				continue
+			recess += 1
+			var covered := false
+			for chunk in fresh:
+				var r := Rect2(chunk.position - chunk.rect_size / 2.0,
+						chunk.rect_size)
+				if r.has_point(probe):
+					covered = true
+					break
+			if not covered:
+				print("ISSUE480 FAIL corner wedge stayed empty at ", probe)
+				good = false
+	print("ISSUE480 corner recess probes: ", recess)
+	if recess == 0:
+		print("ISSUE480 FAIL no recess probes generated")
+		good = false
+	# 2) No fresh strip may overlap the rounded polygon (deeper than the
+	# sub-pixel slack between the arc and its 12-segment polygon).
+	for chunk in fresh:
+		var r := Rect2(chunk.position - chunk.rect_size / 2.0, chunk.rect_size)
+		for sample in [r.position, r.end, Vector2(r.position.x, r.end.y),
+				Vector2(r.end.x, r.position.y), r.get_center()]:
+			if _deep_inside(sample, poly, 1.0):
+				print("ISSUE480 FAIL strip pokes into the slab at ", sample)
+				good = false
+	return good
+
+
 ## Probes in the disk, inside a hill's AABB, but clear of every hill by
 ## more than one row band — exactly the spots the AABB ban hollowed out.
 func _hole_probes(at: Vector2) -> Array:
@@ -206,5 +288,24 @@ func _point_near_polygon(p: Vector2, pts: PackedVector2Array,
 		var t := clampf((p - a).dot(ab) / maxf(ab.length_squared(), 0.0001),
 				0.0, 1.0)
 		if p.distance_to(a + ab * t) <= margin:
-			return true
+				return true
 	return false
+
+
+## True when `p` sits inside `pts` deeper than `margin` from its outline —
+## the strict half of `_point_near_polygon`, for overlap checks where
+## touching the outline is legal but crossing it is not.
+func _deep_inside(p: Vector2, pts: PackedVector2Array,
+		margin: float) -> bool:
+	if not _point_in_polygon(p, pts):
+		return false
+	var best := 1e9
+	var n := pts.size()
+	for i in n:
+		var a := pts[i]
+		var b := pts[(i + 1) % n]
+		var ab := b - a
+		var t := clampf((p - a).dot(ab) / maxf(ab.length_squared(), 0.0001),
+				0.0, 1.0)
+		best = minf(best, p.distance_to(a + ab * t))
+	return best > margin
