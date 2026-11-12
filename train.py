@@ -17,6 +17,11 @@ completes a short training run without socket errors, and the experiment
 directory contains a TensorBoard event file (inspect with
 `tensorboard --logdir runs/tdm_v1`).
 
+The PPO hyperparameters for the discrete multi-action space are tuned per
+issue #467 (learning_rate 5e-4, ent_coef 0.01, [128, 128] MLP, n_steps 2048,
+batch_size 256); every value and its rationale is documented in
+HYPERPARAMETERS.md and each is overridable on the command line for sweeps.
+
 Arguments:
   --env_path        exported training executable. The wrapper appends the
                     platform-specific suffix (.x86_64 / .exe / .app) if the
@@ -31,6 +36,18 @@ Arguments:
   --timesteps       total PPO timesteps. 10k proves the plumbing end to end;
                     start with 500k–1M for a smoke training run, then scale
                     to 10M+ for full training.
+  --learning_rate   PPO learning rate (issue #467: 5e-4 suits the discrete
+                    multi-action space; SB3's 3e-4 default targets continuous
+                    control).
+  --ent_coef        entropy coefficient (issue #467: 0.01 keeps every action
+                    head exploring instead of collapsing to one action).
+  --net_arch        policy/value MLP hidden widths, comma-separated
+                    ("128,128" or "256,256") — the observation vector is
+                    compact and needs no large network.
+  --n_steps         rollout steps per environment per update (2048 balances
+                    sample efficiency and update stability).
+  --batch_size      minibatch size per gradient step (256; must divide
+                    n_steps × n_envs).
 """
 
 import argparse
@@ -46,6 +63,21 @@ from godot_rl.wrappers.stable_baselines_wrapper import StableBaselinesGodotEnv
 # Mirrors GodotEnv._set_platform_suffix: the suffix godot-rl appends to a
 # suffix-less --env_path per platform.
 _PLATFORM_SUFFIXES = {"linux": ".x86_64", "win32": ".exe", "darwin": ".app"}
+
+
+def parse_net_arch(spec: str) -> list[int]:
+    """Parse a comma-separated MLP width spec like "128,128" into [128, 128]."""
+    try:
+        arch = [int(width.strip()) for width in spec.split(",")]
+    except ValueError:
+        raise argparse.ArgumentTypeError(
+            f"net arch must be comma-separated ints, got {spec!r} (e.g. 128,128)"
+        ) from None
+    if not arch or any(width <= 0 for width in arch):
+        raise argparse.ArgumentTypeError(
+            f"net arch widths must be positive, got {spec!r}"
+        )
+    return arch
 
 
 def resolve_env_path(env_path: str) -> str:
@@ -103,6 +135,36 @@ def main() -> int:
         default=500_000,
         help="total training timesteps (10k = plumbing check; 500k-1M smoke run; 10M+ full)",
     )
+    parser.add_argument(
+        "--learning_rate",
+        type=float,
+        default=5e-4,
+        help="PPO learning rate (discrete multi-action spaces benefit from slightly above the 3e-4 default)",
+    )
+    parser.add_argument(
+        "--ent_coef",
+        type=float,
+        default=0.01,
+        help="entropy coefficient; keeps all action heads exploring instead of collapsing to a single action",
+    )
+    parser.add_argument(
+        "--net_arch",
+        type=parse_net_arch,
+        default=parse_net_arch("128,128"),
+        help="policy+value MLP hidden widths, comma-separated (e.g. 128,128 or 256,256)",
+    )
+    parser.add_argument(
+        "--n_steps",
+        type=int,
+        default=2048,
+        help="rollout steps per environment per update (balances sample efficiency and update stability)",
+    )
+    parser.add_argument(
+        "--batch_size",
+        type=int,
+        default=256,
+        help="minibatch size per gradient step (must divide n_steps * n_envs)",
+    )
     args = parser.parse_args()
 
     # Be gentle on shared machines: the nets here are tiny (mirrors
@@ -122,17 +184,30 @@ def main() -> int:
     )
     env = VecMonitor(env)
 
-    # PPO hyperparameters mirror godot-rl's stable_baselines3_example and the
-    # already-validated connectivity test: MultiInputPolicy over the dict
-    # observation space, short rollouts (n_steps=32) for fast learning
-    # iterations. tensorboard_log points SB3 at the experiment directory; it
-    # writes a runs/<experiment>/PPO_1/events.out.tfevents.* file as it trains.
+    # PPO configuration for the MultiDiscrete action space (issue #467, full
+    # rationale in HYPERPARAMETERS.md): 5e-4 learning rate and 0.01 entropy
+    # coefficient for the discrete heads, a small [128, 128] MLP for both
+    # policy and value nets (the observation vector is compact), and long
+    # 2048-step rollouts cut into 256-sample minibatches. tensorboard_log
+    # points SB3 at the experiment directory; it writes a
+    # runs/<experiment>/PPO_1/events.out.tfevents.* file as it trains.
+    rollout_size = args.n_steps * env.num_envs
+    if rollout_size % args.batch_size != 0:
+        sys.exit(
+            f"train.py: batch_size {args.batch_size} does not divide the rollout "
+            f"buffer (n_steps {args.n_steps} x n_envs {env.num_envs} = "
+            f"{rollout_size}); pick a batch_size that divides {rollout_size}."
+        )
+    policy_kwargs = {"net_arch": {"pi": args.net_arch, "vf": args.net_arch}}
     model = PPO(
         "MultiInputPolicy",
         env,
-        ent_coef=0.0001,
+        learning_rate=args.learning_rate,
+        ent_coef=args.ent_coef,
+        n_steps=args.n_steps,
+        batch_size=args.batch_size,
+        policy_kwargs=policy_kwargs,
         verbose=2,
-        n_steps=32,
         tensorboard_log=str(experiment_dir),
     )
     try:
@@ -145,6 +220,11 @@ def main() -> int:
     print(
         f"TRAINING OK: {args.timesteps} timesteps over {args.n_parallel} parallel "
         f"environment(s) at speedup {args.speedup}, no socket errors."
+    )
+    print(
+        f"CONFIG: lr={args.learning_rate} ent_coef={args.ent_coef} "
+        f"net_arch={args.net_arch} n_steps={args.n_steps} "
+        f"batch_size={args.batch_size} (see HYPERPARAMETERS.md)"
     )
     print(f"MODEL: {model_path}.zip")
     print(f"TENSORBOARD: {experiment_dir} (inspect with: tensorboard --logdir {experiment_dir})")
