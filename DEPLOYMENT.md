@@ -64,6 +64,35 @@ run verifies a sample batch of normalized observations has mean ≈ 0 and
 std ≈ 1. The repo also ships the validated end-to-end connectivity harness —
 run it first on any new machine:
 
+### Monitoring training (issue #469)
+
+Watch every experiment live with TensorBoard pointed at the runs directory:
+
+```bash
+tensorboard --logdir runs/        # all experiments
+# or one experiment: tensorboard --logdir runs/tdm_v1
+# then open http://localhost:6006
+```
+
+PPO writes the standard SB3 curves (`rollout/ep_rew_mean`,
+`rollout/ep_len_mean`, `train/policy_gradient_loss`, `train/value_loss`,
+`train/entropy_loss`, …) on its own. `train.py --metrics_every N`
+(default 4096) adds the team-deathmatch curves from
+[`training_metrics.py`](training_metrics.py), written every N timesteps:
+
+| Tag | Meaning |
+|---|---|
+| `tdm/win_rate` | decided episodes won (episode carried a REWARD_SPEC §2.9 `episode_outcome`) — the scripted-baseline side is the training env itself |
+| `tdm/timeout_frac` | episodes ended without an outcome (horizon truncations) |
+| `tdm/avg_episode_length` | mean VecMonitor episode length |
+| `tdm/reward/<component>` | per-step mean of each REWARD_SPEC §2 component — the reward breakdown |
+| `tdm/action_dist/<head>/<i>` | mean probability of action index `i` on head `move`/`aim`/`attack`/`target` |
+| `tdm/action_max_prob/<head>` | the head's largest mean probability — the collapse indicator (one index dominating every head ⇒ revisit `--ent_coef` or reward shaping) |
+| `tdm/action_entropy/<head>` | mean action entropy in nats (`ln(k)` = uniform) |
+
+`rl_metrics_check.py` verifies the whole callback offline (no Godot build
+needed) against a miniature stand-in env.
+
 ```bash
 .venv-train/bin/python rl_connectivity_test.py --godot /usr/local/bin/godot --steps 96
 ```
