@@ -12,7 +12,7 @@ var _blue_was_active := false
 
 
 func _ready() -> void:
-	var level: Node = load("res://LevelDuel.tscn").instantiate()
+	var level: Node = load("res://scenes/levels/LevelDuel.tscn").instantiate()
 	add_child(level)
 	# Let the scene settle (Npc._ready builds teams, roll picks a team).
 	for i in 30:

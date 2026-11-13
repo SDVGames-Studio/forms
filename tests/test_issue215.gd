@@ -50,7 +50,7 @@ func _ready() -> void:
 	# --- Part A: TeamController direction + wrap (no level needed).
 	var trio: Array = []
 	for i in 3:
-		var p: CharacterBody2D = load("res://Player.gd").new()
+		var p: CharacterBody2D = load("res://scripts/Player.gd").new()
 		p.name = "Trio%d" % i
 		if i == 0:
 			p.controlled = true
@@ -72,7 +72,7 @@ func _ready() -> void:
 	await get_tree().process_frame
 
 	# --- Part B: the N/P keys in the real Level scene.
-	var level: Node = load("res://Level.tscn").instantiate()
+	var level: Node = load("res://scenes/levels/Level.tscn").instantiate()
 	add_child(level)
 	for i in 30:
 		await get_tree().physics_frame

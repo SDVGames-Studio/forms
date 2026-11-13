@@ -18,7 +18,7 @@ extends Node
 ## Run headless: godot --headless res://tests/test_issue359.tscn
 ## Exit code 0 = pass.
 
-const WeaponScript := preload("res://Weapon.gd")
+const WeaponScript := preload("res://scripts/Weapon.gd")
 
 ## Weapon slot order (Weapon.gd): 6 = railgun.
 const WEAPON_SLOT_RAILGUN := 6

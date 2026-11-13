@@ -13,7 +13,7 @@ extends Node
 ## Run headless: godot --headless res://tests/test_issue307.tscn
 ## Exit code 0 = pass.
 
-const WeaponFire := preload("res://Weapon.gd")
+const WeaponFire := preload("res://scripts/Weapon.gd")
 const Dirt := preload("res://scripts/DestructibleGround.gd")
 
 ## Stand-in wielder: a REAL-SIZE figure — capsule radius 24, height 64,

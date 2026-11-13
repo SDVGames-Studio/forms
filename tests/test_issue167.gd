@@ -7,7 +7,7 @@ extends Node
 ## Run headless: godot --headless res://tests/test_issue167.tscn
 ## Exit code 0 = pass.
 
-const TurnControllerScript := preload("res://TurnController.gd")
+const TurnControllerScript := preload("res://scripts/TurnController.gd")
 
 
 func _ready() -> void:
@@ -50,7 +50,7 @@ func _make_figure(script_path: String, group: String, color: Color) -> Character
 func _check_team_color_from_scene() -> bool:
 	var ctrl := _make_controller()
 	var green := Color(0.2, 0.8, 0.25, 1.0)
-	_make_figure("res://Npc.gd", "enemy_team", green)
+	_make_figure("res://scripts/Npc.gd", "enemy_team", green)
 	var got: Color = ctrl._team_color(ctrl.TEAM_ENEMY)
 	var ok: bool = got.is_equal_approx(green)
 	print("ISSUE167 team_color scene: got=", got, " ok=", ok)
@@ -61,8 +61,8 @@ func _check_team_color_from_scene() -> bool:
 ## A green-tinted enemy team must be named GREEN TEAM (issue #167).
 func _check_team_name_matches_color() -> bool:
 	var ctrl := _make_controller()
-	_make_figure("res://Npc.gd", "enemy_team", Color(0.2, 0.8, 0.25, 1.0))
-	_make_figure("res://Player.gd", "player_team", Color(0.2, 0.4, 0.9, 1.0))
+	_make_figure("res://scripts/Npc.gd", "enemy_team", Color(0.2, 0.8, 0.25, 1.0))
+	_make_figure("res://scripts/Player.gd", "player_team", Color(0.2, 0.4, 0.9, 1.0))
 	var enemy_name: String = ctrl._team_name(ctrl.TEAM_ENEMY)
 	var player_name: String = ctrl._team_name(ctrl.TEAM_PLAYER)
 	var ok: bool = enemy_name == "GREEN TEAM" and player_name == "BLUE TEAM"

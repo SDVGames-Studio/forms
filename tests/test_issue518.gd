@@ -15,7 +15,7 @@ extends Node
 ## Run headless: godot --headless res://tests/test_issue518.tscn
 ## Exit code 0 = pass; the printed ISSUE518 ok= verdict is authoritative.
 
-const LEVEL4 := preload("res://Level4.tscn")
+const LEVEL4 := preload("res://scenes/levels/Level4.tscn")
 
 ## The underside of Level4's floor slab (open air below y=928 — the figure
 ## falls UP onto the underside; gravity (0, -1)).

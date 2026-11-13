@@ -11,8 +11,8 @@ func _ready() -> void:
 	var ok := true
 
 	# --- Static check: the climb-on-characters mechanic is gone. ---
-	var player_script: Script = load("res://Player.gd")
-	var npc_script: Script = load("res://Npc.gd")
+	var player_script: Script = load("res://scripts/Player.gd")
+	var npc_script: Script = load("res://scripts/Npc.gd")
 	var no_climb: bool = player_script.get_script_method_list().filter(
 			func(m): return m.name == "_climb_on_characters").is_empty() \
 		and npc_script.get_script_method_list().filter(

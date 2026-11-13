@@ -34,7 +34,7 @@ func _ready() -> void:
 	GameConfig.debug_gravity_field = true
 
 	# --- Level3: terrain slab gravity. ---
-	var level3: Node = load("res://Level3.tscn").instantiate()
+	var level3: Node = load("res://scenes/levels/Level3.tscn").instantiate()
 	add_child(level3)
 	for i in 30:
 		await get_tree().physics_frame
@@ -68,7 +68,7 @@ func _ready() -> void:
 	await get_tree().physics_frame
 
 	# --- 4. Terrain-only gravity bends toward the nearest surface. ---
-	var level1: Node = load("res://Level.tscn").instantiate()
+	var level1: Node = load("res://scenes/levels/Level.tscn").instantiate()
 	add_child(level1)
 	for i in 30:
 		await get_tree().physics_frame
@@ -104,7 +104,7 @@ func _ready() -> void:
 	await get_tree().physics_frame
 
 	# --- 6. Switch off: no overlay is created. ---
-	var level2: Node = load("res://Level2.tscn").instantiate()
+	var level2: Node = load("res://scenes/levels/Level2.tscn").instantiate()
 	add_child(level2)
 	for i in 30:
 		await get_tree().physics_frame

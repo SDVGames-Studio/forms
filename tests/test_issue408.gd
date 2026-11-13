@@ -9,14 +9,14 @@ extends Node
 ## Run headless: godot --headless res://tests/test_issue408.tscn
 ## Exit code 0 = pass.
 
-const Bot := preload("res://BotController.gd")
+const Bot := preload("res://scripts/BotController.gd")
 
 
 ## Minimal figure stand-in: alive (health > 0), teamable, and the same
 ## take_damage wiring the real figures use — credit the attacker's
 ## controller when damage lands (issue #433 attribution path).
 class FakeFigure extends Node2D:
-	const BotController := preload("res://BotController.gd")
+	const BotController := preload("res://scripts/BotController.gd")
 
 	var health := 50
 	var _dead := false

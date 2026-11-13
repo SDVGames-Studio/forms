@@ -192,7 +192,7 @@ class Issue304Driver extends Node:
 
 		# --- Standalone mode is unchanged: Back leaves for the main menu. ---
 		get_tree().paused = false
-		var standalone: Node = load("res://SettingsMenu.tscn").instantiate()
+		var standalone: Node = load("res://scenes/menus/SettingsMenu.tscn").instantiate()
 		add_child(standalone)
 		await get_tree().process_frame
 		# --- Standalone keeps the template look (issue #348): the shared
@@ -205,7 +205,7 @@ class Issue304Driver extends Node:
 		for i in 3:
 			await get_tree().process_frame
 		var went: bool = get_tree().current_scene != null \
-			and get_tree().current_scene.scene_file_path == "res://Main.tscn"
+			and get_tree().current_scene.scene_file_path == "res://scenes/Main.tscn"
 		print("ISSUE304 standalone_back=", went)
 		ok = ok and went
 

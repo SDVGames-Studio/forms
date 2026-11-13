@@ -40,11 +40,11 @@ func _ready() -> void:
 
 	# --- LevelFinish wiring: player entering the area triggers celebration,
 	# then the next scene loads.
-	var level_finish: Area2D = load("res://LevelFinish.gd").new()
-	level_finish.next_scene = "res://Main.tscn"
+	var level_finish: Area2D = load("res://scripts/LevelFinish.gd").new()
+	level_finish.next_scene = "res://scenes/Main.tscn"
 	add_child(level_finish)
 	await get_tree().process_frame
-	var player: CharacterBody2D = load("res://Player.gd").new()
+	var player: CharacterBody2D = load("res://scripts/Player.gd").new()
 	add_child(player)
 	await get_tree().process_frame
 	level_finish._on_body_entered(player)

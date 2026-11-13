@@ -17,7 +17,7 @@ func _ready() -> void:
 	for node_name: String in ["Player", "Teammate1", "Teammate2", "Npc", "Npc2", "Npc3"]:
 		var body := CharacterBody2D.new()
 		body.name = node_name
-		body.set_script(load("res://Npc.gd") if node_name.begins_with("Npc") else null)
+		body.set_script(load("res://scripts/Npc.gd") if node_name.begins_with("Npc") else null)
 		level.add_child(body)
 
 	GameConfig.team_size = 2

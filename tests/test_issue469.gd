@@ -21,7 +21,7 @@ extends Node
 ## Run headless: godot --headless res://tests/test_issue469.tscn
 ## Exit code 0 = pass.
 
-const Bot := preload("res://BotController.gd")
+const Bot := preload("res://scripts/BotController.gd")
 
 ## Magnitudes straight from REWARD_SPEC.md §2 (same representative run as
 ## tests/test_issue436.gd: open ground, one enemy 290 px away, 40 damage
@@ -35,7 +35,7 @@ const PHI_SWING := 0.10        # §2.5 shaped 0 → 1 when the last enemy drops
 ## Minimal figure stand-in with the real take_damage wiring (the #433
 ## attribution path: credit after damage, notify on death).
 class FakeFigure extends Node2D:
-	const BotController := preload("res://BotController.gd")
+	const BotController := preload("res://scripts/BotController.gd")
 
 	var health := 100
 	var shielded := false  # _own_features reads it (bool(null) would error)

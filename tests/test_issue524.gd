@@ -127,7 +127,7 @@ func _ready() -> void:
 	# --- The team menu edits the language per team. ------------------
 	DirAccess.remove_absolute("user://team.cfg")  # start from defaults
 	GameConfig.teams = []
-	var menu: Control = load("res://TeamMenu.tscn").instantiate()
+	var menu: Control = load("res://scenes/menus/TeamMenu.tscn").instantiate()
 	add_child(menu)
 	await get_tree().process_frame
 	var language_select: OptionButton = menu.get_node("%LanguageSelect")

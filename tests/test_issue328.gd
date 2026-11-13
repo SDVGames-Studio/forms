@@ -104,7 +104,7 @@ func _part_a_synthetic() -> void:
 
 ## --- Part B: the real click path in Level3 ---------------------------
 func _part_b_level3() -> void:
-	var level: Node = load("res://Level3.tscn").instantiate()
+	var level: Node = load("res://scenes/levels/Level3.tscn").instantiate()
 	add_child(level)
 	var tc := get_node("/root/TurnController")
 	var inv: Node = get_node("/root/WeaponInventory")

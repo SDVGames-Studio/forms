@@ -9,12 +9,12 @@ extends Node
 ## Run headless: godot --headless res://tests/test_issue312.tscn
 ## Exit code 0 = pass.
 
-const MineScript := preload("res://ProjectileBody.gd")
+const MineScript := preload("res://scripts/ProjectileBody.gd")
 
 func _ready() -> void:
 	# Issue #312 repro: a short turn whose timer outlives the mine fuse.
 	GameConfig.turn_time = 1.0
-	var level: Node = load("res://Level3.tscn").instantiate()
+	var level: Node = load("res://scenes/levels/Level3.tscn").instantiate()
 	add_child(level)
 	var tc := get_node("/root/TurnController")
 	# Wait for the player's turn to begin (an enemy team may move first).

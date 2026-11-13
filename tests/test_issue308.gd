@@ -17,8 +17,8 @@ extends Node
 ## Run headless: godot --headless res://tests/test_issue308.tscn
 ## Exit code 0 = pass.
 
-const NpcScript := preload("res://Npc.gd")
-const BodyScript := preload("res://ProjectileBody.gd")
+const NpcScript := preload("res://scripts/Npc.gd")
+const BodyScript := preload("res://scripts/ProjectileBody.gd")
 
 ## Weapon slot order (Weapon.gd): 0 shotgun, 1 rocket, 2 grenade, 3 spear.
 const WEAPON_SLOT_GRENADE := 2

@@ -7,14 +7,14 @@ extends Node
 ## Run headless: godot --headless res://tests/test_issue147.tscn
 ## Exit code 0 = pass.
 
-const NpcScript := preload("res://Npc.gd")
+const NpcScript := preload("res://scripts/Npc.gd")
 
 
 func _ready() -> void:
 	var ok := true
 
 	# --- Static check: the hold-fire gate exists. ---
-	var npc_script: Script = load("res://Npc.gd")
+	var npc_script: Script = load("res://scripts/Npc.gd")
 	var has_gate: bool = not npc_script.get_script_method_list().filter(
 			func(m): return m.name == "_aim_ready").is_empty()
 	ok = ok and has_gate

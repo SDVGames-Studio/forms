@@ -17,7 +17,7 @@ func _ready() -> void:
 
 func _check_fresh() -> bool:
 	var player := CharacterBody2D.new()
-	player.set_script(load("res://Player.gd"))
+	player.set_script(load("res://scripts/Player.gd"))
 	add_child(player)
 	await get_tree().process_frame
 	player.take_damage(30)
@@ -33,7 +33,7 @@ func _check_fresh() -> bool:
 
 
 func _check_in_scene() -> bool:
-	var level: Node = load("res://Level.tscn").instantiate()
+	var level: Node = load("res://scenes/levels/Level.tscn").instantiate()
 	add_child(level)
 	await get_tree().process_frame
 	var player: Node = level.get_node("Player")

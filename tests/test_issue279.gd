@@ -25,7 +25,7 @@ extends Node
 ## Run headless: godot --headless res://tests/test_issue279.tscn
 ## Exit code 0 = pass.
 
-const Level5Scene := preload("res://Level5.tscn")
+const Level5Scene := preload("res://scenes/levels/Level5.tscn")
 const TICKS := 720
 const MIN_ARC := deg_to_rad(120.0)
 ## Rim outer radius 1280 + capsule 24; a real walk hugs the surface.

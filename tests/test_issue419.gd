@@ -11,7 +11,7 @@ extends Node
 ## Run headless: godot --headless res://tests/test_issue419.tscn
 ## Exit code 0 = pass.
 
-const BotControllerScript := preload("res://BotController.gd")
+const BotControllerScript := preload("res://scripts/BotController.gd")
 
 # Layout mirrors BotController.gd (issue #381 + #447):
 # 4 + 4*5 + 4*5 + 2 + 4 = 50.

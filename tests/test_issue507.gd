@@ -25,7 +25,7 @@ extends Node
 ## Exit code 0 = pass; the printed ISS507 ok= verdict is authoritative.
 
 const ActionMask := preload("res://addons/godot_native_rl/controllers/action_mask.gd")
-const Bot := preload("res://InferenceBot.gd")
+const Bot := preload("res://scripts/InferenceBot.gd")
 
 ## Attack-favoring raw policy output in InferenceBot's DEPLOY head order
 ## (aim 0-2 | attack 3-10 | move 11-16 | target 17-20): fire slots 1-7

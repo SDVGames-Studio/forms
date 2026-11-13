@@ -16,7 +16,7 @@ extends Node
 ## Run headless: godot --headless res://tests/test_issue363.tscn
 ## Exit code 0 = pass.
 
-const WeaponFire := preload("res://Weapon.gd")
+const WeaponFire := preload("res://scripts/Weapon.gd")
 
 ## Stand-in wielder: a REAL-SIZE figure (capsule radius 24, height 64),
 ## mirroring Player.gd's #316 drilling branch — while the drill runs the

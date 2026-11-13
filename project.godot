@@ -12,18 +12,18 @@ config_version=5
 
 config/name="Forms"
 config/version="0.1.0"
-run/main_scene="res://Main.tscn"
+run/main_scene="res://scenes/Main.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 config/icon="res://icon.svg"
 
 [autoload]
 
-InGameMenu="*res://InGameMenu.gd"
-TeamController="*res://TeamController.gd"
-WeaponInventory="*res://WeaponInventory.gd"
-ToolInventory="*res://ToolInventory.gd"
-TouchControls="*res://TouchControls.gd"
-TurnController="*res://TurnController.gd"
+InGameMenu="*res://scripts/InGameMenu.gd"
+TeamController="*res://scripts/TeamController.gd"
+WeaponInventory="*res://scripts/WeaponInventory.gd"
+ToolInventory="*res://scripts/ToolInventory.gd"
+TouchControls="*res://scripts/TouchControls.gd"
+TurnController="*res://scripts/TurnController.gd"
 MusicManager="*res://scripts/MusicManager.gd"
 TrainingBoot="*res://scripts/TrainingBoot.gd"
 

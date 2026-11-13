@@ -24,17 +24,17 @@ class Issue303Driver extends Node:
 
 	## [menu scene, expected scene after Escape] — checked in order.
 	const MENUS := [
-		["res://LevelsMenu.tscn", "res://Main.tscn"],
-		["res://SettingsMenu.tscn", "res://Main.tscn"],
-		["res://TeamMenu.tscn", "res://SettingsMenu.tscn"],
-		["res://LevelConfigMenu.tscn", "res://LevelsMenu.tscn"],
-		["res://HotkeysMenu.tscn", "res://SettingsMenu.tscn"],
+		["res://scenes/menus/LevelsMenu.tscn", "res://scenes/Main.tscn"],
+		["res://scenes/menus/SettingsMenu.tscn", "res://scenes/Main.tscn"],
+		["res://scenes/menus/TeamMenu.tscn", "res://scenes/menus/SettingsMenu.tscn"],
+		["res://scenes/menus/LevelConfigMenu.tscn", "res://scenes/menus/LevelsMenu.tscn"],
+		["res://scenes/menus/HotkeysMenu.tscn", "res://scenes/menus/SettingsMenu.tscn"],
 		# Main-menu spec M2 (Q1): the debug switches live under their own
 		# category screen — Escape returns to the settings screen.
-		["res://DebugMenu.tscn", "res://SettingsMenu.tscn"],
+		["res://scenes/menus/DebugMenu.tscn", "res://scenes/menus/SettingsMenu.tscn"],
 		# Main-menu spec M3 (§6.3): the graphics screen follows the same
 		# Escape-as-Back rule.
-		["res://GraphicsMenu.tscn", "res://SettingsMenu.tscn"],
+		["res://scenes/menus/GraphicsMenu.tscn", "res://scenes/menus/SettingsMenu.tscn"],
 	]
 
 
@@ -88,7 +88,7 @@ class Issue303Driver extends Node:
 		# --- Root main menu: Escape = Quit — checked LAST. If the quit
 		# fires, the process exits 0 right here; if it does not, the run
 		# fails explicitly after a short grace period. ---
-		var main_menu: Node = load("res://Main.tscn").instantiate()
+		var main_menu: Node = load("res://scenes/Main.tscn").instantiate()
 		add_child(main_menu)
 		await get_tree().process_frame
 		main_menu._unhandled_input(_esc())

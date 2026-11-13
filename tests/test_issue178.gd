@@ -6,7 +6,7 @@ func _ready() -> void:
 	var failures: Array[String] = []
 	GameConfig.team_shape = "star"
 	GameConfig.team_color = Color.RED
-	var level: Node = load("res://Level.tscn").instantiate()
+	var level: Node = load("res://scenes/levels/Level.tscn").instantiate()
 	add_child(level)
 	await get_tree().process_frame
 	await get_tree().process_frame
