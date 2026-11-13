@@ -45,6 +45,15 @@ static var turn_time := 15.0
 ## scripts/NightRegime.gd).
 static var night_regime := false
 
+## Issue #523: spawn regime — chosen in the level configuration menu
+## before the level starts. 0 = teams grouped together around one
+## random team anchor, 1 = every figure spawns on its own random spot,
+## 2 = spawn points defined in the level by the designer (Marker2D
+## nodes in the "spawn_points" group; levels without markers keep the
+## authored figure positions — today's behavior, and the default).
+## See scripts/SpawnRegime.gd.
+static var spawn_regime := SpawnRegime.REGIME_DESIGNER
+
 ## Issue #169: player team customisation, edited in the team menu and
 ## persisted to user://team.cfg. Since issue #208 the menu edits the
 ## whole set of teams (see `teams` below); these single-team fields stay
