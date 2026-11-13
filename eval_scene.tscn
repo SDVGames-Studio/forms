@@ -1,0 +1,12 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://addons/godot_native_rl/sync.gd" id="1_sync"]
+[ext_resource type="Script" path="res://eval_match.gd" id="2_eval"]
+
+[node name="EvalMatch" type="Node2D"]
+script = ExtResource("2_eval")
+
+[node name="NcnnSync" type="Node" parent="."]
+script = ExtResource("1_sync")
+control_mode = 2
+speed_up = 8.0
