@@ -41,6 +41,14 @@ const BAR_HEIGHT := Stats.BAR_HEIGHT
 ## Issue #169: figure body shape: square, circle, triangle, star or ellipse.
 @export var team_shape := "square"
 
+## Issue #521: which side this figure fights on. "player" (default) is
+## the classic hero team; "enemy" stages a HUMAN-played figure among the
+## enemy teams (one-device multiplayer: GameConfig.apply swaps a team's
+## computer figures for Player figures when the team's controller is
+## "player"). Only the group membership differs — the input, the weapon
+## and the camera all follow TurnController's active team.
+@export var team_side := "player"
+
 var health: int = MAX_HEALTH
 
 ## Issue #170: energy shield — while true the figure takes no damage.
@@ -139,9 +147,12 @@ var controlled := false
 func _ready() -> void:
 	# One group for every member of the player's team; the NPC team AI
 	# targets "player"/"team" so all members are valid opponents.
-	add_to_group("player")
+	# Issue #521: a human figure staged on the enemy side joins the enemy
+	# groups instead, so TurnController treats it as its own team (by
+	# color) while is_player_team() still lets input flow on its turns.
+	add_to_group("enemy" if team_side == "enemy" else "player")
 	add_to_group("team")
-	add_to_group("player_team")
+	add_to_group("enemy_team" if team_side == "enemy" else "player_team")
 	# Issue #33: if no team member ended up controlled (fresh scene),
 	# the first one takes control.
 	if not controlled:
@@ -226,6 +237,10 @@ func _keep_weapon_in_front() -> void:
 ## Issue #33: if no team member ended up controlled (fresh scene), the
 ## first one takes control.
 func _claim_control_if_none() -> void:
+	# Issue #521: never self-claim control on the enemy side — control is
+	# handed over turn by turn (hot-seat).
+	if team_side == "enemy":
+		return
 	for member in get_tree().get_nodes_in_group("player_team"):
 		if member.get("controlled") == true:
 			return

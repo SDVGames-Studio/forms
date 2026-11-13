@@ -130,9 +130,13 @@ func _ensure_gravity_field() -> void:
 
 
 func _controlled_member() -> Node2D:
-	for member in get_tree().get_nodes_in_group("player_team"):
-		if member.get("controlled") == true:
-			return member
+	# Issue #521: the shared view follows whoever is controlled — a
+	# hot-seat human figure staged on the enemy side drives the very
+	# same camera during its team's turn.
+	for group in ["player_team", "enemy_team"]:
+		for member in get_tree().get_nodes_in_group(group):
+			if member.get("controlled") == true:
+				return member
 	return null
 
 

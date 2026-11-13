@@ -87,6 +87,11 @@ var _teams: Array[String] = []
 var _color_to_id := {}
 var _turn_order: Array[String] = []
 var _turn_index := 0
+## Issue #521: team ids played by a HUMAN (hot-seat, one device): always
+## the classic player team, plus every enemy-color team whose configured
+## controller is "player" (GameConfig.team_controller_for_color). Input
+## flows to a team's figures while its id sits here (is_player_team).
+var _human_teams := {}
 ## Issue #343: per-team member rotation — the member that acted a team's
 ## last turn is remembered (team id -> figure) so the team's NEXT turn
 ## begins with the NEXT member, never the same figure twice in a row.
@@ -367,6 +372,7 @@ func _on_level_changed() -> void:
 		_round = 1
 		_teams = []
 		_color_to_id = {}
+		_human_teams = {}
 		_turn_order = []
 		_last_active = {}
 		return
@@ -382,8 +388,19 @@ func team_id_of(member: Node) -> String:
 
 
 ## Issue #191: true when the id names the player-controlled team.
+## Issue #521: hot-seat — an enemy-color team played by a human counts
+## as player-controlled too: every input gate (Player movement, Weapon
+## firing, Tab skip, tool unlocks) asks this one function, so a human
+## team's turn plays exactly like the classic player team's.
 func is_player_team(id: String) -> bool:
-	return id == TEAM_PLAYER
+	return id == TEAM_PLAYER or _human_teams.has(id)
+
+
+## Issue #521: alive figures of one team id, in stable scene order —
+## TeamController scopes its member switching to the ACTIVE human team
+## (the hero team or any hot-seat team).
+func members_of(id: String) -> Array:
+	return _alive_of(id)
 
 
 ## Issue #191: collect distinct team ids from the figures present and
@@ -392,6 +409,7 @@ func is_player_team(id: String) -> bool:
 func _scan_teams() -> void:
 	_teams = []
 	_color_to_id = {}
+	_human_teams = {TEAM_PLAYER: true}
 	var enemy_colors: Array[Color] = []
 	var seen := {}
 	for member in _alive("enemy_team"):
@@ -404,6 +422,10 @@ func _scan_teams() -> void:
 		var id := TEAM_ENEMY if single else "enemy:%s" % c.to_html()
 		_color_to_id[c] = id
 		_teams.append(id)
+		# Issue #521: a team configured as human-played (its figures were
+		# staged in GameConfig.apply) receives input on its turns.
+		if GameConfig.team_controller_for_color(c) == "player":
+			_human_teams[id] = true
 	_teams.append(TEAM_PLAYER)
 	_turn_order = _teams.duplicate()
 	_turn_order.shuffle()
@@ -607,6 +629,16 @@ func _begin_turn(team: String) -> void:
 	if members.is_empty():
 		_check_win()
 		return
+	# Issue #521: hot-seat — exactly ONE figure on the whole field is
+	# controlled: whoever held control from another team drops it before
+	# the acting team's member takes it (several "controlled" figures
+	# would all answer the same keys, because the input gates key off the
+	# ACTIVE TEAM, not the figure's own team).
+	for figure in _alive("player_team") + _alive("enemy_team"):
+		if figure != null and team_id_of(figure) != team \
+				and figure.has_method("set_controlled") \
+				and figure.get("controlled") == true:
+			figure.set_controlled(false)
 	# Issue #101: every member of the team starting its turn gets its
 	# full shot quota back (per-weapon limits live in Weapon.gd).
 	for member in members:
@@ -618,13 +650,22 @@ func _begin_turn(team: String) -> void:
 	# same figure again (player and AI teams alike, like Worms).
 	if is_player_team(team):
 		var chosen: Node = _next_member(team, members)
-		# TeamController hands the input over and keeps active_member in
-		# sync (issue #183); the direct fallback covers teams whose only
-		# survivors are AI allies nobody can control (issue #121).
-		var group := get_tree().get_nodes_in_group("player_team")
-		var index := group.find(chosen)
-		if index != -1:
-			TeamController.set_active_index(index)
+		if team == TEAM_PLAYER:
+			# TeamController hands the input over and keeps active_member in
+			# sync (issue #183); the direct fallback covers teams whose only
+			# survivors are AI allies nobody can control (issue #121).
+			var group := get_tree().get_nodes_in_group("player_team")
+			var index := group.find(chosen)
+			if index != -1:
+				TeamController.set_active_index(index)
+		else:
+			# Issue #521: a hot-seat human team beyond the hero team —
+			# hand control directly to the chosen member (TeamController
+			# serves the hero team's group; Switch-tool cycling for this
+			# team is scoped through members_of).
+			for member in members:
+				if member.has_method("set_controlled"):
+					member.set_controlled(member == chosen)
 		if active_member != chosen:
 			active_member = chosen
 	else:
@@ -716,7 +757,10 @@ func _team_color(team: String) -> Color:
 ## a green team must never be announced as "PINK TEAM".
 func _team_name(team: String) -> String:
 	var c := _team_color(team)
-	var best: String = TEAM_NAMES[team]
+	# Issue #521: multi-team ids ("enemy:<color>") are not authored in
+	# TEAM_NAMES — the COLOR_NAMES loop below names every team by its
+	# actual color; the dictionary only provides the two classic labels.
+	var best: String = TEAM_NAMES.get(team, "COMPUTER TEAM")
 	var best_d := INF
 	for entry in COLOR_NAMES:
 		var pc: Color = entry[1]
@@ -939,9 +983,10 @@ func _update_hint() -> void:
 		# Issue #244: pick the hint for HOW the turn ended — a shot or the
 		# expired timer; both block input while the effects resolve.
 		_hint_label.text = HINT_EFFECTS if _timer_wait else HINT_SWITCH
-	elif active_team == TEAM_PLAYER:
+	elif is_player_team(active_team):
 		# Issue #377: the controls list lives in the closable window on the
 		# left — the one-line top hint stays empty during the player's turn.
+		# Issue #521: that goes for EVERY human team's turn (hot-seat).
 		_hint_label.text = ""
 	else:
 		_hint_label.text = HINT_ENEMY
