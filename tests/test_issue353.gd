@@ -22,8 +22,8 @@ extends Node
 ## Run headless: godot --headless res://tests/test_issue353.tscn
 ## Exit code 0 = pass.
 
-const ZoomCameraScript := preload("res://ZoomCamera.gd")
-const CameraSwitchScript := preload("res://CameraSwitch.gd")
+const ZoomCameraScript := preload("res://scripts/ZoomCamera.gd")
+const CameraSwitchScript := preload("res://scripts/CameraSwitch.gd")
 
 
 func _ready() -> void:

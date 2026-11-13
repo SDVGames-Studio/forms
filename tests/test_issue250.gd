@@ -12,7 +12,7 @@ extends Node
 const CHAR_WIDTH := 64.0
 const ARENA_CENTER := Vector2(1280, 1280)
 
-const LEVEL := preload("res://Level5.tscn")
+const LEVEL := preload("res://scenes/levels/Level5.tscn")
 
 
 func _ready() -> void:

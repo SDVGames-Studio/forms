@@ -22,7 +22,7 @@ extends Node
 
 func _ready() -> void:
 	var ok := true
-	var level: Node = load("res://LevelDuel.tscn").instantiate()
+	var level: Node = load("res://scenes/levels/LevelDuel.tscn").instantiate()
 	add_child(level)
 	for i in 30:
 		await get_tree().physics_frame

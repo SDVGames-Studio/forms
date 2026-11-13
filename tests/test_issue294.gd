@@ -26,8 +26,8 @@ extends Node
 ## Run headless: godot --headless res://tests/test_issue294.tscn
 ## Exit code 0 = pass.
 
-const ZoomCameraScript := preload("res://ZoomCamera.gd")
-const CameraSwitchScript := preload("res://CameraSwitch.gd")
+const ZoomCameraScript := preload("res://scripts/ZoomCamera.gd")
+const CameraSwitchScript := preload("res://scripts/CameraSwitch.gd")
 const GameConfigScript := preload("res://scripts/GameConfig.gd")
 
 
@@ -108,7 +108,7 @@ func _ready() -> void:
 	ok = ok and reset_move == 2 and reset_cam and reset_saved
 
 	# --- 6. The screens: hotkeys rows + the settings entry. ---
-	var hotkeys_menu: Node = load("res://HotkeysMenu.tscn").instantiate()
+	var hotkeys_menu: Node = load("res://scenes/menus/HotkeysMenu.tscn").instantiate()
 	add_child(hotkeys_menu)
 	await get_tree().physics_frame
 	var rows: VBoxContainer = hotkeys_menu.get_node("%Rows") as VBoxContainer
@@ -120,7 +120,7 @@ func _ready() -> void:
 			var key_button: Button = row.get_node_or_null("Key") as Button
 			if key_button == null or key_button.text.is_empty():
 				labels_ok = false
-	var settings_menu: Node = load("res://SettingsMenu.tscn").instantiate()
+	var settings_menu: Node = load("res://scenes/menus/SettingsMenu.tscn").instantiate()
 	add_child(settings_menu)
 	await get_tree().physics_frame
 	var entry_ok: bool = settings_menu.get_node_or_null("%HotkeysButton") != null

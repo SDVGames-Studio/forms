@@ -54,7 +54,7 @@ class SoundEffectsDriver extends Node:
 		# --- Weapon fire path: player child on the SFX bus with the
 		# preloaded stream; the sound hook plays it with the skill's
 		# random pitch (0.95–1.05). ---
-		var weapon := preload("res://Weapon.gd").new()
+		var weapon := preload("res://scripts/Weapon.gd").new()
 		add_child(weapon)
 		await get_tree().process_frame
 		var w_player: AudioStreamPlayer = weapon.get("_shot_player")

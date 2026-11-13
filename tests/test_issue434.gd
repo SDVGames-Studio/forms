@@ -21,7 +21,7 @@ extends Node
 ## Run headless: godot --headless res://tests/test_issue434.tscn
 ## Exit code 0 = pass.
 
-const Bot := preload("res://BotController.gd")
+const Bot := preload("res://scripts/BotController.gd")
 
 ## Exact expectations (magnitudes straight from REWARD_SPEC.md §2):
 const SURVIVAL_FULL := 0.02    # §2.4 at hp 100/100

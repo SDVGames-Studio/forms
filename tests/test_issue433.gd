@@ -17,7 +17,7 @@ extends Node
 ## Run headless: godot --headless res://tests/test_issue433.tscn
 ## Exit code 0 = pass.
 
-const Bot := preload("res://BotController.gd")
+const Bot := preload("res://scripts/BotController.gd")
 
 ## Damage fractions are damage / MAX_HEALTH (=100), so exact floats:
 const DMG_20 := 0.15 * 0.20   # 0.030
@@ -29,7 +29,7 @@ const FF_20 := -0.10 * 0.20   # -0.020
 ## Minimal figure stand-in with the real take_damage wiring (issue #433
 ## attribution path: credit after damage is applied, notify on death).
 class FakeFigure extends Node2D:
-	const BotController := preload("res://BotController.gd")
+	const BotController := preload("res://scripts/BotController.gd")
 
 	var health := 100
 	var shielded := false  # _own_features reads it (bool(null) would error)

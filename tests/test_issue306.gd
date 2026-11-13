@@ -52,7 +52,7 @@ func _key_event(code: int) -> InputEventKey:
 func _ready() -> void:
 	await get_tree().process_frame
 
-	var level: Node = load("res://Level.tscn").instantiate()
+	var level: Node = load("res://scenes/levels/Level.tscn").instantiate()
 	add_child(level)
 	var waited := 0.0
 	while TurnController.active_team != "player" and waited < 20.0:

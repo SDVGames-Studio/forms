@@ -16,7 +16,7 @@ extends Node
 ## Run headless: godot --headless res://tests/test_issue495.tscn
 ## Exit code 0 = pass; the printed SFX495 ok= verdict is authoritative.
 
-const WeaponFire := preload("res://Weapon.gd")
+const WeaponFire := preload("res://scripts/Weapon.gd")
 
 ## Stand-in wielder (test_issue307 pattern): provides the aim frame the
 ## Weapon reads (aim_dir/current_gravity) without a full figure scene.

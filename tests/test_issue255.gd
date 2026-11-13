@@ -14,8 +14,8 @@ extends Node
 ## Run headless: godot --headless res://tests/test_issue255.tscn
 ## Exit code 0 = pass.
 
-const PlayerScript := preload("res://Player.gd")
-const NpcScript := preload("res://Npc.gd")
+const PlayerScript := preload("res://scripts/Player.gd")
+const NpcScript := preload("res://scripts/Npc.gd")
 
 var failures := 0
 

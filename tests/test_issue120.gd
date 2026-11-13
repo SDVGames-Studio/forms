@@ -10,7 +10,7 @@ extends Node
 ## Run headless: godot --headless res://tests/test_issue120.tscn
 ## Exit code 0 = pass.
 
-const NpcScript := preload("res://Npc.gd")
+const NpcScript := preload("res://scripts/Npc.gd")
 
 var failures := 0
 
@@ -63,7 +63,7 @@ func _ready() -> void:
 	# The _shoot() wrapper must switch to the spear instead of re-throwing
 	# an unsafe grenade.
 	lobber._weapon = Node2D.new()
-	lobber._weapon.set_script(load("res://Weapon.gd"))
+	lobber._weapon.set_script(load("res://scripts/Weapon.gd"))
 	lobber._weapon.set("selected_weapon", 2)
 	target.global_position = lobber.global_position + Vector2(50.0, 0.0)
 	lobber._shoot()

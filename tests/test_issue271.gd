@@ -6,9 +6,9 @@ extends Node
 ## Run headless: godot --headless res://tests/test_issue271.tscn
 ## Exit code 0 = pass.
 
-const WeaponFire := preload("res://Weapon.gd")
-const ToolState := preload("res://ToolInventory.gd")
-const HudScript := preload("res://WeaponInventory.gd")
+const WeaponFire := preload("res://scripts/Weapon.gd")
+const ToolState := preload("res://scripts/ToolInventory.gd")
+const HudScript := preload("res://scripts/WeaponInventory.gd")
 
 
 func _ready() -> void:
@@ -38,6 +38,9 @@ func _ready() -> void:
 		str(WeaponFire.GRENADE_DAMAGE),
 		str(WeaponFire.SPEAR_DAMAGE),
 		str(WeaponFire.MINE_DAMAGE),
+		"%d/s while pushing" % int(WeaponFire.JACKHAMMER_PUSH_DPS),
+		"%d-%d" % [WeaponFire.RAILGUN_MIN_DAMAGE,
+				WeaponFire.RAILGUN_MAX_DAMAGE],
 	]
 	for i in mini(slots.size(), names.size()):
 		var tip: String = slots[i].tooltip_text

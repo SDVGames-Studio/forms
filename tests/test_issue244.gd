@@ -12,7 +12,7 @@ extends Node
 func _ready() -> void:
 	# Issue #244 repro: a short turn whose timer outlives the effect.
 	GameConfig.turn_time = 1.0
-	var level: Node = load("res://Level3.tscn").instantiate()
+	var level: Node = load("res://scenes/levels/Level3.tscn").instantiate()
 	add_child(level)
 	var tc := get_node("/root/TurnController")
 	# Wait for the player's turn to begin (an enemy team may move first).

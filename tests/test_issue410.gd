@@ -26,7 +26,7 @@ const ActionMask := preload("res://addons/godot_native_rl/controllers/action_mas
 const ActionDecode := preload("res://addons/godot_native_rl/controllers/action_decode.gd")
 const InferenceMath := preload("res://addons/godot_native_rl/controllers/inference_math.gd")
 const NcnnControllerCore := preload("res://addons/godot_native_rl/controllers/ncnn_controller_core.gd")
-const Bot := preload("res://TrainingBot.gd")
+const Bot := preload("res://scripts/TrainingBot.gd")
 
 ## Attack-favoring raw policy output for TrainingBot's action space
 ## (move 6 | aim 3 | attack 8 | target 4, issue #422): the weapon-fire

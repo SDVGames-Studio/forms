@@ -39,7 +39,7 @@ from stable_baselines3.common.vec_env.vec_monitor import VecMonitor
 from godot_rl.wrappers.stable_baselines_wrapper import StableBaselinesGodotEnv
 
 REPO_ROOT = os.path.dirname(os.path.abspath(__file__))
-SCENE = "res://training_scene.tscn"
+SCENE = "res://scenes/testing/training_scene.tscn"
 
 
 def make_launcher_shim(godot_bin: str, scene: str, out_dir: str) -> str:

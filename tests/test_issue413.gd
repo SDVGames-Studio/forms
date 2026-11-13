@@ -15,14 +15,14 @@ extends Node
 ## Run headless: godot --headless res://tests/test_issue413.tscn
 ## Exit code 0 = pass.
 
-const OSDScript := preload("res://OSD.gd")
+const OSDScript := preload("res://scripts/OSD.gd")
 
 func _ready() -> void:
 	GameConfig.turn_time = 2.0
 	# The safety-timer force-fire must land in the debug action log —
 	# keep the debug mode on so the OSD actually records log lines.
 	GameConfig.debug_mode = true
-	var level: Node = load("res://Level3.tscn").instantiate()
+	var level: Node = load("res://scenes/levels/Level3.tscn").instantiate()
 	add_child(level)
 	var tc := get_node("/root/TurnController")
 	# Wait for the player's turn to begin (an enemy team may move first).

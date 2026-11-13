@@ -18,8 +18,8 @@ extends Node
 ## Run headless: godot --headless res://tests/test_issue521.tscn
 ## Exit code 0 = pass; the printed ISSUE521 ok= verdict is authoritative.
 
-const PlayerScript := preload("res://Player.gd")
-const NpcScript := preload("res://Npc.gd")
+const PlayerScript := preload("res://scripts/Player.gd")
+const NpcScript := preload("res://scripts/Npc.gd")
 
 func _ready() -> void:
 	var driver := Issue521Driver.new()
@@ -188,7 +188,7 @@ class Issue521Driver extends Node:
 		figure.add_child(visual)
 		var weapon := Node2D.new()
 		weapon.name = "Weapon"
-		weapon.set_script(preload("res://Weapon.gd"))
+		weapon.set_script(preload("res://scripts/Weapon.gd"))
 		figure.add_child(weapon)
 		level.add_child(figure)
 		return figure

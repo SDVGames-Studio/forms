@@ -2,7 +2,7 @@
 """Python-inference baseline for the ncnn deployment evaluation (issue #508).
 
 Replays every decision recorded by the exported-build eval run
-(``eval_scene.tscn`` → ``eval_results.json``) through the ORIGINAL
+(``scenes/testing/eval_scene.tscn`` → ``eval_results.json``) through the ORIGINAL
 Python-inference path — the SB3 PPO policy (``final_model.zip`` + its
 ``vecnormalize.pkl``) and, as a cross-check, the ONNX logits graph via
 onnxruntime — and measures how often the Python path picks the SAME action

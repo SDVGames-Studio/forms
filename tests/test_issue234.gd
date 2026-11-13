@@ -17,7 +17,7 @@ extends Node
 ## Run headless: godot --headless res://tests/test_issue234.tscn
 ## Exit code 0 = pass.
 
-const WeaponScript := preload("res://Weapon.gd")
+const WeaponScript := preload("res://scripts/Weapon.gd")
 
 func _ready() -> void:
 	await get_tree().process_frame
@@ -30,16 +30,16 @@ func _ready() -> void:
 	level.add_to_group("level")
 	add_child(level)
 	TurnController.active_team = "player"
-	var member_a: CharacterBody2D = load("res://Player.gd").new()
-	var member_b: CharacterBody2D = load("res://Player.gd").new()
+	var member_a: CharacterBody2D = load("res://scripts/Player.gd").new()
+	var member_b: CharacterBody2D = load("res://scripts/Player.gd").new()
 	add_child(member_a)
 	add_child(member_b)
 	await get_tree().process_frame
 
-	var weapon_a: Node2D = load("res://Weapon.gd").new()
+	var weapon_a: Node2D = load("res://scripts/Weapon.gd").new()
 	weapon_a.selected_weapon = 2  # grenade: same charge mechanic as the rock
 	member_a.add_child(weapon_a)
-	var weapon_b: Node2D = load("res://Weapon.gd").new()
+	var weapon_b: Node2D = load("res://scripts/Weapon.gd").new()
 	weapon_b.selected_weapon = 2
 	member_b.add_child(weapon_b)
 	TurnController.active_member = member_a

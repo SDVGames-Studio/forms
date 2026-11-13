@@ -625,7 +625,7 @@ static func _apply_extra_team(level: Node, npc: Node, team_index: int) -> void:
 static func _spawn_human_figure(level: Node, at: Vector2,
 		team: Dictionary, member_name: String) -> void:
 	var figure := CharacterBody2D.new()
-	figure.set_script(load("res://Player.gd"))
+	figure.set_script(load("res://scripts/Player.gd"))
 	figure.position = at
 	figure.set("team_color", team["color"])
 	figure.set("team_shape", str(team["shape"]))
@@ -647,6 +647,6 @@ static func _spawn_human_figure(level: Node, at: Vector2,
 	figure.add_child(visual)
 	var weapon := Node2D.new()
 	weapon.name = "Weapon"
-	weapon.set_script(load("res://Weapon.gd"))
+	weapon.set_script(load("res://scripts/Weapon.gd"))
 	figure.add_child(weapon)
 	level.add_child(figure)

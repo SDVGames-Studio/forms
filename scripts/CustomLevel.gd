@@ -28,10 +28,10 @@ const BODY_HEIGHT := 57.6
 ## Fallback figure line when the JSON has fewer spawns than figures.
 const FALLBACK_Y := 120.0
 
-const PlayerScript := preload("res://Player.gd")
-const NpcScript := preload("res://Npc.gd")
-const WeaponScript := preload("res://Weapon.gd")
-const ZoomCameraScript := preload("res://ZoomCamera.gd")
+const PlayerScript := preload("res://scripts/Player.gd")
+const NpcScript := preload("res://scripts/Npc.gd")
+const WeaponScript := preload("res://scripts/Weapon.gd")
+const ZoomCameraScript := preload("res://scripts/ZoomCamera.gd")
 const IndestructibleScript := preload(
 	"res://scripts/IndestructibleGround.gd")
 const DestructibleScript := preload(

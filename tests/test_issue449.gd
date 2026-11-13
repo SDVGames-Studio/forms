@@ -18,8 +18,8 @@ extends Node
 ## Run headless: godot --headless res://tests/test_issue449.tscn
 ## Exit code 0 = pass.
 
-const Npc := preload("res://Npc.gd")
-const BotControllerScript := preload("res://BotController.gd")
+const Npc := preload("res://scripts/Npc.gd")
+const BotControllerScript := preload("res://scripts/BotController.gd")
 
 # Observation conventions shared with test_issue447 (OBSERVATION_SPEC.md
 # values, copied — not read from BotController — so drift fails here too).

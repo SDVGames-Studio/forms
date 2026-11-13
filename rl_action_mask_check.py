@@ -61,7 +61,7 @@ def parse_godot_illegal_logit():
 
 
 def parse_trainingbot_heads():
-    src = open(os.path.join(REPO, "TrainingBot.gd"), encoding="utf-8").read()
+    src = open(os.path.join(REPO, "scripts/TrainingBot.gd"), encoding="utf-8").read()
     m = re.search(r"func get_action_space\(\) -> Dictionary:(.*?)\nfunc ", src, re.S)
     if not m:
         sys.exit("FAIL: could not locate get_action_space() in TrainingBot.gd")

@@ -8,7 +8,7 @@ extends Node
 ## Run headless: godot --headless res://tests/test_issue227.tscn
 ## Exit code 0 = pass.
 
-const ProjectileBodyScript := preload("res://ProjectileBody.gd")
+const ProjectileBodyScript := preload("res://scripts/ProjectileBody.gd")
 
 ## Same value as ProjectileBody.ROCK_CHAR_CLEAR (1.3 x the 64 px shape).
 const CLEAR := 1.3 * 64.0
@@ -20,7 +20,7 @@ func _ready() -> void:
 	ok = ok and ToolInventory.TOOLS.size() >= 4 and ToolInventory.TOOLS[3] == "Rock"
 	print("ISSUE227 tools=", ToolInventory.TOOLS)
 
-	var level: Node = load("res://Level.tscn").instantiate()
+	var level: Node = load("res://scenes/levels/Level.tscn").instantiate()
 	add_child(level)
 	for i in 10:
 		await get_tree().physics_frame

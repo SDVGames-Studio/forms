@@ -26,8 +26,8 @@ extends Node
 
 const ActionMask := preload("res://addons/godot_native_rl/controllers/action_mask.gd")
 const Sync := preload("res://addons/godot_native_rl/sync.gd")
-const Bot := preload("res://TrainingBot.gd")
-const Weapons := preload("res://WeaponInventory.gd")
+const Bot := preload("res://scripts/TrainingBot.gd")
+const Weapons := preload("res://scripts/WeaponInventory.gd")
 const Config := preload("res://scripts/GameConfig.gd")
 
 ## Fake figure for the battlefield mask tests — a Node2D with the `health`

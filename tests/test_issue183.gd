@@ -14,7 +14,7 @@ extends Node
 ## Exit code 0 = pass.
 
 func _ready() -> void:
-	var level: Node = load("res://Level.tscn").instantiate()
+	var level: Node = load("res://scenes/levels/Level.tscn").instantiate()
 	add_child(level)
 	for i in 30:
 		await get_tree().physics_frame
