@@ -34,6 +34,11 @@ extends Node2D
 ##                    the aim (no spread — more accurate than the
 ##                    shotgun's 5-pellet cone), less damage per shot
 ##                    than the shotgun volley (issue #526)
+##  9 Baseball bat (key B) — a melee swing along the aim: the hit not
+##                    only damages the figure it reaches, it LAUNCHES
+##                    them — an acceleration along the shot direction
+##                    that keeps pushing for a moment after the contact
+##                    (issue #527)
 ## Visuals are plain rectangles built in code — no extra assets.
 
 const ProjectileScript := preload("res://scripts/Projectile.gd")
@@ -58,9 +63,9 @@ const COOLDOWN := 0.3
 
 ## Issue #101: shots each weapon allows during ONE turn (index = weapon:
 ## shotgun 2, rocket 1, grenade 1, spear 2, mine 1, jackhammer 1, railgun 1,
-## pistol 3 — issue #526) and the 3-second delay after every shot during
-## which the character cannot shoot.
-const SHOTS_PER_TURN: Array = [2, 1, 1, 2, 1, 1, 1, 3]
+## pistol 3, baseball bat 1 — issues #526, #527) and the 3-second delay
+## after every shot during which the character cannot shoot.
+const SHOTS_PER_TURN: Array = [2, 1, 1, 2, 1, 1, 1, 3, 1]
 const SHOT_DELAY := 3.0
 
 const PELLET_SPEED := 900.0
@@ -166,13 +171,29 @@ const RAILGUN_RANGE := 20000.0
 const PISTOL_SPEED := 900.0
 const PISTOL_LIFETIME := 0.6
 const PISTOL_DAMAGE := 10
+## Issue #527: the baseball bat — a MELEE swing along the aim (a corridor
+## check in front of the wielder, like the spear's thrust). The hit not
+## only damages the figure it reaches, it gives them an ACCELERATION:
+## they are pushed along the shot direction at BAT_KNOCKBACK_SPEED for
+## BAT_KNOCKBACK_TIME seconds (the velocity write + body shove the
+## jackhammer drill proved in #363 — an idle figure's physics clamp eats
+## a one-shot tangential velocity write, so the push ticks like the
+## drill does). Damage sits between the spear (25) and the rocket (35).
+const BAT_RANGE := 90.0
+const BAT_DAMAGE := 30
+## How wide the swing's corridor is sideways of the aim axis — a figure
+## capsule is 48 px wide, so 24 catches every figure whose centre is up
+## to half a body off the aim line.
+const BAT_LATERAL := 24.0
+const BAT_KNOCKBACK_SPEED := 700.0
+const BAT_KNOCKBACK_TIME := 0.25
 
 var _facing := 1.0
 var _cooldown_left := 0.0
 ## Issue #101: shots already made this turn by this member, per weapon
 ## (issue #116: the quota is per weapon so switching after a shot keeps
 ## the newly selected weapon's own quota).
-var _shots_used := [0, 0, 0, 0, 0, 0, 0, 0]
+var _shots_used := [0, 0, 0, 0, 0, 0, 0, 0, 0]
 
 ## Issue #101: seconds left before the character may shoot again.
 var _shot_delay_left := 0.0
@@ -187,6 +208,17 @@ var _thrust_t := -1.0
 ## Issue #257: bodies already damaged by the CURRENT thrust — each target
 ## on the spearhead's path takes the spear hit at most once per thrust.
 var _thrust_hit: Array = []
+## Issue #527: the baseball bat swing — a quick lunge of the held bat
+## along the aim axis (visual only; the hit itself is instant, see
+## _swing_bat), plus the knockback state: every hit figure is pushed
+## along the shot direction while _bat_push_left > 0 (ticked from
+## _physics_process like the drill), and the turn-effect gate node that
+## keeps the post-shot handover waiting while they fly.
+var _bat_swing_t := -1.0
+var _bat_push: Array = []
+var _bat_push_dir := Vector2.ZERO
+var _bat_push_left := 0.0
+var _bat_effect: Node = null
 ## Issue #307: jackhammer drill state — seconds left, drill direction
 ## (re-sampled from the live aim every tick so the aim keys steer a
 ## running drill, #316), the per-body accrued grind damage of THIS
@@ -294,6 +326,8 @@ func _held_style_index() -> int:
 		return 7  # railgun (#359)
 	if selected_weapon == 7:
 		return 8  # pistol (#526)
+	if selected_weapon == 8:
+		return 9  # baseball bat (#527)
 	return selected_weapon
 
 ## Issue #68: size and color of the held weapon per selected weapon index.
@@ -309,6 +343,7 @@ const HELD_STYLES: Array = [
 	{"size": Vector2(10, 18), "color": Color(0.85, 0.85, 0.95, 1)},  # jackhammer (#307)
 	{"size": Vector2(46, 4), "color": Color(0.55, 0.85, 1.0, 1)},   # railgun (#359)
 	{"size": Vector2(18, 6), "color": Color(0.5, 0.55, 0.6, 1)},   # pistol (#526)
+	{"size": Vector2(30, 8), "color": Color(0.85, 0.6, 0.3, 1)},  # baseball bat (#527)
 ]
 
 ## Currently selected weapon index (0..5), shared through the inventory HUD.
@@ -361,6 +396,10 @@ func _physics_process(delta: float) -> void:
 	# drill IS the effect the handover waits for, see _drill_effect).
 	if _drill_left > 0.0:
 		_tick_jackhammer(delta)
+	# Issue #527: the baseball bat's knockback ticks the same way — the
+	# hit figures keep flying after the shot handed the turn over.
+	if _bat_push_left > 0.0:
+		_tick_bat_push(delta)
 
 	var parent := get_parent() as CharacterBody2D
 	var new_facing := _facing
@@ -502,6 +541,19 @@ func _physics_process(delta: float) -> void:
 			if _thrust_t >= 0.0:
 				_spear_sweep_hit(26.0 + thrust + HELD_STYLES[3]["size"].x / 2.0)
 		_held.position += aim * thrust
+		# Issue #527: the bat swing — a quick forward swipe along the aim
+		# axis, fast out (0.1 s) and slower back (0.3 s), mirroring the
+		# spear's lunge but shorter (half the bat's reach).
+		var swing := 0.0
+		if _bat_swing_t >= 0.0:
+				_bat_swing_t += delta
+				if _bat_swing_t <= 0.1:
+					swing = BAT_RANGE * 0.5 * (_bat_swing_t / 0.1)
+				elif _bat_swing_t <= 0.4:
+					swing = BAT_RANGE * 0.5 * (1.0 - (_bat_swing_t - 0.1) / 0.3)
+				else:
+					_bat_swing_t = -1.0
+		_held.position += aim * swing
 		# Issue #307: the drilling jackhammer shakes in the wielder's hands.
 		if _drill_left > 0.0:
 			_held.position += Vector2(randf_range(-2.0, 2.0), randf_range(-2.0, 2.0))
@@ -617,6 +669,7 @@ func _fire(power := 1.0) -> void:
 		5: _start_jackhammer(power)
 		6: _fire_railgun(power)
 		7: _fire_pistol()
+		8: _swing_bat()
 	# Issue #101+#65: only the LAST shot of the turn hands the turn over;
 	# with quota remaining the character keeps acting after the pause.
 	if _shots_used[clampi(selected_weapon, 0, _shots_used.size() - 1)] >= _shot_limit():
@@ -692,6 +745,80 @@ func _fire_pistol() -> void:
 	var velocity := _aim() * PISTOL_SPEED
 	_spawn_projectile(Projectile.Type.PELLET, velocity, PISTOL_DAMAGE,
 		PISTOL_LIFETIME, Vector2(10, 4), Color(0.5, 0.55, 0.6, 1))
+
+
+## Issue #527: the baseball bat swing — an instant melee corridor check
+## along the aim (like the spear's thrust, but with the bat's own reach
+## and lateral tolerance). EVERY figure it reaches — friendly fire is on
+## (#57), only the wielder is exempt — takes BAT_DAMAGE and is LAUNCHED
+## along the shot direction: the knockback runs for BAT_KNOCKBACK_TIME
+## seconds (see _tick_bat_push), gated as a turn effect so the post-shot
+## handover waits while the hit figures fly (same pattern as the drill).
+func _swing_bat() -> void:
+	_bat_swing_t = 0.0
+	_bat_push.clear()
+	_bat_push_dir = _aim().normalized()
+	_bat_push_left = 0.0
+	var parent := get_parent() as Node2D
+	if parent == null:
+		return
+	var dir := _bat_push_dir
+	var perp := Vector2(-dir.y, dir.x)
+	for group in ["player_team", "enemy_team"]:
+		for node in get_tree().get_nodes_in_group(group):
+			var body := node as Node2D
+			if body == null or body == parent or not is_instance_valid(body) \
+					or not body.has_method("take_damage"):
+				continue
+			var hp = body.get("health")
+			if hp is int and hp <= 0:
+				continue
+			var offset := body.global_position - global_position
+			var along := offset.dot(dir)
+			var lateral := absf(offset.dot(perp))
+			if along > 0.0 and along <= BAT_RANGE and lateral <= BAT_LATERAL:
+				body.take_damage(BAT_DAMAGE)
+				_bat_push.append(body)
+	if _bat_push.is_empty():
+		return
+	_bat_push_left = BAT_KNOCKBACK_TIME
+	if _bat_effect == null or not is_instance_valid(_bat_effect):
+			_bat_effect = Node.new()
+			_bat_effect.name = "BatKnockback"
+			_bat_effect.add_to_group(TurnController.EFFECT_GROUP)
+			if parent.get_parent() != null:
+				parent.get_parent().add_child(_bat_effect)
+
+
+## Issue #527: one physics tick of the bat's knockback — every hit figure
+## is pushed along the shot direction (velocity write + body shove, the
+## jackhammer's #363 recipe: an idle figure's clamp eats a one-shot
+## tangential velocity write, so the body itself is moved every tick).
+func _tick_bat_push(delta: float) -> void:
+	_bat_push_left -= delta
+	var push := _bat_push_dir * BAT_KNOCKBACK_SPEED
+	for body in _bat_push:
+		if body == null or not is_instance_valid(body):
+			continue
+		if "velocity" in body:
+				body.velocity = push
+		var physics := body as PhysicsBody2D
+		if physics != null:
+				physics.move_and_collide(push * delta)
+		else:
+			body.global_position += push * delta
+	if _bat_push_left <= 0.0:
+		_end_bat_push()
+
+
+## Issue #527: the knockback is done — release the turn-effect gate so
+## the handover can pass the turn.
+func _end_bat_push() -> void:
+	_bat_push_left = 0.0
+	_bat_push.clear()
+	if _bat_effect != null and is_instance_valid(_bat_effect):
+			_bat_effect.queue_free()
+	_bat_effect = null
 
 
 func _fire_rocket(power := 1.0) -> void:

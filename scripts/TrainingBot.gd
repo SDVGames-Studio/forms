@@ -36,14 +36,14 @@ func get_reward() -> float:
 ## handshake builds one spaces.Discrete(size) object per head, which the
 ## SB3 wrapper composes into a single spaces.MultiDiscrete input — the
 ## policy learns an independent sub-policy per dimension instead of one
-## fused Discrete over all 6*3*8*4 = 576 joints. Issue #422 re-grounds
+## fused Discrete over all 6*3*10*4 = 720 joints. Issue #422 re-grounds
 ## every size in the ACTUAL number of legal options in the game (as small
 ## as the game itself allows):
 ##   "move":   0 hold | 1 walk right | 2 walk left | 3 jump | 4 backflip | 5 skip turn
 ##   "aim":    0 hold | 1 aim up | 2 aim down
-##   "attack": 0 hold fire | 1-8 select+fire weapon slot 1-8 — the InputMap
-##             has exactly weapon_1..weapon_8 and WeaponInventory.WEAPONS
-##             has 8 entries (the pistol joined as slot 8, #526)
+##   "attack": 0 hold fire | 1-9 select+fire weapon slot 1-9 — the InputMap
+##             has exactly weapon_1..weapon_9 and WeaponInventory.WEAPONS
+##             has 9 entries (the baseball bat joined as slot 9, #527)
 ##   "target": 0 keep/no target | 1-3 the k-th alive opposing figure within
 ##             ATTACK_REACH (GameConfig.MAX_TEAM_MEMBERS == 3 caps the enemy
 ##             team, so 1+3 = 4 is the whole legal option set)
@@ -57,7 +57,7 @@ func get_action_space() -> Dictionary:
 	return {
 		"move": {"size": 6, "action_type": "discrete"},
 		"aim": {"size": 3, "action_type": "discrete"},
-		"attack": {"size": 9, "action_type": "discrete"},
+		"attack": {"size": 10, "action_type": "discrete"},
 		"target": {"size": 4, "action_type": "discrete"},
 	}
 

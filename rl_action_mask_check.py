@@ -20,7 +20,7 @@ of Done items of issue #423:
    argmax holds fire and 20000 seeded stochastic draws never fire — while
    the same logits WITHOUT the mask do pick an attack (sanity).
 4. Logging: ``format_decision``/``log_decision`` emit the mask arrays
-   alongside the chosen actions ("attack=0 mask=100000000 | ...").
+   alongside the chosen actions ("attack=0 mask=1000000000 | ...").
 
 Usage: python3 rl_action_mask_check.py   (from the repository root)
 """
@@ -37,15 +37,16 @@ import rl_action_mask as am
 REPO = os.path.dirname(os.path.abspath(__file__))
 
 # Attack-favoring raw policy output for TrainingBot's action space (issue
-# #422: move 6 | aim 3 | attack 9 | target 4 = 22 slots — attack grew to 9
-# with the pistol, #526) — the same values tests/test_issue410.gd uses, so
-# both languages pin the same fixture: the weapon-fire slots 10-17 carry
-# the highest logits, so WITHOUT a mask every path picks an attack action.
+# #422: move 6 | aim 3 | attack 10 | target 4 = 23 slots — attack grew
+# to 10 with the baseball bat, #527) — the same values tests/test_issue410.gd
+# uses, so both languages pin the same fixture: the weapon-fire slots
+# 10-18 carry the highest logits, so WITHOUT a mask every path picks an
+# attack action.
 ATTACK_FAVORING = [
     0.5, 0.4, 0.3, 0.2, 0.1, 0.0,           # move 0-5
     0.5, 0.3, 0.1,                          # aim 6-8
-    0.2, 4.0, 4.1, 4.2, 4.3, 1.0, 0.9, 0.8, 0.7,  # attack 9-17 (fire slots 10-17)
-    0.3, 0.25, 0.2, 0.15,                    # target 18-21
+    0.2, 4.0, 4.1, 4.2, 4.3, 1.0, 0.9, 0.8, 0.7, 0.6,  # attack 9-18 (fire slots 10-18)
+    0.3, 0.25, 0.2, 0.15,                    # target 19-22
 ]
 
 
@@ -104,8 +105,8 @@ def main() -> int:
         "unexpected TrainingBot heads: %s" % head_order,
     )
     expect(
-        sum(head_sizes.values()) == len(ATTACK_FAVORING) == 22,
-        "flat width %d != 22 (heads %s)" % (sum(head_sizes.values()), head_order),
+        sum(head_sizes.values()) == len(ATTACK_FAVORING) == 23,
+        "flat width %d != 23 (heads %s)" % (sum(head_sizes.values()), head_order),
     )
 
     # The no-enemies-in-reach wire mask, JSON-round-tripped exactly as it
@@ -163,16 +164,16 @@ def main() -> int:
     expect(per_head["attack"][3] == 4.2, "mask_logits never mutates its input")
 
     flat_masked = am.apply_action_masks(ATTACK_FAVORING, no_enemies, head_order)
-    expect(len(flat_masked) == 22, "flat application keeps the 22-slot width")
-    # Flat layout (issue #422): move 0-5, aim 6-8, attack 9-17, target
-    # 18-21 — the fire slots 10-17 and the no-enemy target slots 19-21 go
+    expect(len(flat_masked) == 23, "flat application keeps the 23-slot width")
+    # Flat layout (issue #422): move 0-5, aim 6-8, attack 9-18, target
+    # 19-22 — the fire slots 10-18 and the no-enemy target slots 20-22 go
     # to ILLEGAL_LOGIT; every other slot stays untouched.
-    for i in list(range(10, 18)) + list(range(19, 22)):
+    for i in list(range(10, 19)) + list(range(20, 23)):
         expect(
             flat_masked[i] == am.ILLEGAL_LOGIT,
             "flat illegal slot %d == ILLEGAL_LOGIT (got %r)" % (i, flat_masked[i]),
         )
-    for i in [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 18]:
+    for i in [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 19]:
         expect(
             flat_masked[i] == ATTACK_FAVORING[i],
             "flat legal slot %d untouched (got %r)" % (i, flat_masked[i]),
@@ -225,7 +226,7 @@ def main() -> int:
 
     # Partial legality (one enemy in reach): fire slots become legal and
     # ARE drawn, while the masked-out slots still never are.
-    one_enemy = dict(no_enemies, attack=[True, True] + [False] * 7)
+    one_enemy = dict(no_enemies, attack=[True, True] + [False] * 8)
     seen_attack = set()
     for _ in range(2000):
         seen_attack.add(am.sample_masked(per_head["attack"], one_enemy["attack"], rng))
@@ -239,7 +240,7 @@ def main() -> int:
         name: am.argmax_masked(per_head[name], no_enemies[name]) for name in head_sizes
     }
     line = am.format_decision(chosen, no_enemies)
-    expect("attack=0 mask=100000000" in line, "log line carries attack choice + mask: %s" % line)
+    expect("attack=0 mask=1000000000" in line, "log line carries attack choice + mask: %s" % line)
     expect("target=0 mask=1000" in line, "log line carries target choice + mask: %s" % line)
     expect(
         all("%s=" % name in line for name in head_sizes),

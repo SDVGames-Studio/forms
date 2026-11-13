@@ -29,10 +29,10 @@ const NcnnControllerCore := preload("res://addons/godot_native_rl/controllers/nc
 const Bot := preload("res://scripts/TrainingBot.gd")
 
 ## Attack-favoring raw policy output for TrainingBot's action space
-## (move 6 | aim 3 | attack 9 | target 4, issue #422; attack grew to 9
-## with the pistol, #526): the weapon-fire slots 1-8 carry the highest
-## logits, so WITHOUT a mask every path picks an attack action.
-const ATTACK_FAVORING := [0.5, 0.4, 0.3, 0.2, 0.1, 0.0, 0.5, 0.3, 0.1, 0.2, 4.0, 4.1, 4.2, 4.3, 1.0, 0.9, 0.8, 0.7, 0.3, 0.25, 0.2, 0.15]
+## (move 6 | aim 3 | attack 10 | target 4, issue #422; attack grew to 10
+## with the baseball bat, #527): the weapon-fire slots 1-9 carry the
+## highest logits, so WITHOUT a mask every path picks an attack action.
+const ATTACK_FAVORING := [0.5, 0.4, 0.3, 0.2, 0.1, 0.0, 0.5, 0.3, 0.1, 0.2, 4.0, 4.1, 4.2, 4.3, 1.0, 0.9, 0.8, 0.7, 0.6, 0.3, 0.25, 0.2, 0.15]
 
 ## Fake deploy-side runner: reports a loaded model and returns fixed logits.
 class FakeRunner extends RefCounted:
@@ -54,13 +54,13 @@ func _ready() -> void:
 	var space := {
 		"move": {"size": 6, "action_type": "discrete"},
 		"aim": {"size": 3, "action_type": "discrete"},
-		"attack": {"size": 9, "action_type": "discrete"},
+		"attack": {"size": 10, "action_type": "discrete"},
 		"target": {"size": 4, "action_type": "discrete"},
 	}
 	var no_fire := {
 		"move": [true, true, true, true, true, true],
 		"aim": [true, true, true],
-		"attack": [true, false, false, false, false, false, false, false, false],
+		"attack": [true, false, false, false, false, false, false, false, false, false],
 		"target": [true, false, false, false],
 	}
 
@@ -72,56 +72,56 @@ func _ready() -> void:
 	ok = _expect(not ActionMask.validate({
 		"move": [true, true, true, true, true],
 		"aim": [true, true, true],
-		"attack": [true, false, false, false, false, false, false, false, false],
+		"attack": [true, false, false, false, false, false, false, false, false, false],
 		"target": [true, false, false, false],
 	}, space), "wrong-size entry is invalid") and ok
 	ok = _expect(not ActionMask.validate({
 		"aim": [true, true, true],
-		"attack": [true, false, false, false, false, false, false, false, false],
+		"attack": [true, false, false, false, false, false, false, false, false, false],
 		"target": [true, false, false, false],
 	}, space), "missing head is invalid") and ok
 	ok = _expect(not ActionMask.validate({
 		"move": [true, true, true, true, true, true],
 		"aim": [true, true, true],
-		"attack": [true, false, false, false, false, false, false, false, false],
+		"attack": [true, false, false, false, false, false, false, false, false, false],
 		"target": [true, false, false, false],
 		"extra": [true],
 	}, space), "unknown head key is invalid") and ok
 	ok = _expect(not ActionMask.validate({
 		"move": [false, false, false, false, false, false],
 		"aim": [true, true, true],
-		"attack": [true, false, false, false, false, false, false, false, false],
+		"attack": [true, false, false, false, false, false, false, false, false, false],
 		"target": [true, false, false, false],
 	}, space), "all-illegal head is invalid (neutral index must stay legal)") and ok
 	ok = _expect(not ActionMask.validate({
 		"move": [true, true, true, true, true, true],
 		"aim": [true, true, true],
-		"attack": [true, false, false, false, false, false, false, false, false],
+		"attack": [true, false, false, false, false, false, false, false, false, false],
 		"target": [true, false, false, false],
 		"throttle": [true, false],
 	}, {
 		"move": {"size": 6, "action_type": "discrete"},
 		"aim": {"size": 3, "action_type": "discrete"},
-		"attack": {"size": 9, "action_type": "discrete"},
+		"attack": {"size": 10, "action_type": "discrete"},
 		"target": {"size": 4, "action_type": "discrete"},
 		"throttle": {"size": 2, "action_type": "continuous"},
 	}), "mask entry for a continuous head is invalid") and ok
 	ok = _expect(ActionMask.validate({
 		"move": [1, 1, 1, 1, 1, 1],
 		"aim": [1, 1, 1],
-		"attack": [1, 0, 0, 0, 0, 0, 0, 0, 0],
+		"attack": [1, 0, 0, 0, 0, 0, 0, 0, 0, 0],
 		"target": [1, 0, 0, 0],
 	}, space), "0/1 numbers validate (the JSON wire round-trip)") and ok
 
 	# --- 2. ActionMask.apply_to_logits ---
 	var raw := PackedFloat32Array(ATTACK_FAVORING)
 	var masked := ActionMask.apply_to_logits(raw, no_fire, space)
-	# Layout (issue #422): move 0-5, aim 6-8, attack 9-17, target 18-21.
-	# Fire slots 10-17 -> ILLEGAL_LOGIT.
+	# Layout (issue #422): move 0-5, aim 6-8, attack 9-18, target 19-22.
+	# Fire slots 10-18 -> ILLEGAL_LOGIT.
 	for i in [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]:
 		ok = _expect(is_equal_approx(masked[i], raw[i]),
 				"legal slot %d untouched (got %s, want %s)" % [i, masked[i], raw[i]]) and ok
-	for i in [10, 11, 12, 13, 14, 15, 16, 17]:
+	for i in [10, 11, 12, 13, 14, 15, 16, 17, 18]:
 		ok = _expect(masked[i] == ActionMask.ILLEGAL_LOGIT,
 				"illegal slot %d set to ILLEGAL_LOGIT (got %s)" % [i, masked[i]]) and ok
 	ok = _expect(is_equal_approx(raw[12], 4.2), "apply_to_logits never mutates its input") and ok
@@ -162,7 +162,7 @@ func _ready() -> void:
 		ok = _expect(debug.has("action_mask"),
 				"payload logs the mask alongside the action (DoD)") and ok
 		var logged: Array = debug["action_mask"].get("attack", [])
-		ok = _expect(logged == [true, false, false, false, false, false, false, false, false],
+		ok = _expect(logged == [true, false, false, false, false, false, false, false, false, false],
 				"logged attack mask is [hold only], got %s" % [logged]) and ok
 		ok = _expect(debug["logits"][12] == ActionMask.ILLEGAL_LOGIT,
 				"logged logits are the effective (post-mask) ones") and ok
@@ -203,19 +203,19 @@ func _ready() -> void:
 	near.position = Vector2(576 + 600, 400)  # 600 <= ATTACK_REACH 620
 	add_child(near)
 	near.add_to_group("player_team")
-	ok = _expect(bot.get_action_mask()["attack"] == [true, true, true, true, true, true, true, true, true],
+	ok = _expect(bot.get_action_mask()["attack"] == [true, true, true, true, true, true, true, true, true, true],
 			"enemy in reach legalizes the fire actions") and ok
 	near.position = Vector2(576 + 700, 400)  # 700 > 620
-	ok = _expect(bot.get_action_mask()["attack"] == [true, false, false, false, false, false, false, false, false],
+	ok = _expect(bot.get_action_mask()["attack"] == [true, false, false, false, false, false, false, false, false, false],
 			"enemy beyond reach re-masks the fire actions") and ok
 	near.position = Vector2(576 + 100, 400)
 	near.health = 0.0
-	ok = _expect(bot.get_action_mask()["attack"] == [true, false, false, false, false, false, false, false, false],
+	ok = _expect(bot.get_action_mask()["attack"] == [true, false, false, false, false, false, false, false, false, false],
 			"downed enemy never legalizes firing") and ok
 	near.health = 100.0
 	near.remove_from_group("player_team")
 	near.add_to_group("enemy_team")
-	ok = _expect(bot.get_action_mask()["attack"] == [true, false, false, false, false, false, false, false, false],
+	ok = _expect(bot.get_action_mask()["attack"] == [true, false, false, false, false, false, false, false, false, false],
 			"same-side figure never legalizes firing") and ok
 	near.queue_free()
 
@@ -223,7 +223,7 @@ func _ready() -> void:
 	ok = _expect(info.has("action_mask"), "get_info() ships the mask on the wire") and ok
 	var round_trip = JSON.parse_string(JSON.stringify(info))
 	ok = _expect(round_trip is Dictionary
-			and round_trip["action_mask"]["attack"] == [true, false, false, false, false, false, false, false, false],
+			and round_trip["action_mask"]["attack"] == [true, false, false, false, false, false, false, false, false, false],
 			"the wire mask JSON-round-trips as booleans") and ok
 	var plain := PlainInfoAgent.new()
 	add_child(plain)
@@ -248,7 +248,7 @@ class BadMaskAgent extends Node2D:
 		return {
 			"move": {"size": 6, "action_type": "discrete"},
 			"aim": {"size": 3, "action_type": "discrete"},
-			"attack": {"size": 9, "action_type": "discrete"},
+			"attack": {"size": 10, "action_type": "discrete"},
 			"target": {"size": 4, "action_type": "discrete"},
 		}
 
@@ -280,7 +280,7 @@ class NoMaskAgent extends Node2D:
 		return {
 			"move": {"size": 6, "action_type": "discrete"},
 			"aim": {"size": 3, "action_type": "discrete"},
-			"attack": {"size": 9, "action_type": "discrete"},
+			"attack": {"size": 10, "action_type": "discrete"},
 			"target": {"size": 4, "action_type": "discrete"},
 		}
 

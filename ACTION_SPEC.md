@@ -24,9 +24,9 @@ handshake builds one `spaces.Discrete(size)` object per head from
 (one independent decision dimension per key); the Stable-Baselines3
 wrapper composes those per-head spaces into a single
 `spaces.MultiDiscrete` input (issue #422), so the policy's per-step
-output is one flat integer per head — `move 6 | aim 3 | attack 9 |
-target 4` = 22 slots, a joint space of only 6·3·9·4 = 648 combinations
-instead of one fused `Discrete(648)`.
+output is one flat integer per head — `move 6 | aim 3 | attack 10 |
+target 4` = 23 slots, a joint space of only 6·3·10·4 = 720 combinations
+instead of one fused `Discrete(720)`.
 
 Per-head legality is exposed through `get_action_mask()` (issue #410):
 one boolean array per discrete head (`true` = legal), shipped as
@@ -48,7 +48,7 @@ small as the game itself allows:
 |---|---|---|---|
 | `move` | 6 | discrete | hold + the 5 movement commands (walk right/left, jump, backflip, skip turn) |
 | `aim` | 3 | discrete | hold + aim up/down |
-| `attack` | 9 | discrete | hold fire + the 8 weapon slots (`weapon_1`..`weapon_8`, `WeaponInventory.WEAPONS`; the pistol joined as slot 8, #526) |
+| `attack` | 10 | discrete | hold fire + the 9 weapon slots (`weapon_1`..`weapon_9`, `WeaponInventory.WEAPONS`; the baseball bat joined as slot 9, #527) |
 | `target` | 4 | discrete | no target + the enemy team cap (`GameConfig.MAX_TEAM_MEMBERS` = 3) |
 
 The dict's key order (`move`, `aim`, `attack`, `target`) is the wire
@@ -80,7 +80,7 @@ is defined once, below the tables.
 | 1 | aim up | always legal | not yet |
 | 2 | aim down | always legal | not yet |
 
-**`attack` (9):**
+**`attack` (10):**
 
 | Index | Game command (`set_action()`) | Masking condition (legal when) | Actuated today |
 |---|---|---|---|
@@ -93,6 +93,7 @@ is defined once, below the tables.
 | 6 | select + fire weapon slot 6 (Jackhammer) | ≥ 1 visible enemy | not yet |
 | 7 | select + fire weapon slot 7 (Railgun) | ≥ 1 visible enemy | not yet |
 | 8 | select + fire weapon slot 8 (Pistol) | ≥ 1 visible enemy | not yet |
+| 9 | select + fire weapon slot 9 (Baseball Bat) | ≥ 1 visible enemy | not yet |
 
 (The slot names follow `WeaponInventory.WEAPONS` order; #382's
 "keys 1-4"/size-5 grounding predated the smaller inventory — #422 fixed
@@ -139,8 +140,8 @@ enemy in reach, 20000 sampled joints never select an attack action. The
 mask arrays are **logged alongside the chosen actions** on both sides:
 the `inference_step` payload ships `action_mask` next to `action` and
 the Policy Debugger overlay renders one compact mask row per discrete
-head (`mask 1 0 0 0 0 0 0 0 0`), while the Python side emits
-`rl_action_mask.format_decision` lines (`attack=0 mask=100000000 | …`).
+head (`mask 1 0 0 0 0 0 0 0 0 0`), while the Python side emits
+`rl_action_mask.format_decision` lines (`attack=0 mask=1000000000 | …`).
 In-trainer PPO distribution masking (MaskablePPO-style, so SB3's own
 sampler consumes the masks live) is the training-pipeline follow-up.
 
@@ -153,11 +154,11 @@ as §1 defines them — before the per-head argmax/softmax accepts the
 network's choice. The deployed net re-orders the same four heads to the
 trained policy's SB3 `MultiDiscrete([3,8,6,4])` output layout
 (`aim, attack, move, target`), so the mask (keyed by head name) is applied
-to the flat 21-value output in that order. (#526 note: the deployed net
-was trained on the pre-pistol 7-weapon space, so its `attack` head is
-FROZEN at 8 while the training scaffold grew to 9 — `InferenceBot.gd`
+to the flat 21-value output in that order. (#526/#527 note: the deployed
+net was trained on the pre-pistol 7-weapon space, so its `attack` head is
+FROZEN at 8 while the training scaffold grew to 10 — `InferenceBot.gd`
 keeps the deployed sizes until the policy is retrained; the deployed bot
-never selects the pistol.)
+never selects the pistol or the baseball bat.)
 
 **Fallback behavior** (what #507 orders documented): if the network's
 chosen action for a head is illegal, it is **overridden by the
@@ -232,7 +233,7 @@ inference side) from this file alone:
 1. **Enumerate the heads** from the §1 head table (and §2 for
    `BotController`): name, wire order, and integer size. The wire order
    is the `get_action_space()` dict order. For `TrainingBot.gd` that is
-   `move(6), aim(3), attack(9), target(4)` — 22 integer slots per step
+   `move(6), aim(3), attack(10), target(4)` — 23 integer slots per step
    (the deployed ncnn net still emits the frozen 21-value pre-#526
    layout; see "Deploy-path fallback").
 2. **Mask format**: `info["action_mask"]` (shipped every training step)
