@@ -180,6 +180,8 @@ func _load_obs_norm_stats() -> void:
 	if not (parsed is Dictionary) or not ObsNormalize.validate(parsed):
 		push_error("NcnnAIController2D: invalid obs-norm stats JSON at '%s'." % obs_norm_stats_path)
 		return
+	if not bool(parsed.get("norm_obs", true)):
+		push_warning("NcnnAIController2D: %s has norm_obs=false — observations are passed to the policy RAW (training used no obs normalization)." % obs_norm_stats_path)
 	_core.obs_norm_stats = ObsNormalize.to_typed(parsed)
 
 func set_obs_norm_stats_for_test(stats: Dictionary) -> void:

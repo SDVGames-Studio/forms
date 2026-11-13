@@ -199,7 +199,8 @@ extending the roster:
    with `train.py`, the policy expects VecNormalize-normalized observations**;
    `export_onnx.py` normalizes only its dummy input for the parity check and
    does NOT bake the normalization into the graph — the game replays it
-   pre-inference via the `obs_norm_stats_path` sidecar (step 4).
+   pre-inference via the `obs_norm_stats_path` sidecar, exported by
+   `export_vecnormalize_stats.py` (step 4).
 
    ```bash
    .venv-train/bin/python export_onnx.py \
@@ -267,36 +268,50 @@ normalizes observations and rewards with SB3's VecNormalize, so the ncnn model
 expects *normalized* inputs. If the game feeds raw `get_obs()` values to a
 policy trained this way, the policy receives out-of-distribution inputs and
 behaves unpredictably. Convert the saved `vecnormalize.pkl` into the JSON
-sidecar the controller replays pre-inference (the exact transform —
-`(obs - mean) / sqrt(var + epsilon)`, clamped to `clip_obs` — is mirrored by
+sidecar the controller replays pre-inference with
+[`export_vecnormalize_stats.py`](export_vecnormalize_stats.py) (issue #503;
+the exact transform — `(obs - mean) / sqrt(var + epsilon)`, clamped to
+`clip_obs` — is mirrored by
 [`addons/godot_native_rl/controllers/obs_normalize.gd`):
 
 ```bash
-.venv-train/bin/python - <<'EOF'
-import json, pickle
-with open("runs/issue471_check/vecnormalize.pkl", "rb") as f:
-    norm = pickle.load(f)  # VecNormalize.save() pickles the wrapper itself
-rms = norm.obs_rms
-# Dict observation space (godot-rl: {"obs": flat_vector}) -> per-key stats;
-# the in-game controller consumes the flattened "obs" vector.
-if isinstance(rms, dict):
-    rms = rms["obs"]
-sidecar = {
-    "obs_size": int(rms.mean.size),
-    "mean": rms.mean.tolist(),
-    "var": rms.var.tolist(),
-    "epsilon": float(norm.epsilon),
-    "clip_obs": float(norm.clip_obs),  # exactly what training clipped to
-}
-with open("models/policy.norm.json", "w") as f:
-    json.dump(sidecar, f)
-EOF
+python3 export_vecnormalize_stats.py \
+    --vecnormalize runs/issue471_check/vecnormalize.pkl \
+    --out models/vecnormalize_stats.json
+# built-in self-check: the saved stats must reproduce SB3
+# VecNormalize.normalize_obs on random raw obs EXACTLY (after SB3's
+# float32 VecEnv cast)
 ```
 
-Then set `obs_norm_stats_path = res://models/policy.norm.json` on the controller
-node alongside `model_param_path`/`model_bin_path`. Skipping this sidecar on a
-VecNormalize-trained policy silently degrades the bot (no load error — just
-out-of-distribution inputs).
+The shipped artifact `models/vecnormalize_stats.json` (committed next to
+`models/policy.onnx`, generated from the `issue471_check` run) has this
+format:
+
+| Key | Type | Meaning |
+|---|---|---|
+| `schema_version` | int | format version (currently `1`) |
+| `norm_obs` | bool | **active flag** — `true`: the policy was trained with obs normalization (replay the transform); `false`: training used raw obs, `get_obs()` is passed through unchanged (mean/var are inert zeros) |
+| `obs_size` | int | observation width; must equal `get_obs()["obs"].size()` |
+| `mean`, `var` | float arrays (length `obs_size`) | `vec_normalize.obs_rms.mean` / `.var` |
+| `epsilon` | float | variance guard inside the sqrt (SB3 default `1e-8`) |
+| `clip_obs` | float | clamp applied AFTER the division (SB3 default `10.0`) |
+| `count` | float | running-stat sample count (provenance only, unused at runtime) |
+
+Normalization replayed at inference: `normalized[i] = clamp((obs[i] -
+mean[i]) / sqrt(var[i] + epsilon), -clip_obs, +clip_obs)`. SB3 evaluates this
+in float64 and casts the result to float32 (the VecEnv dtype the policy was
+trained on); the GDScript replay runs float32 arithmetic, which is the same
+rounding. Verify any exported sidecar with `python3 rl_vecnormalize_check.py`
+(synthetic round-trip + the shipped artifact against the live
+`vecnormalize.pkl`; exit 0 = pass) and headless in Godot with
+`godot --headless res://tests/test_issue503.tscn`.
+
+Then set `obs_norm_stats_path = res://models/vecnormalize_stats.json` on the
+controller node alongside `model_param_path`/`model_bin_path`. Sidecars
+written before the `norm_obs` flag existed (e.g. a `policy.norm.json` from
+the old inline recipe) still load — a missing flag defaults to *active*.
+Skipping this sidecar on a VecNormalize-trained policy silently degrades the
+bot (no load error — just out-of-distribution inputs).
 
 The plugin must be **enabled** (Project → Project Settings → Plugins → *Godot
 Native RL*): it auto-packs `*.ncnn.param` / `*.ncnn.bin` into every export —
@@ -321,3 +336,6 @@ without it, exported builds crash with `cannot read model files`.
 2. `rl_connectivity_test.py --steps 96` passes (training bridge healthy).
 3. Run the game: bot loads the model without `cannot read model files` /
    `Failed to load ncnn model` errors and acts on every step.
+4. `python3 rl_vecnormalize_check.py` passes (obs-norm stats sidecar
+   reproduces the training-time normalization, #503); headless Godot:
+   `godot --headless res://tests/test_issue503.tscn` → exit 0.
