@@ -18,9 +18,9 @@ extends CanvasLayer
 
 ## Issue #179: tools joined the weapons in THIS panel — one unified
 ## inventory grid: weapons on keys 1-4 plus the mine on key 9 (issue
-## #246), the jackhammer on key 0 (issue #307) and the railgun on key R
-## (issue #359), tools on keys 5-8 (issue #227 added the fourth tool,
-## Rock).
+## #246), the jackhammer on key 0 (issue #307), the railgun on key R
+## (issue #359) and the pistol on key P (issue #526), tools on keys 5-8
+## (issue #227 added the fourth tool, Rock).
 ## The tool LOGIC stays in the ToolInventory autoload; this script only
 ## renders the shared slots.
 
@@ -96,7 +96,7 @@ var _toggle_button: Button
 var _mobile_open := false
 var _mobile_layout_applied := false
 
-const WEAPONS := ["Shotgun", "Rocket", "Grenade", "Spear", "Mine", "Jackhammer", "Railgun"]
+const WEAPONS := ["Shotgun", "Rocket", "Grenade", "Spear", "Mine", "Jackhammer", "Railgun", "Pistol"]
 
 ## Issue #305: per-team use budgets. Every team starts a round with 5
 ## uses of each weapon and 5 uses of each tool; the SPEAR is the only
@@ -132,6 +132,7 @@ const ICONS: Array = [
 	{"shape": "circle", "radius": 8.0, "color": Color(0.22, 0.24, 0.3, 1)},
 	{"shape": "rect", "size": Vector2(10, 18), "color": Color(0.85, 0.85, 0.95, 1)},
 	{"shape": "rect", "size": Vector2(44, 5), "color": Color(0.55, 0.85, 1.0, 1)},
+	{"shape": "rect", "size": Vector2(18, 6), "color": Color(0.5, 0.55, 0.6, 1)},
 ]
 
 ## Issue #271: hover hints. The scripts are preloaded (not the autoload
@@ -455,6 +456,9 @@ func _weapon_hint(i: int) -> String:
 		"Railgun":
 			damage = "%d-%d" % [WeaponFire.RAILGUN_MIN_DAMAGE,
 				WeaponFire.RAILGUN_MAX_DAMAGE]
+		"Pistol":
+			damage = "%d × %d shots" % [WeaponFire.PISTOL_DAMAGE,
+				int(WeaponFire.SHOTS_PER_TURN[i])]
 	return "%s\nDamage: %s" % [WEAPONS[i], damage]
 
 

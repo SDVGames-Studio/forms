@@ -41,6 +41,8 @@ func _ready() -> void:
 		"%d/s while pushing" % int(WeaponFire.JACKHAMMER_PUSH_DPS),
 		"%d-%d" % [WeaponFire.RAILGUN_MIN_DAMAGE,
 				WeaponFire.RAILGUN_MAX_DAMAGE],
+		"%d × %d shots" % [WeaponFire.PISTOL_DAMAGE,
+				int(WeaponFire.SHOTS_PER_TURN[7])],
 	]
 	for i in mini(slots.size(), names.size()):
 		var tip: String = slots[i].tooltip_text

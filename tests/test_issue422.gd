@@ -5,15 +5,16 @@ extends Node
 ## options — and the mask/decode paths stay consistent with it.
 ##
 ## 1. Space contract: exactly four heads (move/aim/attack/target), each
-##    {"size": int, "action_type": "discrete"}; attack == 1 + the 7 real
-##    weapon slots (WeaponInventory.WEAPONS), target == 1 + the enemy-team
+##    {"size": int, "action_type": "discrete"}; attack == 1 + the 8 real
+##    weapon slots (WeaponInventory.WEAPONS; the pistol joined as slot 8,
+##    #526), target == 1 + the enemy-team
 ##    cap (GameConfig.MAX_TEAM_MEMBERS) — the minimal justified sizes.
 ## 2. Wire shape: the dict JSON-round-trips with every head/size/type
 ##    intact (env_info ships exactly this to the Python trainer, which
 ##    builds one spaces.Discrete per head -> a single spaces.MultiDiscrete
 ##    input; flat width == sum of sizes == 21).
 ## 3. Trainer encoding parity: NcnnSync.extract_action_dict decodes the
-##    flat 21-slot policy output into one integer per head, in head order
+##    flat 22-slot policy output into one integer per head, in head order
 ##    — the exact per-head slicing the trainer's MultiDiscrete mirrors.
 ## 4. Mask consistency: ActionMask.validate() accepts the built mask in
 ##    every battlefield state; "target" legalizes exactly the existing
@@ -63,8 +64,8 @@ func _ready() -> void:
 					"head '%s' has a real choice set (size >= 2)" % key) and ok
 		ok = _expect(head is Dictionary and head.get("action_type", "") == "discrete",
 				"head '%s' is discrete (the multi-discrete contract)" % key) and ok
-	ok = _expect(Weapons.WEAPONS.size() == 7 and Config.MAX_TEAM_MEMBERS == 3,
-			"sanity: the game still has 7 weapon slots and a 3-figure enemy cap") and ok
+	ok = _expect(Weapons.WEAPONS.size() == 8 and Config.MAX_TEAM_MEMBERS == 3,
+			"sanity: the game still has 8 weapon slots and a 3-figure enemy cap") and ok
 
 	# --- 2. Wire shape: JSON round-trip + flat width ---
 	# (Head ORDER is not asserted across the JSON round-trip: Godot's parser
@@ -82,16 +83,16 @@ func _ready() -> void:
 				and wire[key]["action_type"] == "discrete"):
 			wire_ok = false
 	ok = _expect(wire_ok, "every head survives the wire with size + discrete type") and ok
-	ok = _expect(flat_width == 6 + 3 + 8 + 4,
+	ok = _expect(flat_width == 6 + 3 + 9 + 4,
 			"flat policy output width == sum of head sizes == %d (got %d)"
-			% [6 + 3 + 8 + 4, flat_width]) and ok
-	ok = _expect(joint == 6 * 3 * 8 * 4,
+			% [6 + 3 + 9 + 4, flat_width]) and ok
+	ok = _expect(joint == 6 * 3 * 9 * 4,
 			"joint cardinality == product of head sizes == %d, not a fused Discrete (got %d)"
-			% [6 * 3 * 8 * 4, joint]) and ok
+			% [6 * 3 * 9 * 4, joint]) and ok
 
 	# --- 3. Trainer flat encoding parity (the exact layout the trainer's
-	# MultiDiscrete flattening mirrors: move 0-5, aim 6-8, attack 9-16,
-	# target 17-20; one integer decoded per head) ---
+	# MultiDiscrete flattening mirrors: move 0-5, aim 6-8, attack 9-17,
+	# target 18-21; one integer decoded per head) ---
 	var sync := Sync.new()
 	var flat: Array = []
 	flat.resize(flat_width)
@@ -101,7 +102,7 @@ func _ready() -> void:
 	ok = _expect(decoded.keys() == ["move", "aim", "attack", "target"],
 			"extract_action_dict yields one value per head, in head order") and ok
 	ok = _expect(decoded["move"] == 0 and decoded["aim"] == 6
-			and decoded["attack"] == 9 and decoded["target"] == 17,
+			and decoded["attack"] == 9 and decoded["target"] == 18,
 			"per-head decode reads the head-start offsets (got %s)" % [decoded]) and ok
 	sync.free()
 
@@ -111,7 +112,7 @@ func _ready() -> void:
 			"mask has exactly the space's heads, same shape") and ok
 	ok = _expect(ActionMask.validate(mask, space),
 			"empty-battlefield mask validates") and ok
-	ok = _expect(mask["attack"] == [true, false, false, false, false, false, false, false],
+	ok = _expect(mask["attack"] == [true, false, false, false, false, false, false, false, false],
 			"no visible enemy: only hold-fire is legal") and ok
 	ok = _expect(mask["target"] == [true, false, false, false],
 			"no visible enemy: no target may be selected") and ok
@@ -132,7 +133,7 @@ func _ready() -> void:
 	mask = bot.get_action_mask()
 	ok = _expect(mask["target"] == [true, true, true, false],
 			"two visible enemies legalize target indices 1-2, never the empty 4th") and ok
-	ok = _expect(mask["attack"] == [true, true, true, true, true, true, true, true],
+	ok = _expect(mask["attack"] == [true, true, true, true, true, true, true, true, true],
 			"at least one visible enemy legalizes every fire slot") and ok
 
 	# Visibility compaction: a THIRD enemy beyond reach must NOT shift the
@@ -144,14 +145,14 @@ func _ready() -> void:
 	mask = bot.get_action_mask()
 	ok = _expect(mask["target"] == [true, true, true, false],
 			"out-of-reach enemy adds no legal target index") and ok
-	ok = _expect(mask["attack"] == [true, true, true, true, true, true, true, true],
+	ok = _expect(mask["attack"] == [true, true, true, true, true, true, true, true, true],
 			"firing legality still holds (the two in-reach enemies)") and ok
 
 	# Dead figures never count as visible.
 	near1.health = 0.0
 	mask = bot.get_action_mask()
 	ok = _expect(mask["target"] == [true, true, false, false]
-			and mask["attack"] == [true, true, true, true, true, true, true, true],
+			and mask["attack"] == [true, true, true, true, true, true, true, true, true],
 			"downed enemy leaves the target set (compacted to the survivor)") and ok
 	near1.health = 100.0
 
