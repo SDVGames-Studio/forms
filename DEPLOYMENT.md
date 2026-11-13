@@ -211,12 +211,33 @@ extending the roster:
    # action heads MultiDiscrete([3, 8, 6, 4]) (ACTION_SPEC.md)
    ```
 2. **Convert** with pnnx (from the convert venv). `inputshape` must match the
-   bot's observation size:
+   bot's observation size. Convert the **logits variant**
+   (`--logits-out models/policy-logits.onnx`), NOT `models/policy.onnx`: the
+   bundled NcnnRunner statically links ncnn **without the ArgMax layer**, so a
+   model converted from the argmax-baked #502 reference graph fails to load
+   with `layer ArgMax not exists or registered` (#505). Deployed ncnn models
+   output per-head MultiDiscrete logits (21 values) and the argmax runs
+   caller-side (`run_discrete_action` / `InferenceMath.argmax`) — the
+   upstream godot-native-rl convention:
 
    ```bash
-   .venv-convert/bin/pnnx models/policy.onnx inputshape=[1,OBS_SIZE]
-   # → models/policy.ncnn.param + models/policy.ncnn.bin
+   # export the logits deployment variant alongside the reference graph
+   .venv-train/bin/python export_onnx.py \
+       --model runs/issue471_check/final_model.zip \
+       --vecnormalize runs/issue471_check/vecnormalize.pkl \
+       --out models/policy.onnx \
+       --logits-out models/policy-logits.onnx
+   .venv-convert/bin/pnnx models/policy-logits.onnx inputshape=[1,OBS_SIZE]
+   # → models/policy_logits.ncnn.param + .bin; rename to
+   #   models/policy.ncnn.param + models/policy.ncnn.bin
    ```
+
+   The artifacts shipped with the repo (`models/policy-logits.onnx` +
+   `models/policy.ncnn.param` + `models/policy.ncnn.bin`, generated from the
+   `issue471_check` policy, obs size 2) are guarded headless:
+   `godot --headless res://tests/test_issue505.tscn` — the NcnnRunner buffer
+   load, the VecNormalize replay, and the per-head action output vs the
+   Python ONNX reference, in one run (issue #505).
 
 3. **Verify parity** (strongly recommended — a bad conversion fails *silently*:
    the bot just plays subtly wrong). With the train venv:
@@ -225,18 +246,22 @@ extending the roster:
    .venv-train/bin/python - <<'EOF'
    import ncnn, numpy as np, onnxruntime as ort
    OBS_SIZE = 2  # TrainingBot.get_obs() width — set to your policy's obs size
-   sess = ort.InferenceSession("models/policy.onnx")
+   HEADS = [3, 8, 6, 4]  # MultiDiscrete heads (ACTION_SPEC.md)
+   sess = ort.InferenceSession("models/policy-logits.onnx")
    net = ncnn.Net()
    net.load_param("models/policy.ncnn.param")
    net.load_model("models/policy.ncnn.bin")
    for _ in range(50):
         obs = np.random.rand(1, OBS_SIZE).astype(np.float32)
-        ref = sess.run(None, {sess.get_inputs()[0].name: obs})[0]
+        ref = sess.run(None, {sess.get_inputs()[0].name: obs})[0].reshape(-1)
         ex = net.create_extractor()
         ex.input("in0", ncnn.Mat(obs))
         _, out = ex.extract("out0")
         got = np.array(out).reshape(-1)
-        assert ref.argmax() == got.argmax(), "argmax mismatch"
+        ofs = 0
+        for n in HEADS:  # argmax per head, like run_discrete_action
+            assert ref[ofs:ofs+n].argmax() == got[ofs:ofs+n].argmax(), "argmax mismatch"
+            ofs += n
    print("parity OK")
    EOF
    ```

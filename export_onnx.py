@@ -36,6 +36,19 @@ Arguments:
                   string) to skip normalization of the dummy input (models
                   trained without VecNormalize only).
   --out           output .onnx path (default models/policy.onnx).
+  --logits-out    ALSO export the pre-argmax LOGITS graph (ncnn deployment
+                  variant, #505) to this path. The bundled NcnnRunner
+                  GDExtension statically links ncnn WITHOUT the ArgMax
+                  layer, so the .ncnn.param converted from --out (argmax
+                  baked in) can never load ("layer ArgMax not exists or
+                  registered"). Deployed ncnn models therefore export the
+                  per-head MultiDiscrete logits ("action_net" output,
+                  heads concatenated: 3+8+6+4 = 21) and the argmax runs
+                  caller-side (NcnnRunner.run_discrete_action /
+                  InferenceMath.argmax per head) — the upstream
+                  godot-native-rl convention. Verified here: per-head
+                  argmax of the logits graph must equal the deterministic
+                  actions of the --out reference graph on the dummy obs.
   --opset         ONNX opset version (default 17).
   --seed          RNG seed for the dummy observation (default 0 — the
                   whole run is deterministic and reproducible).
@@ -54,6 +67,7 @@ from stable_baselines3 import PPO
 
 INPUT_NAME = "input"
 OUTPUT_NAME = "action"
+LOGITS_OUTPUT_NAME = "logits"
 
 
 class DeterministicOnnxPolicy(torch.nn.Module):
@@ -79,6 +93,32 @@ class DeterministicOnnxPolicy(torch.nn.Module):
         return actions
 
 
+class LogitsOnnxPolicy(torch.nn.Module):
+    """Pre-argmax deployment head: the flat per-head MultiDiscrete logits.
+
+    Replays the actor pipeline of ``policy.get_distribution`` (features ->
+    mlp_extractor.forward_actor -> action_net); for a MultiDiscrete policy its
+    output is the heads' logits concatenated in order — everything the argmax
+    wrapper computes its deterministic actions FROM, minus the ArgMax ops that
+    ncnn's NcnnRunner build cannot load (see --logits-out in the module
+    docstring). Consumers argmax per head (InferenceMath.argmax /
+    run_discrete_action). (SB3 2.4 exposes no flat ``.logits`` on
+    MultiCategoricalDistribution, hence the explicit pipeline.)
+    """
+
+    OBS_KEY = "obs"  # single-key dict contract (OBSERVATION_SPEC.md)
+
+    def __init__(self, policy):
+        super().__init__()
+        self.policy = policy
+        self.policy.set_training_mode(False)
+
+    def forward(self, obs: torch.Tensor) -> torch.Tensor:
+        features = self.policy.extract_features({self.OBS_KEY: obs})
+        latent_pi = self.policy.mlp_extractor.forward_actor(features)
+        return self.policy.action_net(latent_pi)
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--model", default="runs/issue471_check/final_model.zip",
@@ -86,6 +126,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--vecnormalize", default=None,
                         help="matching vecnormalize.pkl; '' disables normalization")
     parser.add_argument("--out", default="models/policy.onnx", help="output .onnx path")
+    parser.add_argument("--logits-out", default="", dest="logits_out",
+                        help="also export the pre-argmax logits graph "
+                             "(ncnn deployment variant, #505) to this path")
     parser.add_argument("--opset", type=int, default=17, help="ONNX opset version")
     parser.add_argument("--seed", type=int, default=0, help="seed for the dummy obs")
     args = parser.parse_args()
@@ -186,6 +229,43 @@ def main() -> int:
         raise SystemExit("VERIFICATION FAILED: ONNX and PyTorch actions differ")
     print("VERIFICATION OK: valid ONNX, checker passed, onnxruntime matches "
           "PyTorch deterministic output")
+
+    # --- ncnn deployment variant: pre-argmax logits graph (#505) --------
+    if args.logits_out:
+        logits_wrapper = LogitsOnnxPolicy(policy).eval()
+        with torch.no_grad():
+            torch_logits = logits_wrapper(torch.from_numpy(dummy)).numpy()
+        assert torch_logits.shape == (1, sum(n_heads)), (
+            f"logits shape {torch_logits.shape} != (1, {sum(n_heads)})")
+        os.makedirs(os.path.dirname(args.logits_out) or ".", exist_ok=True)
+        try:
+            torch.onnx.export(logits_wrapper, (torch.from_numpy(dummy),), args.logits_out,
+                              dynamo=False, input_names=[INPUT_NAME],
+                              output_names=[LOGITS_OUTPUT_NAME],
+                              opset_version=args.opset, dynamic_axes=None)
+        except TypeError:  # older torch without the `dynamo` kwarg
+            torch.onnx.export(logits_wrapper, (torch.from_numpy(dummy),), args.logits_out,
+                              input_names=[INPUT_NAME],
+                              output_names=[LOGITS_OUTPUT_NAME],
+                              opset_version=args.opset, dynamic_axes=None)
+        onnx.checker.check_model(onnx.load(args.logits_out))
+        logits_session = ort.InferenceSession(args.logits_out, providers=["CPUExecutionProvider"])
+        ort_logits = logits_session.run(None, {INPUT_NAME: dummy})[0]
+        logits_close = np.allclose(ort_logits, torch_logits, atol=1e-4)
+        # Per-head argmax of the logits must reproduce the reference actions:
+        # the caller-side selection the deployed ncnn model relies on.
+        splits, ofs, argmaxes = [], 0, []
+        for n in n_heads:
+            splits.append(ort_logits[0, ofs:ofs + n])
+            argmaxes.append(int(splits[-1].argmax()))
+            ofs += n
+        argmax_match = argmaxes == [int(a) for a in np.ravel(torch_actions)]
+        print(f"exported {args.logits_out} (logits (1,{sum(n_heads)}), "
+              f"per-head argmax {argmaxes})")
+        print(f"logits parity: ort-vs-torch close={logits_close}, "
+              f"argmax-vs-reference match={argmax_match}")
+        if not (logits_close and argmax_match):
+            raise SystemExit("VERIFICATION FAILED: logits variant drift")
     return 0
 
 
