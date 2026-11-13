@@ -87,8 +87,8 @@ experiment directory:
 | VecNormalize statistics (REQUIRED at inference) | `runs/<experiment_name>/vecnormalize.pkl` |
 
 **These two files are the input to the Phase 7 export pipeline (§3)** — e.g. for
-the default experiment `runs/tdm_v1/final_model.zip` +
-`runs/tdm_v1/vecnormalize.pkl`.
+the Phase 6 run `runs/issue471_check/final_model.zip` +
+`runs/issue471_check/vecnormalize.pkl`.
 
 ### Monitoring training (issue #469)
 
@@ -187,15 +187,28 @@ extending the roster:
 
 ## 3. Export to ONNX, convert to ncnn via pnnx
 
-1. **Export the trained policy to ONNX** (standard `torch.onnx.export` of the SB3
-   policy network — `model.policy`, `torch.onnx.export(policy, dummy_obs,
-   "policy.onnx")`; an LSTM-free MLP policy exports cleanly). Input artifacts
-   (issue #471): `runs/<experiment_name>/final_model.zip` plus its co-located
+1. **Export the trained policy to ONNX** with
+   [`export_onnx.py`](export_onnx.py) (issue #502). It wraps `model.policy` in
+   a deterministic module (argmax per MultiDiscrete head), exports the actor
+   only at opset 17, names the tensors `input` `(1, OBS_SIZE)` and `action`,
+   and verifies the graph in one pass: `onnx.checker.check_model` + an
+   onnxruntime inference whose output must exactly match the PyTorch
+   `deterministic=True` output. Input artifacts (issue #471):
+   `runs/<experiment_name>/final_model.zip` plus its co-located
    `runs/<experiment_name>/vecnormalize.pkl` (§2). **When trained
-   with `train.py`, the policy expects VecNormalize-normalized observations**, so
-   feed the network the *normalized* dummy obs and do NOT bake the
-   normalization into the graph — the game replays it pre-inference via the
-   `obs_norm_stats_path` sidecar (step 4).
+   with `train.py`, the policy expects VecNormalize-normalized observations**;
+   `export_onnx.py` normalizes only its dummy input for the parity check and
+   does NOT bake the normalization into the graph — the game replays it
+   pre-inference via the `obs_norm_stats_path` sidecar (step 4).
+
+   ```bash
+   .venv-train/bin/python export_onnx.py \
+       --model runs/issue471_check/final_model.zip \
+       --vecnormalize runs/issue471_check/vecnormalize.pkl \
+       --out models/policy.onnx
+   # current checkpoint: TrainingBot obs size 2 (OBSERVATION_SPEC.md),
+   # action heads MultiDiscrete([3, 8, 6, 4]) (ACTION_SPEC.md)
+   ```
 2. **Convert** with pnnx (from the convert venv). `inputshape` must match the
    bot's observation size:
 
@@ -261,7 +274,7 @@ sidecar the controller replays pre-inference (the exact transform —
 ```bash
 .venv-train/bin/python - <<'EOF'
 import json, pickle
-with open("runs/tdm_v1/vecnormalize.pkl", "rb") as f:
+with open("runs/issue471_check/vecnormalize.pkl", "rb") as f:
     norm = pickle.load(f)  # VecNormalize.save() pickles the wrapper itself
 rms = norm.obs_rms
 # Dict observation space (godot-rl: {"obs": flat_vector}) -> per-key stats;
