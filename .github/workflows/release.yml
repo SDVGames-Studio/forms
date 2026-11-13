@@ -1,18 +1,15 @@
 
-name: Publish versioned release
+name: Upload release assets
 
 on:
   workflow_call:
-  push:
-    branches: [ main ]
 
 permissions:
   contents: write
 
 jobs:
   release:
-    name: Create GitHub Release
-    if: github.event_name == 'workflow_call'
+    name: Upload native builds
     runs-on: ubuntu-latest
 
     steps:
@@ -22,47 +19,35 @@ jobs:
           name: forms-builds
           path: dist
 
-      - name: Create versioned release
+      - name: Wait for GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
 
-          if gh release view "$GITHUB_REF_NAME" \
-            --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+          for attempt in {1..12}; do
+            if gh release view "$GITHUB_REF_NAME" \
+              --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+              exit 0
+            fi
 
-            echo "Release $GITHUB_REF_NAME already exists."
-            gh release upload "$GITHUB_REF_NAME" \
-              dist/linux/Forms.x86_64 \
-              dist/linux/Forms.pck \
-              dist/windows/Forms.exe \
-              dist/android/Forms.apk \
-              --repo "$GITHUB_REPOSITORY" \
-              --clobber
-          else
-            gh release create "$GITHUB_REF_NAME" \
-              dist/linux/Forms.x86_64 \
-              dist/linux/Forms.pck \
-              dist/windows/Forms.exe \
-              dist/android/Forms.apk \
-              --repo "$GITHUB_REPOSITORY" \
-              --title "Forms $GITHUB_REF_NAME" \
-              --generate-notes \
-              --verify-tag
-          fi
+            echo "Waiting for semantic-release..."
+            sleep 10
+          done
 
-  semantic-release:
-    name: Semantic Release
-    if: github.event_name == 'push'
-    runs-on: ubuntu-latest
+          echo "GitHub Release was not created."
+          exit 1
 
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0 # semantic-release needs full history
-          token: ${{ secrets.RELEASE_PAT }}
-          persist-credentials: false
-      - name: Semantic Release
-        uses: cycjimmy/semantic-release-action@v8
+      - name: Upload native builds
         env:
-          GITHUB_TOKEN: ${{ secrets.RELEASE_PAT }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          gh release upload "$GITHUB_REF_NAME" \
+            dist/linux/Forms.x86_64 \
+            dist/linux/Forms.pck \
+            dist/windows/Forms.exe \
+            dist/android/Forms.apk \
+            --repo "$GITHUB_REPOSITORY" \
+            --clobber

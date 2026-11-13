@@ -32,9 +32,7 @@ jobs:
   native:
     name: Build native platforms
     if: |
-      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
       (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) ||
-      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
       (github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/tags/v'))
     uses: ./.github/workflows/native.yml
     permissions:
