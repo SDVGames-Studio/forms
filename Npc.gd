@@ -188,6 +188,26 @@ func current_gravity() -> Vector2:
 func current_tangent() -> Vector2:
 	return _aim_tangent
 
+## Issue #518: re-anchor the gravity frame after a DISCRETE position
+## jump — the NPC's teleport-away hop (issue #221) must not carry the
+## old spot's tangent orientation to the new one: on Level4 a hop from
+## the bottom-right corner arc to the floor underside kept a 180°
+## mirrored frame and the NPC walked the wrong way. Same anchor as a
+## fresh spawn (and Player.reanchor_gravity_frame): the tangent
+## orientation with a NON-NEGATIVE x component, so the walk/aim frame
+## is screen-right wherever the hop lands.
+func reanchor_gravity_frame() -> void:
+	var grav := Vector2.DOWN
+	if LevelTerrain.has_sources(self):
+		grav = LevelTerrain.gravity_vector(self)
+	_aim_grav = grav
+	var tangent := Vector2(grav.y, -grav.x)
+	if tangent.x < 0.0:
+		tangent = -tangent
+	_aim_tangent = tangent
+	up_direction = -grav
+	FigurePose.align_to_gravity(self, grav)
+
 
 ## Issue #60: tint every ColorRect visual authored in the scene (captured
 ## before the health bar adds its own ColorRects) with the team color.
@@ -649,6 +669,10 @@ func _try_teleport_away(enemy: Node2D) -> bool:
 				continue
 			global_position = candidate
 			velocity = Vector2.ZERO
+			# Issue #518: re-anchor the walking/aiming frame at the hop
+			# destination (same rule as the player teleport tool) — the hop
+			# must not carry the old spot's tangent orientation over.
+			reanchor_gravity_frame()
 			# Issue #475: the NPC hop uses the same teleport sound as the
 			# player tool (ToolInventory owns the player).
 			ToolInventory.play_teleport_sound()
