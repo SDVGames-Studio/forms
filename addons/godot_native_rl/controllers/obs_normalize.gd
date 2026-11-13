@@ -25,9 +25,14 @@ static func normalize(obs: PackedFloat32Array, mean: PackedFloat32Array,
 	return out
 
 # True iff a JSON-decoded stats dict is well-formed for normalize(): mean+var present as equal,
-# non-empty numeric arrays, plus epsilon and clip_obs keys. Checked at load so a bad fixture fails
-# loudly up front, not at the first inference frame.
+# non-empty numeric arrays, plus epsilon and clip_obs keys. The ACTIVE flag "norm_obs" (issue
+# #503, export_vecnormalize_stats.py) is optional but, when present, must be a bool — false means
+# the policy was trained with norm_obs=False and obs must be passed through RAW. Sidecars written
+# before the flag existed (policy.norm.json, DEPLOYMENT.md §4) have no "norm_obs" key and load as
+# active. Checked at load so a bad fixture fails loudly up front, not at the first inference frame.
 static func validate(stats: Dictionary) -> bool:
+	if stats.has("norm_obs") and not (stats["norm_obs"] is bool):
+		return false
 	if not (stats.has("mean") and stats.has("var") and stats.has("epsilon") and stats.has("clip_obs")):
 		return false
 	var mean = stats["mean"]
@@ -61,4 +66,5 @@ static func to_typed(stats: Dictionary) -> Dictionary:
 		"var": PackedFloat32Array(stats["var"]),
 		"epsilon": float(stats["epsilon"]),
 		"clip_obs": float(stats["clip_obs"]),
+		"norm_obs": bool(stats.get("norm_obs", true)),
 	}

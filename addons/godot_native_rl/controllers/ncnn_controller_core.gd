@@ -149,7 +149,9 @@ func choose_and_apply_action(agent, runner) -> void:
 		var obs_dict: Dictionary = agent.get_obs()
 		assert("obs" in obs_dict, "get_obs() must return a dictionary with an 'obs' key")
 		var obs_vec := PackedFloat32Array(obs_dict["obs"])
-		if not obs_norm_stats.is_empty():
+		# norm_obs=false (#503): training used raw obs — pass them through unchanged
+		# instead of misnormalizing with stats exported from an inactive wrapper.
+		if not obs_norm_stats.is_empty() and obs_norm_stats.get("norm_obs", true):
 			obs_vec = ObsNormalize.normalize(obs_vec, obs_norm_stats["mean"], obs_norm_stats["var"],
 				obs_norm_stats["epsilon"], obs_norm_stats["clip_obs"])
 			if obs_vec.is_empty():
