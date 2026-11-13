@@ -313,6 +313,13 @@ func _unhandled_input(event: InputEvent) -> void:
 				return
 			teleporter.global_position = destination
 			member.velocity = Vector2.ZERO
+			# Issue #518: a teleport is a DISCRETE jump, not a walk — the
+			# destination must not inherit the old position's walking/aiming
+			# frame (a figure leaving the bottom-right corner arc of Level4
+			# kept a 180°-mirrored tangent under the floor: D walked LEFT).
+			# Re-anchor the frame to the destination's gravity, screen-right.
+			if member.has_method("reanchor_gravity_frame"):
+				member.reanchor_gravity_frame()
 			play_teleport_sound()
 			_mark_used(member, TOOL_TELEPORT)
 			armed_tool = -1
