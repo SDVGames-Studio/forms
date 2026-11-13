@@ -101,6 +101,34 @@ func current_gravity() -> Vector2:
 ## along the same continuous axis the figure walks and aims on.
 func current_tangent() -> Vector2:
 	return _aim_tangent
+
+## Issue #518: re-anchor the gravity frame after a DISCRETE position
+## jump (teleport). The walking/aiming tangent is oriented by CONTINUITY
+## with the previous physics frame (see _aim_tangent) — right while a
+## figure walks or falls to a place, but a teleport arrives carrying
+## whatever orientation the OLD position had. On Level4 a figure
+## standing on the bottom-right corner arc (tangent rotated steeply
+## downward) that teleports to the underside of the level floor kept a
+## 180°-mirrored frame there: pressing D walked LEFT, A walked RIGHT.
+## This snaps the frame to the same anchor a freshly spawned figure
+## starts with: the tangent orientation whose x component is
+## NON-NEGATIVE, so "right" is screen-right wherever the teleport
+## lands — flat ground, the underside of a floor, a disc rim (the exact
+## vertical rim tangent is the degenerate tie and keeps its raw
+## orientation, like a fresh spawn's first tick would). Level-agnostic:
+## every level whose gravity comes from indestructible ground benefits,
+## not only Level4.
+func reanchor_gravity_frame() -> void:
+	var grav := Vector2.DOWN
+	if LevelTerrain.has_sources(self):
+		grav = LevelTerrain.gravity_vector(self)
+	_aim_grav = grav
+	var tangent := Vector2(grav.y, -grav.x)
+	if tangent.x < 0.0:
+		tangent = -tangent
+	_aim_tangent = tangent
+	up_direction = -grav
+	FigurePose.align_to_gravity(self, grav)
 var _bar_fill: ColorRect
 var _camera: Camera2D
 

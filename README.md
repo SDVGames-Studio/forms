@@ -27,7 +27,9 @@ lives in [`DEPLOYMENT.md`](DEPLOYMENT.md).
 ## Target platforms
 
 Export presets configured in `export_presets.cfg`: **Linux, Windows Desktop,
-Web, Android** (`com.sdvgames.forms`). macOS has no preset today.
+Web, Android** (`com.sdvgames.forms`), plus the **Training (Linux)** preset
+that builds the trainer-subprocess binary at `builds/training/` (issue #465,
+see `DEPLOYMENT.md` §2). macOS has no preset today.
 
 Committed GDExtension binaries: **Linux x86_64 only**
 (`addons/godot_native_rl/bin/`, debug + release, self-contained,

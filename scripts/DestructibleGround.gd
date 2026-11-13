@@ -107,13 +107,33 @@ func _draw() -> void:
 ## rectangle chunks, the polygon's AABB for polygon chunks. Consumers
 ## that must avoid the soil (e.g. ProjectileBody's rock exclusion)
 ## use this instead of assuming `rect_size`.
+## Issue #480: ring-sector chunks measure their true arc polygon too —
+## the old rect fallback (default rect_size) misreported their bounds.
 func local_bounds() -> Rect2:
+	var pts := local_outline()
+	var aabb := Rect2(pts[0], Vector2.ZERO)
+	for p in pts:
+		aabb = aabb.expand(p)
+	return aabb
+
+
+## Issue #480: the chunk's actual local-space OUTLINE — the authored
+## polygon, the traced arc polygon of a ring-sector chunk, or the four
+## corners of the rectangle. Exact-overlap consumers (the Rock's ground
+## fill) clip this outline row by row: the AABB of the dome/trapezoid
+## hills is mostly empty air, and banning it punched rectangular holes
+## into the crumble disk (issue #480).
+func local_outline() -> PackedVector2Array:
+	if ring_outer > 0.0:
+		return _sector_polygon()
 	if polygon.size() >= 3:
-		var aabb := Rect2(polygon[0], Vector2.ZERO)
-		for p in polygon:
-			aabb = aabb.expand(p)
-		return aabb
-	return Rect2(-rect_size / 2.0, rect_size)
+		return polygon
+	var corners := PackedVector2Array()
+	corners.append(Vector2(-rect_size.x / 2.0, -rect_size.y / 2.0))
+	corners.append(Vector2(rect_size.x / 2.0, -rect_size.y / 2.0))
+	corners.append(Vector2(rect_size.x / 2.0, rect_size.y / 2.0))
+	corners.append(Vector2(-rect_size.x / 2.0, rect_size.y / 2.0))
+	return corners
 
 
 ## Carve this chunk with an explosion at `global_point` (blast `radius`).

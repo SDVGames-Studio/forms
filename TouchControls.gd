@@ -1,5 +1,10 @@
 extends CanvasLayer
 ## Issue #69/#78: on-screen touch controls for the mobile version.
+## Issue #512: the same overlay is now enabled on the GitHub Pages web
+## build when the browser reports a touchscreen — several mobile
+## browsers expose it only through navigator.maxTouchPoints, which the
+## engine's own probe ('ontouchstart' in window) misses. On a PC browser
+## without touch nothing changes: the overlay stays hidden.
 ## Left side: virtual movement stick (horizontal axis drives move_left /
 ## move_right). Right side: jump / fire buttons. A menu button sits in the
 ## top-right corner near the inventory button (issue #78).
@@ -20,9 +25,39 @@ var _stick_center := Vector2.ZERO
 
 func _ready() -> void:
 	layer = 90
-	if not DisplayServer.is_touchscreen_available():
+	if not _touchscreen_available():
 		set_process(false)
 		return
+	_build_ui()
+
+
+## Issue #512: enable gate. The engine check covers native mobile (the
+## Android app) and most mobile browsers; the web fallback below catches
+## the rest. A non-touch desktop — the PC browser on GitHub Pages — fails
+## every probe, so the overlay stays hidden there exactly as before.
+func _touchscreen_available() -> bool:
+	if DisplayServer.is_touchscreen_available():
+		return true
+	if Input.is_emulating_touch_from_mouse():
+		return true
+	return _web_touch_fallback()
+
+
+## navigator.maxTouchPoints probe, web export only. On the web the
+## engine checks just 'ontouchstart' in window, which not every mobile
+## browser exposes even with a real touchscreen; maxTouchPoints is the
+## standard signal and stays 0 on ordinary desktop browsers.
+func _web_touch_fallback() -> bool:
+	if not OS.has_feature("web"):
+		return false
+	var touch_points = JavaScriptBridge.eval(
+				"(navigator.maxTouchPoints || 0) > 0")
+	return touch_points == true or str(touch_points) == "true"
+
+
+## Builds the on-screen set: stick, JUMP, FIRE and the MENU button —
+## the same controls the Android app uses (issue #512).
+func _build_ui() -> void:
 	_build_stick()
 	_add_button("JUMP", 1, "jump")
 	_add_button("FIRE", 0, "shoot")

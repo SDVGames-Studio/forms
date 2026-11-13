@@ -166,8 +166,9 @@ change.
 The four combat signals (`damage_dealt`, `enemy_killed`, `own_figure_died`,
 `friendly_fire`) are declared and emitted since #433. The survival,
 positioning (Φ — minimal cover-only definition), idle and danger-tile
-signals/value functions are declared and emitted since #434; only the
-`episode_outcome` signals remain unimplemented. Recipes built from this
+signals/value functions are declared and emitted since #434; the
+`episode_outcome` signals are declared and emitted since #437 (TurnController
+→ notify_episode_outcome → game_over()). Recipes built from this
 spec are validated against the manifest by `RewardRecipe.validate()`:
 an unemitted signal fails loud, so the spec and the code cannot drift
 apart silently.
@@ -179,7 +180,7 @@ Every rewarded event must be **observable** in `OBSERVATION_SPEC.md`
 penalized behavior must be **choosable** in `ACTION_SPEC.md` (punishing
 an unchoosable action is noise).
 
-| Component | Observable? (46-float `BotController` vector) | Choosable? |
+| Component | Observable? (50-float `BotController` vector; team block since #447) | Choosable? |
 |---|---|---|
 | `damage_dealt` / `enemy_killed` | yes — enemy slots report `hp_frac` (idx 4–23), drops are visible | yes — `attack` 1–7 (7 weapon slots), `target` 1–3, `ATTACK_ENEMY_A/B` |
 | `own_figure_died` | yes — `own.hp_frac` (idx 0) → 0, then the no-figure fallback vector | indirect — the agent avoids it via movement and cover; that is the point |

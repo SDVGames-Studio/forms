@@ -30,14 +30,24 @@ extends NcnnAIController2D
 ## implements the episode lifecycle half: reset() clears the controller's
 ## own state (a pending order) and restores its figure to a clean start —
 ## spawn position, full HP, default protection, no cooldowns, revived.
+## Issue #437 implements the terminal-outcome half: a terminal game state
+## (elimination / draw) pays the REWARD_SPEC §2.9 win/loss through the
+## framework's game_over() flags — done=true + needs_reset=true, truncated
+## stays false, and the turn-limit horizon (truncation) never pays it.
 ## The action-space declaration remains a loud stub until its own issue.
+## Issue #447 appends the TEAM block (4 floats) on top of the local
+## observations: the shared focus target's relative position, the team's
+## average HP fraction and the living ally-to-enemy ratio — all sourced
+## from TeamBlackboard (issue #446) through the agent's OWN team id, never
+## from a fresh world query.
 
 const Stats := preload("res://scripts/CharacterStats.gd")
 
 ## Issue #381: fixed observation layout. OBS_SLOTS enemies and OBS_SLOTS
 ## allies are reported every step — nearest first, missing figures pad
 ## with zeros — so the flat vector length never changes
-## (4 + 4*5 + 4*5 + 2 = 46 floats), whatever happens on the battlefield.
+## (4 + 4*5 + 4*5 + 2 + 4 = 50 floats), whatever happens on the
+## battlefield. The trailing 4 are the issue #447 team block.
 const OBS_SLOTS := 4
 const FEATURES_PER_FIGURE := 5
 
@@ -80,6 +90,7 @@ func get_obs() -> Dictionary:
 ##   "enemies"   OBS_SLOTS x [rel_x, rel_y, hp, vel_x, vel_y]   (20)
 ##   "allies"    OBS_SLOTS x [rel_x, rel_y, hp, vel_x, vel_y]   (20)
 ##   "cooldowns" [fire_frac, jump_frac]                          (2)
+##   "team"      [focus_x, focus_y, team_hp, ally_enemy_ratio]   (4)
 ## Issue #419: every offset and velocity is expressed in the agent's
 ## LOCAL frame (local +X = the figure's facing direction); see
 ## _local_position() / _local_velocity(). Forms has no AP stat, so the shield flag (issue #221: it blocks one
@@ -98,6 +109,7 @@ func _collect_obs_parts() -> Dictionary:
 		"enemies": _team_features(_enemy_group(figure), origin, figure, frame),
 		"allies": _team_features(_ally_group(figure), origin, figure, frame),
 		"cooldowns": _cooldown_features(figure),
+		"team": _team_blackboard_features(figure, frame),
 	}
 
 ## Issue #409: capture `figure`'s current pose as the spawn snapshot —
@@ -228,10 +240,51 @@ func _cooldown_features(figure: Node2D) -> Array:
 		_cd_frac(figure.get("_jump_left"), JUMP_CD_MAX),
 	]
 
-## Issue #381: fixed key order -> a deterministic flat layout (46 floats).
+## Issue #447: TEAM-level block (4 floats) sourced from the TeamBlackboard
+## (issue #446), NOT from a fresh world query — TurnController refreshes the
+## acting team's board once per TURN, so these slots report the team's
+## shared turn-level picture: [focus_x, focus_y, team_hp, ally_enemy_ratio].
+## focus_x/focus_y — the TEAM-SHARED focus target's offset from the agent in
+## the same agent-local frame and [-1, 1] normalization as the enemy slots
+## (0.0, 0.0 while the board holds no living focus target); team_hp and
+## ally_enemy_ratio via the helpers below. Without a bound figure the block
+## falls back to [0.0, 0.0, 1.0, 0.5] — no focus target, a healthy team, an
+## even ratio — the same well-formed neutral convention as _own_features'
+## fully-healed stationary bot.
+func _team_blackboard_features(figure: Node2D, frame: Node2D) -> Array:
+	if figure == null:
+		return [0.0, 0.0, 1.0, 0.5]
+	var team_id := TurnController.team_id_of(figure)
+	var rel := Vector2.ZERO
+	var focus := TeamBlackboard.get_focus_target(team_id)
+	if focus != null:
+		rel = _norm_rel(_local_position(focus, frame))
+	return [rel.x, rel.y, _team_hp_frac(team_id), _ally_enemy_ratio(team_id)]
+
+## Issue #447: the board's average HP over the team's LIVING allies as a
+## [0, 1] fraction of MAX_HEALTH — the same scale as the per-figure
+## hp_frac slots; raw HP values never leave the controller.
+func _team_hp_frac(team_id: String) -> float:
+	return clampf(
+		TeamBlackboard.get_team_hp_avg(team_id) / float(Stats.MAX_HEALTH),
+		0.0, 1.0)
+
+## Issue #447: living allies / (living allies + living enemies) from the
+## board's counts — 1.0 = only allies alive, 0.0 = only enemies, 0.5 with
+## nobody (an even, empty match keeps the slot neutral).
+func _ally_enemy_ratio(team_id: String) -> float:
+	var allies := TeamBlackboard.get_living_allies(team_id)
+	var enemies := TeamBlackboard.get_living_enemies(team_id)
+	var total := allies + enemies
+	if total <= 0:
+		return 0.5
+	return clampf(float(allies) / float(total), 0.0, 1.0)
+
+## Issue #381: fixed key order -> a deterministic flat layout (50 floats;
+## the trailing "team" block is issue #447).
 func _flatten_parts(parts: Dictionary) -> Array:
 	var flat: Array = []
-	for key in ["own", "enemies", "allies", "cooldowns"]:
+	for key in ["own", "enemies", "allies", "cooldowns", "team"]:
 		flat.append_array(parts[key])
 	return flat
 
@@ -304,6 +357,12 @@ const SURVIVAL_REWARD := 0.02         # §2.4: +0.02 × hp_fraction per own turn
 const POSITIONING_SCALE := 0.10       # §2.5: ±0.10 × ΔΦ per decision step
 const IDLE_PENALTY := -0.05           # §2.7: flat, per idle turn
 const DANGER_TILE_PENALTY := -0.05    # §2.8: flat, per turn ended on a danger tile
+## Issue #437: the §2.9 terminal outcome — the ONE terminal-only component,
+# exempt from the §3 steady-state budget (terminal steps clip to ±1.0 in
+# get_reward() on read). A win pays measurably more than a timeout, which
+# pays no outcome at all (truncation must not look like a victory).
+const EPISODE_WIN_REWARD := 0.50      # §2.9: own team is the sole surviving side
+const EPISODE_LOSS_REWARD := -0.50     # §2.9: own side wiped (draw included) or lost
 ## Issue #436: REWARD_SPEC §3's magnitude budget — every non-terminal
 ## per-step reward is inside [−1, +1] by construction and terminal steps
 ## clip to ±1.0 before logging. Derived from §3, not chosen freely (the
@@ -341,6 +400,12 @@ signal survival_per_turn(applied: float)
 signal positioning_credited(applied: float)
 signal idle_turn(applied: float)
 signal danger_tile_turn_end(applied: float)
+## Issue #437: the §2.9 terminal outcome events (REWARD_SPEC §4's
+# `event_bonus("episode_won"/"episode_lost", ±0.5)` row) — payload is the
+# signed delta actually added to `reward`, same contract as every other
+# reward signal.
+signal episode_won(applied: float)
+signal episode_lost(applied: float)
 
 ## Issue #433: how much of this step's §2.1 cap / §2.6 floor budget is
 ## already spent — several hits inside ONE decision step amortize into
@@ -358,6 +423,13 @@ var _step_friendly_fire_reward := 0.0
 ## dictionary stays empty on quiet steps. Cleared together with the
 ## `reward` property in zero_reward() (and at episode reset).
 var reward_component_log := {}
+
+## Issue #469: the snapshot of the per-step breakdown that rides the
+## training step message. NcnnSync collects one step in a fixed order —
+## get_reward() + zero_reward() first, get_info() after — so zero_reward()
+## copies the window HERE before clearing it and get_info() ships the copy
+## (the live log is already empty by the time it runs).
+var _step_reward_components := {}
 
 ## Issue #434: own-turn bookkeeping — the shaping potential rebases at
 ## every own-turn start (§2.5), the idle audit reads the order that was
@@ -391,6 +463,8 @@ func get_reward_affordances() -> Dictionary:
 			"positioning_credited": "§2.5 — potential-based shaped ΔΦ credited this step (±0.10 × ΔΦ, rebased at own-turn start)",
 			"idle_turn": "§2.7 — turn ended all-neutral with an enemy in reach (−0.05, only on turns the policy ordered on)",
 			"danger_tile_turn_end": "§2.8 — turn ended inside an enemy's clear line-of-fire band (−0.05)",
+			"episode_won": "§2.9 — episode ended with own team the sole surviving side (+0.50 terminal, #437)",
+			"episode_lost": "§2.9 — episode ended with own side wiped or outlived, draw included (−0.50 terminal, #437)",
 		},
 	}
 
@@ -469,6 +543,58 @@ func on_owned_figure_died(fig: Node2D) -> void:
 	# danger-tile or shaped remainder can fire afterwards.
 	_turn_active = false
 	_turn_figure = null
+
+## Issue #437: TurnController._check_win() calls this once when the game
+# reaches a terminal state — every controller in the AGENT group gets its
+# §2.9 outcome through on_episode_outcome(). Duck-typed dispatch like
+## notify_figure_died(): foreign AGENT agents are skipped.
+static func notify_episode_outcome(winner_team: String) -> void:
+	var tree := Engine.get_main_loop() as SceneTree
+	if tree == null:
+		return
+	for ctrl in tree.get_nodes_in_group("AGENT"):
+		if ctrl != null and ctrl.has_method("on_episode_outcome"):
+			ctrl.on_episode_outcome(winner_team)
+
+## Issue #437: the §2.9 terminal credit — win (+0.50) when the own team is
+## the sole survivor, loss (−0.50) when the own side is wiped or outlived
+## (a mutual-destruction draw counts as a loss: the own side is wiped).
+## Flags ride the framework's game_over() helper: done=true + needs_reset=true,
+## truncated stays false, and the outcome rides the accumulator the Sync
+## drains on the terminal step (clipped to ±1.0 by get_reward(), §3).
+func on_episode_outcome(winner_team: String) -> void:
+	# Already ended this episode (e.g. the horizon fired earlier in the same
+	# frame): a truncation must never be upgraded into a paid win/loss.
+	if get_done():
+		return
+	var figure := _resolve_outcome_figure()
+	if figure == null:
+		return  # never observed, no side to attribute — no outcome credit
+	var won: bool = not winner_team.is_empty() \
+			and TurnController.team_id_of(figure) == winner_team
+	var delta: float = EPISODE_WIN_REWARD if won else EPISODE_LOSS_REWARD
+	game_over(delta)
+	_log_reward_component("episode_outcome", delta)
+	if won:
+		episode_won.emit(delta)
+	else:
+		episode_lost.emit(delta)
+
+## Issue #437: whose side does the outcome belong to? The LINKED figure, else
+## the spawn snapshot — both survive the figure's own death (a bot can die
+## while its team wins). Deliberately NO alive-figure fallback: after the own
+## side is wiped, _resolve_figure() would resolve an ENEMY figure and pay the
+## wiped side's controller a phantom win. A controller with neither link nor
+## snapshot cannot attribute a side at all — no credit (the training loop
+## always observes first, so real runs always have the snapshot).
+func _resolve_outcome_figure() -> Node2D:
+	if not figure_path.is_empty():
+		var linked := get_node_or_null(figure_path)
+		if linked != null and linked is Node2D:
+			return linked
+	if is_instance_valid(_spawn_figure):
+		return _spawn_figure
+	return null
 
 ## Issue #433: §2.1 — proportional to the damage dealt, amortized into
 ## the per-step cap (the cap, not the per-hit term, is what a multi-hit
@@ -621,6 +747,21 @@ func _credit_positioning_step() -> void:
 func _log_reward_component(component: String, delta: float) -> void:
 	reward_component_log[component] = reward_component_log.get(component, 0.0) + delta
 
+## Issue #469: ship the per-step reward breakdown (REWARD_SPEC §2 component
+## names) in the training info dict — the wire the Python-side TensorBoard
+## callback aggregates into tdm/reward/<component> curves and the win rate
+## (the §2.9 episode_outcome value marks decided episodes). The Sync drains
+## the accumulator (get_reward → zero_reward) BEFORE collecting info, so the
+## value comes from the snapshot taken in zero_reward(); the live log is
+## empty by the time this runs. An empty window (quiet step, nothing fired)
+## ships no key — the trainer aggregates only what the env reports. Calls
+## super so the base contract (action mask, #410) stays merged in.
+func get_info() -> Dictionary:
+	var info := super.get_info()
+	if not _step_reward_components.is_empty():
+		info["reward_components"] = _step_reward_components.duplicate()
+	return info
+
 ## Issue #434: the §2.5 value function the manifest declares — the
 ## tile-quality potential Φ of the resolved figure's tile (0.0 in the
 ## no-figure fallback state, a constant so a death never shapes).
@@ -690,6 +831,10 @@ func _command_all_neutral(command: Dictionary) -> bool:
 ## (NcnnSync calls zero_reward()) — the §2.1 cap / §2.6 floor budgets
 ## restart together with it.
 func zero_reward() -> void:
+	# Issue #469: snapshot the per-step breakdown BEFORE the clear — the
+	# Sync collects get_reward()/zero_reward() first and get_info() after,
+	# so this copy is what the step message ships to the trainer.
+	_step_reward_components = reward_component_log.duplicate()
 	super.zero_reward()
 	_step_damage_reward = 0.0
 	_step_friendly_fire_reward = 0.0
@@ -706,6 +851,11 @@ func zero_reward() -> void:
 ## fire in the new episode) and restores the controlled figure.
 func reset() -> void:
 	super.reset()
+	# Issue #446: the episode reset wipes the shared team blackboard — a
+	# fresh episode must not inherit the old one's focus target or HP
+	# snapshot. Idempotent: whichever controller resets first, the shared
+	# state is empty afterwards.
+	TeamBlackboard.reset_blackboard()
 	pending_command = _idle_command()
 	# Issue #433: a fresh episode restarts the per-step cap/floor budgets
 	# together with the rest of the controller's own state (the reward

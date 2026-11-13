@@ -20,7 +20,7 @@ Two controllers implement the contract today:
 
 | Controller | Scene | Flat length |
 |---|---|---|
-| `BotController.gd` | battlefield levels (`Level*.tscn`) | **46** |
+| `BotController.gd` | battlefield levels (`Level*.tscn`) | **50** |
 | `TrainingBot.gd` | `training_scene.tscn` | **2** |
 
 ## Normalization policy (issue #420)
@@ -43,7 +43,7 @@ wrapper performs — and compares field by field (structure, key set,
 data types, lengths, order, and values); the sampled vectors are printed
 on pass.
 
-## 1. `BotController.gd` — battlefield observation (46 floats)
+## 1. `BotController.gd` — battlefield observation (50 floats)
 
 **Frame (issue #419):** every positional and velocity value is expressed
 in the **agent's local frame** — the controlled figure's own coordinate
@@ -58,9 +58,9 @@ With `rotation == 0` the local frame equals the world frame (issue #381
 behavior). When no figure is bound, the controller node itself is the
 frame.
 
-Layout: `own (4) + enemies (4×5) + allies (4×5) + cooldowns (2) = 46`,
+Layout: `own (4) + enemies (4×5) + allies (4×5) + cooldowns (2) + team (4) = 50`,
 flattened in exactly this key order: `"own"`, `"enemies"`, `"allies"`,
-`"cooldowns"`.
+`"cooldowns"`, `"team"`.
 
 | Indices | Group | Values |
 |---|---|---|
@@ -68,6 +68,7 @@ flattened in exactly this key order: `"own"`, `"enemies"`, `"allies"`,
 | 4–23 | enemies (4 slots, nearest first) | `rel_x`, `rel_y`, `hp_frac`, `vel_x`, `vel_y` per slot |
 | 24–43 | allies (4 slots, nearest first) | same 5 values per slot |
 | 44–45 | cooldowns | `fire_frac`, `jump_frac` |
+| 46–49 | team (issue #447) | `focus_x`, `focus_y`, `team_hp`, `ally_enemy_ratio` |
 
 ### Per-value normalization (all values pre-normalized; no raw stats leave the controller)
 
@@ -80,6 +81,9 @@ flattened in exactly this key order: `"own"`, `"enemies"`, `"allies"`,
 | `vel_x`, `vel_y` | `clampf(v_local / 320.0, -1, 1)`, `v_local = velocity.rotated(-frame.global_rotation)` (`CharacterStats.SPEED = 320.0`); applies to the `own` block too | [-1, 1] |
 | `fire_frac` | `clampf(_cooldown_left / 2.0, 0, 1)` (`FIRE_CD_MAX`, Npc.gd easy AI fire pause) | [0, 1] |
 | `jump_frac` | `clampf(_jump_left / 1.0, 0, 1)` (`JUMP_CD_MAX`, Npc.gd jump cooldown) | [0, 1] |
+| `focus_x`, `focus_y` (idx 46–47, issue #447) | `clampf(local.x / 576.0, -1, 1)`, `clampf(local.y / 376.0, -1, 1)` — `local` = `frame.to_local(focus.global_position)` of the **TeamBlackboard shared focus target** (issue #446: the living enemy nearest the ally centroid, retained while alive); `(0.0, 0.0)` while the board holds no living focus target | [-1, 1] |
+| `team_hp` (idx 48, issue #447) | `clampf(TeamBlackboard team HP average / 100, 0, 1)` — the average raw HP over the team's **living** allies (issue #446), fraction of `CharacterStats.MAX_HEALTH = 100`; `0.0` before the board's first refresh | [0, 1] |
+| `ally_enemy_ratio` (idx 49, issue #447) | `living_allies / (living_allies + living_enemies)` from the board's counts; `0.5` when both are `0` (an even, empty match stays neutral) | [0, 1] |
 
 Position divisors 576.0 / 376.0 are the Level.tscn arena half-extents
 (playable column 1152×752), so a figure on the opposite side of the arena
@@ -104,7 +108,16 @@ maps to ≈[-1, 1] before clamping.
   its cooldown slots read 0.
 - **No-figure fallback** (all figures down/dead): the vector stays
   well-formed — `own = [1.0, 0.0, 0.0, 0.0]` (fully-healed stationary
-  bot), `cooldowns = [0.0, 0.0]`.
+  bot), `cooldowns = [0.0, 0.0]`, `team = [0.0, 0.0, 1.0, 0.5]` (no focus
+  target, a healthy team, an even ratio — the same neutral convention).
+- **Team block cadence** (issue #447): the four trailing slots read the
+  **TeamBlackboard** (issue #446) through the agent's OWN
+  `TurnController.team_id_of(figure)` id — never a fresh world query.
+  TurnController refreshes the acting team's board **once per turn**, so
+  these values step at turn boundaries, not per frame; at episode start
+  (board not yet refreshed) they read `[0.0, 0.0, 0.0, 0.5]` until the
+  first turn lands. `BotController.reset()` clears every board
+  (issue #409), so no team state leaks between episodes.
 
 ## 2. `TrainingBot.gd` — training scaffold observation (2 floats)
 

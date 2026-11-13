@@ -64,11 +64,34 @@ const ROCK_GROUND_RADIUS := 110.0
 ## cell grid kept whole cells by their centre and left a chunky staircase
 ## that erred by up to ~18 px per axis; rows of 10 px keep every strip
 ## corner within ~5 px of the true circle.
-const ROCK_ROW := 10.0
+## Issue #480: rows halved to 4 px — the 10 px staircase read as a rough
+## outline at play zoom; 4 px keeps corners within ~2 px, matching the
+## 2 px crispness standard the craters set in issue #299.
+const ROCK_ROW := 4.0
 const ROCK_CHAR_CLEAR := 1.3 * 64.0
 ## Issue #216: grenade acceleration matches the figures (Stats.GRAVITY).
 const Stats := preload("res://scripts/CharacterStats.gd")
 const GRAVITY := Stats.GRAVITY
+
+## Issue #475 (godot-sound-work skill): the blast/crumble sounds —
+## preloaded once, never loaded per blast at runtime. Issue #495 adds
+## the rocket's warhead blast (silent until now) and the mine TIMER
+## beep that runs while the armed fuse counts down to that blast.
+const GRENADE_SOUND := preload("res://assets/audio/explosions/grenade.wav")
+const MINE_SOUND := preload("res://assets/audio/explosions/mine.wav")
+const ROCK_SOUND := preload("res://assets/audio/tools/rock_crumble.wav")
+const ROCKET_SOUND := preload("res://assets/audio/explosions/rocket.wav")
+## Issue #495: the armed mine's fuse — an accelerating beep train sized
+## to exactly MINE_FUSE (2.0 s) that falls silent for the detonation
+## (MINE_SOUND) — Worms-style: the blink now has a voice.
+const MINE_TIMER_SOUND := preload("res://assets/audio/explosions/mine_timer.wav")
+## One AudioStreamPlayer per projectile, on the SFX bus (the kind is
+## known at _ready, so the stream is picked once there) — each blast
+## owns its player so simultaneous explosions never cut each other short.
+var _blast_player: AudioStreamPlayer
+## Issue #495: the mine's timer beep — its own player (created for mines
+## in _ready), started when the fuse arms, stopped by the detonation.
+var _timer_player: AudioStreamPlayer
 ## Issue #293: no gravity context is captured from the wielder anymore —
 ## gravity is sampled every step from the level's indestructible grounds
 ## (the same terrain rule the figures follow).
@@ -173,6 +196,30 @@ func _ready() -> void:
 	else:
 		get_tree().create_timer(lifetime).timeout.connect(_on_fuse)
 
+	# Issue #475: blast SFX player on the SFX bus (default 0 dB; fixed
+	# 1.0 pitch — blasts are one-per-projectile, so the rapid-fire pitch
+	# variation the sound skill allows does not apply).
+	_blast_player = AudioStreamPlayer.new()
+	match kind:
+		Kind.GRENADE:
+			_blast_player.stream = GRENADE_SOUND
+		Kind.MINE:
+			_blast_player.stream = MINE_SOUND
+		Kind.ROCK:
+			_blast_player.stream = ROCK_SOUND
+		Kind.ROCKET:
+			_blast_player.stream = ROCKET_SOUND
+	_blast_player.bus = "SFX"
+	add_child(_blast_player)
+
+	# Issue #495: the mine's TIMER beep — its own SFX-bus player, played
+	# when the fuse arms (see _physics_process) and stopped by _explode.
+	if kind == Kind.MINE:
+		_timer_player = AudioStreamPlayer.new()
+		_timer_player.stream = MINE_TIMER_SOUND
+		_timer_player.bus = "SFX"
+		add_child(_timer_player)
+
 
 func _physics_process(delta: float) -> void:
 	# Issue #246: the mine's state machine. Everything else is physics
@@ -203,6 +250,10 @@ func _physics_process(delta: float) -> void:
 					_mine_light = ShotLight.create(
 						Color(1.0, 0.2, 0.1), 80.0, 1.2)
 					add_child(_mine_light)
+					# Issue #495: the fuse is audible — the accelerating timer
+					# beep runs the full MINE_FUSE countdown.
+					if _timer_player != null:
+						_timer_player.play()
 					return
 	else:
 		# Armed: blink red while the fuse counts down, then explode.
@@ -283,6 +334,14 @@ func _explode() -> void:
 	if _exploded:
 		return
 	_exploded = true
+	# Issue #495: a mine detonated mid-fuse (damaged by another blast)
+	# must not stack its timer beep on the detonation — stop it first.
+	if _timer_player != null and _timer_player.playing:
+		_timer_player.stop()
+	# Issue #475: every detonation/crumble is audible from here — the
+	# sound starts before the ground carving, damage and chain reactions
+	# below run while it plays.
+	_play_blast_sound()
 	# Issue #227: the rock never explodes — its "fuse moment" crumbles it
 	# into destructible ground instead (no damage, no blast).
 	if kind == Kind.ROCK:
@@ -332,6 +391,19 @@ func _explode() -> void:
 	queue_free()
 
 
+## Issue #475 (godot-sound-work skill): play this projectile's blast
+## sound. The body itself is queue_free()d at the end of _explode(), so
+## the player is re-homed to the level FIRST — otherwise it would be
+## freed with the body and the sound would be cut to a single frame.
+## Afterwards the player frees itself when the stream finishes.
+func _play_blast_sound() -> void:
+	if _blast_player == null or _blast_player.stream == null:
+		return
+	if get_parent() != null:
+		_blast_player.reparent(get_parent())
+		_blast_player.finished.connect(_blast_player.queue_free)
+	_blast_player.play()
+
 ## Issue #227: the rock's "explosion" — a disk of destructible ground
 ## around the resting point. Issue #324 rework: the disk is filled row by
 ## row with CHORD strips — each row spans the circle's true half-width at
@@ -341,8 +413,24 @@ func _explode() -> void:
 ##    centre a strip ends exactly ON the circle),
 ##  - clears every character by ROCK_CHAR_CLEAR (1.3 x the figure's shape
 ##    size) — ground is created AROUND a figure, never on it, and
-##  - never overlaps indestructible ground (slab or disc) or existing
-##    soil — it borders them instead of covering them.
+##  - never overlaps indestructible ground (slab or disc) — it borders
+##    that instead of covering it.
+## Issue #480: polygon and ring-sector soil was first banned by its
+## ACTUAL outline, clipped per row — the AABB ban (which covered empty
+## air beside the dome/trapezoid hills) punched rectangular holes into
+## the disk wherever it touched a hill's bounding box.
+## Issue #480 rework: existing destructible soil is not banned AT ALL
+## anymore — the disk fills right over it (same material, so the
+## overlap is invisible) and the two read as ONE body of ground.
+## Banning by the outline's per-row slice left a wedge gap wherever a
+## hill's edge ran slanted through a row band: the strip stopped at
+## the slice's outermost point while the hill itself only reached part
+## of the band, so a visible BORDER stayed between the initial ground
+## and the crumble.
+## Issue #480 rework 2: the indestructible-slab ban follows the slab's
+## EFFECTIVE rounded rectangle (issue #270 corner arcs), not the
+## authored AABB — the raw-rect ban cut the crumble on a straight
+## line and left an air wedge at every rounded corner (level 3).
 func _create_ground() -> void:
 	var parent := get_parent()
 	if parent == null:
@@ -358,8 +446,17 @@ func _create_ground() -> void:
 			if body != null and is_instance_valid(body):
 				circles.append(Vector3(body.global_position.x - origin.x,
 						body.global_position.y - origin.y, ROCK_CHAR_CLEAR))
-	# Solid terrain the new soil must never overlap.
-	var solids: Array[Rect2] = []
+	# Solid terrain the new soil must never overlap: indestructible
+	# ground stays axis-exact. Existing destructible soil is deliberately
+	# NOT banned (issue #480 rework): the crumble covers it — same
+	# material, invisible overlap — so no seam can open between the
+	# initial ground and the crumble disk.
+	# Issue #480 rework 2: slabs ban by their EFFECTIVE rounded rectangle
+	# (the issue #270 geometry — thickness guard + corner arcs), not the
+	# authored AABB. Banning the raw rect cut the crumble on a straight
+	# line while the slab's rounded corner receded, leaving an air WEDGE
+	# between the crumble and the corner (level 3's slab walls).
+	var slabs: Array = []
 	var discs: Array[Vector3] = []
 	for node in get_tree().get_nodes_in_group("indestructible_ground"):
 		var ground := node as IndestructibleGround
@@ -369,16 +466,15 @@ func _create_ground() -> void:
 			discs.append(Vector3(ground.position.x - origin.x,
 						ground.position.y - origin.y, ground.radius))
 		else:
-			solids.append(Rect2(ground.position - ground.rect_size / 2.0
-						- origin, ground.rect_size))
-	for node in get_tree().get_nodes_in_group("destructible_ground"):
-		var soil := node as DestructibleGround
-		if soil != null and is_instance_valid(soil):
-			# Issue #376: polygon hills carry their own bounds — never assume
-			# the rect of `rect_size` (wrong for shaped chunks).
-			var bounds := soil.local_bounds()
-			solids.append(Rect2(soil.position + bounds.position - origin,
-					bounds.size))
+			# Slab centre (the #270 thickness guard shifts the body DOWN by
+			# `effective_offset`) and its half-size, in impact space.
+			var size := ground.effective_size()
+			if size == Vector2.ZERO:
+				size = ground.rect_size
+			slabs.append([Vector2(
+						ground.position.x - origin.x,
+						ground.position.y + ground.effective_offset() - origin.y),
+					size / 2.0, ground.corner_radius()])
 	# Row by row: the true chord of the disk minus the x-intervals the
 	# exclusions ban from that row — one exact strip per remaining span.
 	var rows := int(ceilf(ROCK_GROUND_RADIUS / ROCK_ROW))
@@ -390,13 +486,12 @@ func _create_ground() -> void:
 				ROCK_GROUND_RADIUS * ROCK_GROUND_RADIUS - cy * cy))
 		if half <= 0.0:
 			continue
-		# X-intervals this row must not touch.
+		# X-intervals this row must not touch. Bordering is fine (strict
+		# tests, like Rect2.intersects): a slab or disc sharing only the
+		# row's edge bans nothing.
 		var bans: Array = []
-		for solid in solids:
-			# Bordering is fine (strict test, like Rect2.intersects): a
-			# slab sharing only the row's edge bans nothing.
-			if solid.position.y < y1 and solid.end.y > y0:
-				bans.append([solid.position.x, solid.end.x])
+		for slab in slabs:
+			_ban_from_slab(slab, y0, y1, bans)
 		for circle in circles:
 			_ban_from_circle(circle, y0, y1, bans)
 		for disc in discs:
@@ -412,6 +507,35 @@ func _create_ground() -> void:
 				break
 		if cursor < half:
 			_spawn_soil_strip(parent, cursor, half, y0)
+
+
+## Add to `bans` the x-interval a slab bites out of the row band
+## [y0, y1] — the slab's EFFECTIVE rounded rectangle (issue #270);
+## nothing when the band lies outside the slab entirely. `slab` is
+## [centre, half_size, corner]: a band crossing the straight midline
+## bans the full width; a band up in a corner arc bans only the arc's
+## chord at the band's INNERMOST row (its widest cross-section, so a
+## strip never overlaps even where the band's farther rows recede) —
+## the fill hugs the rounded corner exactly like `_ban_from_circle`
+## hugs a disc (issue #480: the raw-rect ban left an air wedge at
+## every rounded corner, reading as a border on level 3).
+func _ban_from_slab(slab: Array, y0: float, y1: float,
+		bans: Array) -> void:
+	var centre: Vector2 = slab[0]
+	var half: Vector2 = slab[1]
+	var corner: float = slab[2]
+	if y1 <= centre.y - half.y or y0 >= centre.y + half.y:
+		return
+	var d := 0.0
+	if centre.y < y0:
+		d = y0 - centre.y
+	elif centre.y > y1:
+		d = centre.y - y1
+	var reach := half.x
+	if corner > 0.0 and d > half.y - corner:
+		var e := d - (half.y - corner)
+		reach = half.x - corner + sqrt(maxf(0.0, corner * corner - e * e))
+	bans.append([centre.x - reach, centre.x + reach])
 
 
 ## Add to `bans` the x-interval a keep-out circle bites out of the row band

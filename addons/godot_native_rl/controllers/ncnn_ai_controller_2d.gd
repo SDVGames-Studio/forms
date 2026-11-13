@@ -9,10 +9,12 @@ const RecurrentState = preload("res://addons/godot_native_rl/controllers/recurre
 
 # Emitted once per inference decision with an immutable debug payload consumed by
 # PolicyDebugOverlay. Keys: agent_name:String, obs:PackedFloat32Array (normalized vector fed to
-# the net; [] on the image path), obs_image:Dictionary ({"w","h","c"} or {}), logits:PackedFloat32Array
-# (EFFECTIVE post-mask network output, pre-decode — #410), action_space:Dictionary,
-# action:Dictionary (decoded), action_mask:Dictionary (per-head boolean mask; {} when the agent
-# supplies none — #410), deterministic:bool. Inert when no listener is connected.
+# the net; [] on the image path), obs_image:Dictionary ({"w","h","c"} or {}), raw_output:PackedFloat32Array
+# (the UNMASKED network output — #507: the mask application is logged alongside the raw scores),
+# logits:PackedFloat32Array (EFFECTIVE post-mask network output, pre-decode — #410),
+# action_space:Dictionary, action:Dictionary (decoded), action_mask:Dictionary (per-head boolean
+# mask; {} when the agent supplies none — #410), deterministic:bool. Inert when no listener is
+# connected.
 signal inference_step(debug: Dictionary)
 
 enum ControlModes { INHERIT_FROM_SYNC, HUMAN, TRAINING, NCNN_INFERENCE }
@@ -180,6 +182,8 @@ func _load_obs_norm_stats() -> void:
 	if not (parsed is Dictionary) or not ObsNormalize.validate(parsed):
 		push_error("NcnnAIController2D: invalid obs-norm stats JSON at '%s'." % obs_norm_stats_path)
 		return
+	if not bool(parsed.get("norm_obs", true)):
+		push_warning("NcnnAIController2D: %s has norm_obs=false — observations are passed to the policy RAW (training used no obs normalization)." % obs_norm_stats_path)
 	_core.obs_norm_stats = ObsNormalize.to_typed(parsed)
 
 func set_obs_norm_stats_for_test(stats: Dictionary) -> void:
@@ -319,6 +323,15 @@ func set_done_false() -> void:
 func get_truncated() -> bool:
 	return _core.get_truncated()
 
+# Issue #437: task-terminal episode end — the game calls this when a terminal state is
+# reached (all enemies eliminated, own side wiped, objective completed): done=true,
+# needs_reset=true, truncated stays FALSE (a win/loss is never a timeout), and the
+# terminal reward (REWARD_SPEC §2.9-style win bonus / loss penalty) rides the same
+# accumulator NcnnSync drains on the terminal step. The horizon path (step()) adds no
+# reward, so a truncation never pays a win/loss bonus. Idempotent within an episode.
+func game_over(terminal_reward: float = 0.0) -> void:
+	_core.game_over(terminal_reward)
+
 func zero_reward() -> void:
 	_core.zero_reward()
 
@@ -335,3 +348,11 @@ func accumulate_reward() -> void:
 
 func _physics_process(_delta) -> void:
 	_core.step(reset_after)
+	# Issue #437: needs_reset (set by the horizon, by game_over(), or by the
+	# framework's reset command via NcnnSync._reset_agents) restarts the
+	# environment on the next loop iteration — the agent restores itself
+	# (subclasses' reset() also restores their world share). reset() deliberately
+	# keeps done/truncated (#379), so the Sync still reads the flags on this
+	# frame's terminal step; only needs_reset and the step counter clear.
+	if _core.needs_reset:
+		reset()

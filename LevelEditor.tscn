@@ -1,0 +1,191 @@
+[gd_scene load_steps=6 format=3]
+
+[ext_resource type="Script" path="res://LevelEditor.gd" id="1_ledit"]
+[ext_resource type="Theme" path="res://MenuTheme.tres" id="2_theme"]
+[ext_resource type="PackedScene" path="res://MenuBackground.tscn" id="3_bg"]
+[ext_resource type="Script" path="res://LevelEditorCanvas.gd" id="4_canvas"]
+
+[sub_resource type="ButtonGroup" id="ButtonGroup_tools"]
+
+[node name="LevelEditor" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme = ExtResource("2_theme")
+script = ExtResource("1_ledit")
+
+[node name="Background" parent="." instance=ExtResource("3_bg")]
+
+[node name="Layout" type="MarginContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/margin_left = 72
+theme_override_constants/margin_top = 56
+theme_override_constants/margin_right = 72
+theme_override_constants/margin_bottom = 72
+
+[node name="MainBox" type="VBoxContainer" parent="Layout"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="Top" type="HBoxContainer" parent="Layout/MainBox"]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/separation = 64
+
+[node name="Side" type="VBoxContainer" parent="Layout/MainBox/Top"]
+layout_mode = 2
+size_flags_vertical = 4
+theme_override_constants/separation = 24
+
+[node name="Title" type="Label" parent="Layout/MainBox/Top/Side"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 44
+text = "LEVEL EDITOR"
+
+[node name="Subtitle" type="Label" parent="Layout/MainBox/Top/Side"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.467, 0.49, 0.545, 1)
+theme_override_font_sizes/font_size = 17
+text = "BUILD AND SHARE SKIRMISH MAPS"
+
+[node name="AccentRule" type="ColorRect" parent="Layout/MainBox/Top/Side"]
+custom_minimum_size = Vector2(260, 4)
+layout_mode = 2
+color = Color(0.655, 0.545, 0.98, 1)
+
+[node name="Tools" type="VBoxContainer" parent="Layout/MainBox/Top/Side"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="IndestructibleTool" type="Button" parent="Layout/MainBox/Top/Side/Tools"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(340, 48)
+layout_mode = 2
+toggle_mode = true
+button_group = SubResource("ButtonGroup_tools")
+text = "INDESTRUCTIBLE"
+
+[node name="DestructibleTool" type="Button" parent="Layout/MainBox/Top/Side/Tools"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(340, 48)
+layout_mode = 2
+toggle_mode = true
+button_group = SubResource("ButtonGroup_tools")
+text = "DESTRUCTIBLE"
+
+[node name="SpawnTool" type="Button" parent="Layout/MainBox/Top/Side/Tools"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(340, 48)
+layout_mode = 2
+toggle_mode = true
+button_group = SubResource("ButtonGroup_tools")
+text = "SPAWN POINT"
+
+[node name="EraseTool" type="Button" parent="Layout/MainBox/Top/Side/Tools"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(340, 48)
+layout_mode = 2
+toggle_mode = true
+button_group = SubResource("ButtonGroup_tools")
+text = "ERASE"
+
+[node name="Spacer" type="Control" parent="Layout/MainBox/Top"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="CanvasPanel" type="PanelContainer" parent="Layout/MainBox/Top"]
+layout_mode = 2
+size_flags_horizontal = 3
+clip_contents = true
+
+[node name="EditorCanvas" type="Control" parent="Layout/MainBox/Top/CanvasPanel"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(500, 288)
+layout_mode = 2
+clip_contents = true
+script = ExtResource("4_canvas")
+
+[node name="FileOps" type="HBoxContainer" parent="Layout/MainBox"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="Bottom" type="HBoxContainer" parent="Layout/MainBox"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="FileNameEdit" type="LineEdit" parent="Layout/MainBox/Bottom"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(220, 48)
+layout_mode = 2
+size_flags_horizontal = 3
+placeholder_text = "level name"
+
+[node name="SaveButton" type="Button" parent="Layout/MainBox/Bottom"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(120, 48)
+layout_mode = 2
+text = "SAVE"
+
+[node name="LoadButton" type="Button" parent="Layout/MainBox/Bottom"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(120, 48)
+layout_mode = 2
+text = "LOAD"
+
+[node name="FileSelect" type="OptionButton" parent="Layout/MainBox/Bottom"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(180, 48)
+layout_mode = 2
+
+[node name="ClearButton" type="Button" parent="Layout/MainBox/Bottom"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(120, 48)
+layout_mode = 2
+text = "CLEAR"
+
+[node name="BackButton" type="Button" parent="Layout/MainBox/Bottom"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(120, 48)
+layout_mode = 2
+text = "BACK"
+
+[node name="LoadFileButton" type="Button" parent="Layout/MainBox/FileOps"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(140, 48)
+layout_mode = 2
+text = "LOAD FILE…"
+
+[node name="DownloadButton" type="Button" parent="Layout/MainBox/FileOps"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(140, 48)
+layout_mode = 2
+text = "DOWNLOAD"
+
+[node name="StatusText" type="Label" parent="Layout/MainBox"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.467, 0.49, 0.545, 1)
+theme_override_font_sizes/font_size = 14
+text = ""
+
+[node name="OpenDialog" type="FileDialog" parent="."]
+unique_name_in_owner = true
+title = "Load a Level File"
+file_mode = 0
+access = 2
+filters = PackedStringArray("*.json ; Forms level")
+
+[node name="SaveDialog" type="FileDialog" parent="."]
+unique_name_in_owner = true
+title = "Download the Level File"
+file_mode = 4
+access = 2
+filters = PackedStringArray("*.json ; Forms level")

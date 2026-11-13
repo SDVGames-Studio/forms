@@ -62,10 +62,12 @@ class Issue304Driver extends Node:
 			and settings.get("in_game") == true \
 			and not panel.visible and get_tree().paused
 		# The very same categories as the main-menu settings screen; the
-		# debug switches now live on the DebugMenu category screen (Q1).
+		# debug switches now live on the DebugMenu category screen (Q1);
+		# graphics joins with M3 (hidden on touch devices, owner Q2).
 		var entries: bool = settings != null \
 			and settings.get_node_or_null("%TeamButton") != null \
 			and settings.get_node_or_null("%HotkeysButton") != null \
+			and settings.get_node_or_null("%GraphicsButton") != null \
 			and settings.get_node_or_null("%DebugButton") != null \
 			and settings.get_node_or_null("%BackButton") != null
 		print("ISSUE304 settings_open=", opened, " entries=", entries)
@@ -156,6 +158,27 @@ class Issue304Driver extends Node:
 			and not is_instance_valid(debug_menu)
 		print("ISSUE304 debug_back=", debug_closed)
 		ok = ok and debug_closed
+
+		# --- The Graphics category (spec M3, §6.3) behaves the same —
+		# overlay submenu with its own shadow, Back returns. ---
+		settings = pause.get("_settings_menu")
+		settings._on_graphics_pressed()
+		await get_tree().process_frame
+		var graphics: Control = settings.get("_submenu")
+		var graphics_open: bool = graphics != null \
+			and graphics.is_inside_tree() \
+			and graphics.get("in_game") == true
+		var graphics_shadow: bool = graphics_open \
+			and not settings.get_node("Shadow").visible \
+			and graphics.get_node("Shadow").visible
+		graphics._on_back_pressed()
+		await get_tree().process_frame
+		await get_tree().process_frame
+		var graphics_closed: bool = settings.get("_submenu") == null \
+			and not is_instance_valid(graphics)
+		print("ISSUE304 graphics_overlay=", graphics_open, " shadow=",
+			graphics_shadow, " back=", graphics_closed)
+		ok = ok and graphics_open and graphics_shadow and graphics_closed
 
 		# --- Settings Back returns to the pause panel, still paused. ---
 		settings._on_back_pressed()

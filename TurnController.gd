@@ -12,6 +12,11 @@ extends Node
 ## the timer finished first. Issue #312: a TRIGGERED mine counts as a
 ## pending effect too — once armed, the handover waits until it has
 ## exploded before the next turn begins.
+## Issue #413: that rule now holds for EVERY way a turn can end — a
+## shot, the expired timer, a skip, or the acting character dying
+## mid-turn — and a 30-second safety timer force-starts the next turn
+## if an action accidentally never completes, logging the force-fire
+## to the debug action log.
 ## The game runs until only one team is alive.
 ## Issue #434: every turn boundary is also a reward boundary — the acting
 ## member's agent controller (if any) is notified so the REWARD_SPEC
@@ -107,7 +112,13 @@ const EFFECT_GROUP := "turn_effects"
 ## handover never completes (tween killed, timer lost, node freed
 ## mid-animation), the game force-recovers instead of freezing forever.
 const ROLL_WATCHDOG := 3.0
-const SWITCH_WATCHDOG := 5.0
+## Issue #413: the handover's SAFETY TIMER replaces the old 5 s switch
+## watchdog — effects may legitimately run long (a high grenade lob, a
+## burning mine, a slow rocket), so the force-recovery waits a full
+## 30 s; if an action accidentally fails to complete by then, the next
+## team's turn is force-started and the force-fire is written to the
+## debug action log.
+const EFFECTS_SAFETY_TIME := 30.0
 var _roll_wait := 0.0
 var _switch_wait := 0.0
 ## Issue #85 rework 2: seconds spent with no active team — if the roll
@@ -127,6 +138,12 @@ var _controls_panel: PanelContainer
 var _controls_word: Button
 var _controls_root: Control
 var _controls_hidden := false
+## Issue #392: while the in-game menu is open the hints must hide —
+## they live on the turn HUD's layer 50, which renders ABOVE the
+## pause menu's layer 10, so the controls window overlapped the
+## menu's "PAUSED" title. InGameMenu reports open/close through its
+## menu_open_changed signal.
+var _menu_hints_hidden := false
 ## Issue #87: one-line hint of what the player should do right now.
 const HINT_ROLL := "Rolling for the first team..."
 ## Issue #377: the player-turn controls list moved from the one-line top
@@ -177,12 +194,14 @@ func _process(delta: float) -> void:
 			return
 	if _level == null or game_over or _switching:
 		return
-	# The active character died mid-turn — hand over immediately.
-	# queue_free()d members must be treated as dead too (issue #85).
+	# The active character died mid-turn — hand over. Even a death must
+	# not start the next turn while actions are still running (issue
+	# #413): a mine the figure stepped on is burning, its own shot may
+	# still be flying. queue_free()d members count as dead too (issue #85).
 	if active_member != null:
 		var hp = active_member.get("health") if is_instance_valid(active_member) else 0
 		if not (hp is int) or hp <= 0:
-			_end_turn()
+			_hand_over()
 			return
 	_turn_left = maxf(0.0, _turn_left - delta)
 	_update_label()
@@ -207,7 +226,9 @@ func _unhandled_input(event: InputEvent) -> void:
 			if active_member != null and active_member.get("display_name") != null:
 				skipper = active_member.get("display_name")
 			DebugInfo.log("%s skips the turn" % str(skipper))
-			_end_turn()
+			# Issue #413: even a skip hands over through the effects wait —
+			# never start the next turn on live actions.
+			_hand_over()
 
 
 ## Issue #221: the AI analogue of the player's Tab skip (#102) — the
@@ -221,7 +242,8 @@ func skip_turn(requester: Node) -> void:
 		return
 	if requester == null or requester != active_member:
 		return
-	_end_turn()
+	# Issue #413: the AI skip hands over through the effects wait too.
+	_hand_over()
 
 
 ## Issue #104: the active player member reports a move or aim action —
@@ -267,13 +289,26 @@ func notify_shot() -> void:
 ## hand the turn over only after every effect (live projectiles,
 ## explosions) has finished. Mirrors the post-shot handover (issue #119):
 ## the shared _switching state freezes all character input while the
-## effects resolve; the SWITCH_WATCHDOG still force-recovers a stuck wait.
+## effects resolve; the #413 safety timer still force-recovers a stuck wait.
 func _begin_effects_wait() -> void:
 	_switching = true
 	_timer_wait = true
 	_after_shot_left = 0.0
 	_switch_wait = 0.0
 	_update_label()
+
+
+## Issue #413: end the turn NOW when nothing is running, or hand it
+## over through the effects wait while actions are still live (a mine
+## someone stepped on before skipping, a teleport gate mid-animation,
+## the acting character's own last shot). Every turn-ending path that
+## is not already a handover funnels through here, so the next team's
+## turn NEVER starts on a field with unfinished actions.
+func _hand_over() -> void:
+	if _pending_effects() > 0:
+		_begin_effects_wait()
+	else:
+		_end_turn()
 
 
 ## Issue #244: true while the handover blocks ALL character input —
@@ -493,10 +528,15 @@ func _process_watchdog(delta: float) -> void:
 	else:
 		_stall_wait = 0.0
 	if _switching:
-		# A shot handover must never outlive its delay (issue #85).
+		# Issue #413: the handover's SAFETY TIMER — effects may run long,
+		# so the recovery window is 30 s (issue #85's force-recovery
+		# kept, just patient). When it elapses the next turn is
+		# force-started even with actions still pending, and the
+		# force-fire goes to the debug action log.
 		_switch_wait += delta
-		if _switch_wait > SWITCH_WATCHDOG:
+		if _switch_wait > EFFECTS_SAFETY_TIME:
 			_switch_wait = 0.0
+			DebugInfo.log("safety timer (%.0f s): forcing the next turn, %d action(s) still pending" % [EFFECTS_SAFETY_TIME, _pending_effects()])
 			_end_turn()
 		return
 	# Belt-and-braces roll fallback (kept from the first rework).
@@ -533,6 +573,17 @@ func _begin_turn(team: String) -> void:
 	# Issue #104: a fresh turn always starts with switching unlocked.
 	_switch_locked = false
 	var members := _alive_of(team)
+	# Issue #446: each turn start refreshes the ACTING team's shared
+	# blackboard — once per turn, never per physics frame. Allies are the
+	# team's own alive figures; enemies are every OTHER team's alive
+	# figures (in a multi-team death-match the other AI teams count as
+	# enemies too, issue #228). The team's bots then read TeamBlackboard's
+	# statics instead of querying the world themselves.
+	var board_enemies: Array = []
+	for figure in _alive("player_team") + _alive("enemy_team"):
+		if team_id_of(figure) != team:
+			board_enemies.append(figure)
+	TeamBlackboard.update_team(team, members, board_enemies)
 	# Issue #131 rework, per-character since #143: the lock must survive
 	# the enemy turn — only the start of a fresh PLAYER turn re-enables
 	# weapon selection (for every character).
@@ -593,8 +644,12 @@ func _begin_turn(team: String) -> void:
 	# Issue #434: REWARD_SPEC §2.4/§2.5 — the agent controller that plays
 	# the acting member is notified its own turn started (survival credit
 	# + shaping rebase). Human teams have no AGENT controller, so the
-	# dispatch is a no-op for them.
-	BotController.notify_own_turn_started(active_member)
+	# dispatch is a no-op for them. The validity guard must live HERE: a
+	# freed instance fails the callee's typed `member: Node2D` argument
+	# check before its own is_instance_valid can run (verified headless,
+	# issue #506 run: "argument 1 (previously freed)").
+	if active_member != null and is_instance_valid(active_member):
+		BotController.notify_own_turn_started(active_member)
 
 
 func _end_turn(from_serial: int = -1) -> void:
@@ -606,8 +661,12 @@ func _end_turn(from_serial: int = -1) -> void:
 	# Issue #434: REWARD_SPEC §2.5/§2.7/§2.8 — the acting member's
 	# controller closes the ended turn (shaped positioning remainder,
 	# idle-command audit, danger-tile penalty) BEFORE _check_win() or the
-	# next _begin_turn() could free or replace the member.
-	BotController.notify_own_turn_ended(active_member)
+	# next _begin_turn() could free or replace the member. Same guard as
+	# above: a queue_free'd figure (death tween) must not cross the typed
+	# Node2D argument boundary — the error would abort _end_turn before
+	# _check_win()/_begin_turn() and freeze the turn loop.
+	if active_member != null and is_instance_valid(active_member):
+		BotController.notify_own_turn_ended(active_member)
 	_switch_wait = 0.0
 	_switching = false
 	# Issue #343: remember who acted this team's turn (a mid-turn Switch
@@ -689,6 +748,15 @@ func _check_win() -> void:
 			var winner: String = alive_teams[0]
 			_label.text = "%s WINS!" % _team_name(winner)
 			_label.add_theme_color_override("font_color", _team_color(winner))
+	# Issue #437: the terminal game state ends the RL episode too — every
+	# agent controller gets its REWARD_SPEC §2.9 outcome (+0.50 win when its
+	# team is the sole survivor, −0.50 loss otherwise, draw included) and the
+	# framework's game_over flags: done=true + needs_reset=true, truncated
+	# stays false (a win/loss is never a timeout). The horizon path in the
+	# controller core flags truncation with NO outcome reward, so a timeout
+	# can never be confused with a victory.
+	BotController.notify_episode_outcome(
+			alive_teams[0] if alive_teams.size() == 1 else "")
 	# Issue #222: the game must never block after the win — figures keep
 	# idling but nobody may move, and the player keeps a live view to
 	# spectate: the shared camera stays enabled even when the whole player
@@ -727,6 +795,7 @@ func _build_ui() -> void:
 	_layer.add_child(_hint_label)
 	_build_controls_panel()
 	_update_label()
+	_apply_hint_visibility()
 
 
 ## Issue #377 rework: compact controls window at the center of the left
@@ -815,6 +884,33 @@ func _on_controls_close_pressed() -> void:
 func _on_controls_word_pressed() -> void:
 	_controls_hidden = false
 	_update_controls_visibility()
+
+
+func _ready() -> void:
+	# Issue #392: the in-game menu is an autoload sibling — it exists by
+	# the time this later autoload comes alive, so the hint visibility
+	# can follow the menu from the first frame on.
+	InGameMenu.menu_open_changed.connect(_on_menu_open_changed)
+
+
+## Issue #392: opening the in-game menu hides the hint elements (the
+## controls window with its "controls" word and the one-line top hint)
+## because the turn HUD's layer renders above the menu; closing the
+## menu restores them. The player's own hidden/shown choice for the
+## controls window is kept untouched — only the container is masked.
+func _on_menu_open_changed(open: bool) -> void:
+	_menu_hints_hidden = open
+	_apply_hint_visibility()
+
+
+## Issue #392: gate the hint elements with the menu state. The controls
+## root carries BOTH the window and the "controls" word, so hiding it
+## covers the closed variant too.
+func _apply_hint_visibility() -> void:
+	if is_instance_valid(_controls_root):
+		_controls_root.visible = not _menu_hints_hidden
+	if is_instance_valid(_hint_label):
+		_hint_label.visible = not _menu_hints_hidden
 
 
 func _update_label() -> void:

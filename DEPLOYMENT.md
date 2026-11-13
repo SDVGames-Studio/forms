@@ -51,9 +51,73 @@ registers itself in the `AGENT` group at `_ready()` for NcnnSync discovery).
 Game-specific observations, reward shaping, and actions are layered on in
 follow-up issues; the training scene needs no changes for the pipeline itself.
 
-**Trainer side.** The stock godot-rl flow: `StableBaselinesGodotEnv` →
-`VecMonitor` → SB3 `PPO` ("MultiInputPolicy"). The repo already contains the
-validated end-to-end connectivity harness — run it first on any new machine:
+**Trainer side.** The stock godot-rl flow, as wired up by
+[`train.py`](train.py) (issues #466/#467): `StableBaselinesGodotEnv` →
+`VecMonitor` → `VecNormalize` → SB3 `PPO` ("MultiInputPolicy"). **VecNormalize
+(issue #468)** normalizes both observations and rewards with running statistics
+(`norm_obs=True`, `norm_reward=True`, `clip_obs=10.0`, `clip_reward=10.0`) —
+critical for PPO stability, since raw rewards may have large magnitudes or high
+variance across components and would otherwise let a single component dominate
+the gradient updates. `train.py` saves the running statistics to
+`<experiment_dir>/vecnormalize.pkl` next to `final_model.zip`, and after every
+run verifies a sample batch of normalized observations has mean ≈ 0 and
+std ≈ 1. The repo also ships the validated end-to-end connectivity harness —
+run it first on any new machine:
+
+### Checkpoints and final artifacts (issue #471)
+
+Every `--checkpoint_every` timesteps (default 100 000, `0` disables)
+`train.py` saves a checkpoint into `<experiment_dir>/checkpoints/` using SB3's
+standard `CheckpointCallback` naming — `rl_model_<timesteps>_steps.zip`, each
+with a co-located `rl_model_<timesteps>_steps_vecnormalize.pkl` normalization
+snapshot, so any intermediate checkpoint can be resumed or exported exactly
+like the final model (with the default 500 k `--timesteps` that is 5
+checkpoints per run). The checkpoint directory lives inside the experiment
+directory — this repo's SB3-convention experiment root (`runs/<experiment_name>/`,
+the role `./logs/sb3/<experiment_name>/` plays in the upstream examples) — so
+TensorBoard event files, checkpoints, model and statistics all sit under one
+path per experiment and stay discoverable together.
+
+At the end of training the deployment artifacts are written to the same
+experiment directory:
+
+| Artifact | Path |
+|---|---|
+| final policy (`model.save()`) | `runs/<experiment_name>/final_model.zip` |
+| VecNormalize statistics (REQUIRED at inference) | `runs/<experiment_name>/vecnormalize.pkl` |
+
+**These two files are the input to the Phase 7 export pipeline (§3)** — e.g. for
+the Phase 6 run `runs/issue471_check/final_model.zip` +
+`runs/issue471_check/vecnormalize.pkl`.
+
+### Monitoring training (issue #469)
+
+Watch every experiment live with TensorBoard pointed at the runs directory:
+
+```bash
+tensorboard --logdir runs/        # all experiments
+# or one experiment: tensorboard --logdir runs/tdm_v1
+# then open http://localhost:6006
+```
+
+PPO writes the standard SB3 curves (`rollout/ep_rew_mean`,
+`rollout/ep_len_mean`, `train/policy_gradient_loss`, `train/value_loss`,
+`train/entropy_loss`, …) on its own. `train.py --metrics_every N`
+(default 4096) adds the team-deathmatch curves from
+[`training_metrics.py`](training_metrics.py), written every N timesteps:
+
+| Tag | Meaning |
+|---|---|
+| `tdm/win_rate` | decided episodes won (episode carried a REWARD_SPEC §2.9 `episode_outcome`) — the scripted-baseline side is the training env itself |
+| `tdm/timeout_frac` | episodes ended without an outcome (horizon truncations) |
+| `tdm/avg_episode_length` | mean VecMonitor episode length |
+| `tdm/reward/<component>` | per-step mean of each REWARD_SPEC §2 component — the reward breakdown |
+| `tdm/action_dist/<head>/<i>` | mean probability of action index `i` on head `move`/`aim`/`attack`/`target` |
+| `tdm/action_max_prob/<head>` | the head's largest mean probability — the collapse indicator (one index dominating every head ⇒ revisit `--ent_coef` or reward shaping) |
+| `tdm/action_entropy/<head>` | mean action entropy in nats (`ln(k)` = uniform) |
+
+`rl_metrics_check.py` verifies the whole callback offline (no Godot build
+needed) against a miniature stand-in env.
 
 ```bash
 .venv-train/bin/python rl_connectivity_test.py --godot /usr/local/bin/godot --steps 96
@@ -61,21 +125,119 @@ validated end-to-end connectivity harness — run it first on any new machine:
 
 Success = godot-rl's "connection established", PPO step logs, zero socket errors,
 and NcnnSync staying in TRAINING mode (validated in issue #356 / PR #371).
-For real training, write the same setup into a `train_forms.py` with the
-checkpointing of your choice (see godot-rl's `examples/stable_baselines3_example.py`).
+For real training run `train.py` (see its `--help`; hyperparameters in
+[`HYPERPARAMETERS.md`](HYPERPARAMETERS.md)).
+
+**Standalone training executable (issue #465).** The "Training (Linux)" export
+preset in `export_presets.cfg` builds the subprocess binary the Python trainer
+launches (godot-rl expects an `*.x86_64` executable) — no editor needed, so
+`n_parallel` is no longer capped at 1:
+
+```bash
+godot --headless --export-debug "Training (Linux)"
+# → builds/training/forms_training.x86_64 (+ .pck and the GDExtension .so)
+```
+
+- Needs the Godot **4.7.2 export templates** installed
+  (`~/.local/share/godot/export_templates/4.7.2.stable/`).
+- Export presets cannot override `application/run/main_scene`, so the
+  `TrainingBoot` autoload (`scripts/TrainingBoot.gd`) routes exported builds
+  that carry `training_build.marker` (packed only by this preset's
+  `include_filter`) to `training_scene.tscn`. Every other build — the editor,
+  and the normal Linux/Windows/Web/Android exports — boots the main menu
+  unchanged (verified: the marker is absent from their `.pck`).
+- The three `Environment_*` instances in `training_scene.tscn` are tiled
+  **3200 units apart** (the 3000+ required so physics never crosses between
+  parallel environments); `NcnnSync.control_mode = 1` (TRAINING).
+- Sanity check without a trainer: launch the binary — it runs without crashing
+  and NcnnSync logs it couldn't connect to the Python server ("Start training
+  with `gdrl`"). With a trainer listening on the default port **11008**
+  (`--port` overrides), NcnnSync connects and handshakes; point godot-rl at the
+  binary via `StableBaselinesGodotEnv(environment_path=...)`.
+
+**Shared policies by role (issue #445).** Team deathmatch trains multiple
+bots of the same role on ONE shared network: every controller in the scene
+carries an explicit `policy_name` naming its role. Current role-to-policy
+mapping:
+
+| Role | `policy_name` | Controllers |
+|---|---|---|
+| soldier (scaffold training bot) | `soldier` | the 3 `Bot` nodes in `training_scene.tscn` |
+
+`NcnnSync` reports each agent's `policy_name` in the handshake's
+`agent_policy_names` field; `rl_connectivity_test.py` prints
+`POLICIES OK: N distinct policy_name(s) …` after a run (`--expected-policies`
+asserts the count). Today's single-role scene reports **1**. Rules for
+extending the roster:
+
+- Same role → same `policy_name`: the agents share network weights, which is
+  significantly more sample-efficient for homogeneous teams.
+- Distinct role (e.g. a medic with different abilities) → its own
+  `policy_name`. Multi-policy training needs RLlib, not SB3 (SB3 trains a
+  single shared policy); with SB3 keep one role per training run. For
+  separate *training identities* beyond the role name there is also
+  `NcnnSync.multi_policy = true`, which switches the wire to each agent's
+  `policy_group` (issue #73) — `policy_name` stays the role key.
+- **Critical constraint:** every agent sharing a `policy_name` must return
+  IDENTICAL `get_obs()` and `get_action_space()` shapes — the trainer builds
+  the wire spaces from the group's first agent and any drift fails the
+  pipeline with a space-mismatch error. `tests/test_issue445.gd` (headless:
+  `godot --headless res://tests/test_issue445.tscn`) guards the shipped
+  scene and demonstrates the legal two-role layout.
 
 ## 3. Export to ONNX, convert to ncnn via pnnx
 
-1. **Export the trained policy to ONNX** (standard `torch.onnx.export` of the SB3
-   policy network — `model.policy`, `torch.onnx.export(policy, dummy_obs,
-   "policy.onnx")`; an LSTM-free MLP policy exports cleanly).
-2. **Convert** with pnnx (from the convert venv). `inputshape` must match the
-   bot's observation size:
+1. **Export the trained policy to ONNX** with
+   [`export_onnx.py`](export_onnx.py) (issue #502). It wraps `model.policy` in
+   a deterministic module (argmax per MultiDiscrete head), exports the actor
+   only at opset 17, names the tensors `input` `(1, OBS_SIZE)` and `action`,
+   and verifies the graph in one pass: `onnx.checker.check_model` + an
+   onnxruntime inference whose output must exactly match the PyTorch
+   `deterministic=True` output. Input artifacts (issue #471):
+   `runs/<experiment_name>/final_model.zip` plus its co-located
+   `runs/<experiment_name>/vecnormalize.pkl` (§2). **When trained
+   with `train.py`, the policy expects VecNormalize-normalized observations**;
+   `export_onnx.py` normalizes only its dummy input for the parity check and
+   does NOT bake the normalization into the graph — the game replays it
+   pre-inference via the `obs_norm_stats_path` sidecar, exported by
+   `export_vecnormalize_stats.py` (step 4).
 
    ```bash
-   .venv-convert/bin/pnnx models/policy.onnx inputshape=[1,OBS_SIZE]
-   # → models/policy.ncnn.param + models/policy.ncnn.bin
+   .venv-train/bin/python export_onnx.py \
+       --model runs/issue471_check/final_model.zip \
+       --vecnormalize runs/issue471_check/vecnormalize.pkl \
+       --out models/policy.onnx
+   # current checkpoint: TrainingBot obs size 2 (OBSERVATION_SPEC.md),
+   # action heads MultiDiscrete([3, 8, 6, 4]) (ACTION_SPEC.md)
    ```
+2. **Convert** with pnnx (from the convert venv). `inputshape` must match the
+   bot's observation size. Convert the **logits variant**
+   (`--logits-out models/policy-logits.onnx`), NOT `models/policy.onnx`: the
+   bundled NcnnRunner statically links ncnn **without the ArgMax layer**, so a
+   model converted from the argmax-baked #502 reference graph fails to load
+   with `layer ArgMax not exists or registered` (#505). Deployed ncnn models
+   output per-head MultiDiscrete logits (21 values) and the argmax runs
+   caller-side (`run_discrete_action` / `InferenceMath.argmax`) — the
+   upstream godot-native-rl convention:
+
+   ```bash
+   # export the logits deployment variant alongside the reference graph
+   .venv-train/bin/python export_onnx.py \
+       --model runs/issue471_check/final_model.zip \
+       --vecnormalize runs/issue471_check/vecnormalize.pkl \
+       --out models/policy.onnx \
+       --logits-out models/policy-logits.onnx
+   .venv-convert/bin/pnnx models/policy-logits.onnx inputshape=[1,OBS_SIZE]
+   # → models/policy_logits.ncnn.param + .bin; rename to
+   #   models/policy.ncnn.param + models/policy.ncnn.bin
+   ```
+
+   The artifacts shipped with the repo (`models/policy-logits.onnx` +
+   `models/policy.ncnn.param` + `models/policy.ncnn.bin`, generated from the
+   `issue471_check` policy, obs size 2) are guarded headless:
+   `godot --headless res://tests/test_issue505.tscn` — the NcnnRunner buffer
+   load, the VecNormalize replay, and the per-head action output vs the
+   Python ONNX reference, in one run (issue #505).
 
 3. **Verify parity** (strongly recommended — a bad conversion fails *silently*:
    the bot just plays subtly wrong). With the train venv:
@@ -84,18 +246,22 @@ checkpointing of your choice (see godot-rl's `examples/stable_baselines3_example
    .venv-train/bin/python - <<'EOF'
    import ncnn, numpy as np, onnxruntime as ort
    OBS_SIZE = 2  # TrainingBot.get_obs() width — set to your policy's obs size
-   sess = ort.InferenceSession("models/policy.onnx")
+   HEADS = [3, 8, 6, 4]  # MultiDiscrete heads (ACTION_SPEC.md)
+   sess = ort.InferenceSession("models/policy-logits.onnx")
    net = ncnn.Net()
    net.load_param("models/policy.ncnn.param")
    net.load_model("models/policy.ncnn.bin")
    for _ in range(50):
         obs = np.random.rand(1, OBS_SIZE).astype(np.float32)
-        ref = sess.run(None, {sess.get_inputs()[0].name: obs})[0]
+        ref = sess.run(None, {sess.get_inputs()[0].name: obs})[0].reshape(-1)
         ex = net.create_extractor()
         ex.input("in0", ncnn.Mat(obs))
         _, out = ex.extract("out0")
         got = np.array(out).reshape(-1)
-        assert ref.argmax() == got.argmax(), "argmax mismatch"
+        ofs = 0
+        for n in HEADS:  # argmax per head, like run_discrete_action
+            assert ref[ofs:ofs+n].argmax() == got[ofs:ofs+n].argmax(), "argmax mismatch"
+            ofs += n
    print("parity OK")
    EOF
    ```
@@ -122,9 +288,82 @@ Optional sidecars (same folder, JSON): `obs_norm_stats_path` (VecNormalize),
 (LSTM hidden-state carry). `deterministic_inference = true` (default) takes the
 argmax action; set `inference_seed >= 0` for reproducible eval runs.
 
+**VecNormalize statistics are REQUIRED for inference (issue #468).** `train.py`
+normalizes observations and rewards with SB3's VecNormalize, so the ncnn model
+expects *normalized* inputs. If the game feeds raw `get_obs()` values to a
+policy trained this way, the policy receives out-of-distribution inputs and
+behaves unpredictably. Convert the saved `vecnormalize.pkl` into the JSON
+sidecar the controller replays pre-inference with
+[`export_vecnormalize_stats.py`](export_vecnormalize_stats.py) (issue #503;
+the exact transform — `(obs - mean) / sqrt(var + epsilon)`, clamped to
+`clip_obs` — is mirrored by
+[`addons/godot_native_rl/controllers/obs_normalize.gd`):
+
+```bash
+python3 export_vecnormalize_stats.py \
+    --vecnormalize runs/issue471_check/vecnormalize.pkl \
+    --out models/vecnormalize_stats.json
+# built-in self-check: the saved stats must reproduce SB3
+# VecNormalize.normalize_obs on random raw obs EXACTLY (after SB3's
+# float32 VecEnv cast)
+```
+
+The shipped artifact `models/vecnormalize_stats.json` (committed next to
+`models/policy.onnx`, generated from the `issue471_check` run) has this
+format:
+
+| Key | Type | Meaning |
+|---|---|---|
+| `schema_version` | int | format version (currently `1`) |
+| `norm_obs` | bool | **active flag** — `true`: the policy was trained with obs normalization (replay the transform); `false`: training used raw obs, `get_obs()` is passed through unchanged (mean/var are inert zeros) |
+| `obs_size` | int | observation width; must equal `get_obs()["obs"].size()` |
+| `mean`, `var` | float arrays (length `obs_size`) | `vec_normalize.obs_rms.mean` / `.var` |
+| `epsilon` | float | variance guard inside the sqrt (SB3 default `1e-8`) |
+| `clip_obs` | float | clamp applied AFTER the division (SB3 default `10.0`) |
+| `count` | float | running-stat sample count (provenance only, unused at runtime) |
+
+Normalization replayed at inference: `normalized[i] = clamp((obs[i] -
+mean[i]) / sqrt(var[i] + epsilon), -clip_obs, +clip_obs)`. SB3 evaluates this
+in float64 and casts the result to float32 (the VecEnv dtype the policy was
+trained on); the GDScript replay runs float32 arithmetic, which is the same
+rounding. Verify any exported sidecar with `python3 rl_vecnormalize_check.py`
+(synthetic round-trip + the shipped artifact against the live
+`vecnormalize.pkl`; exit 0 = pass) and headless in Godot with
+`godot --headless res://tests/test_issue503.tscn`.
+
+Then set `obs_norm_stats_path = res://models/vecnormalize_stats.json` on the
+controller node alongside `model_param_path`/`model_bin_path`. Sidecars
+written before the `norm_obs` flag existed (e.g. a `policy.norm.json` from
+the old inline recipe) still load — a missing flag defaults to *active*.
+Skipping this sidecar on a VecNormalize-trained policy silently degrades the
+bot (no load error — just out-of-distribution inputs).
+
 The plugin must be **enabled** (Project → Project Settings → Plugins → *Godot
 Native RL*): it auto-packs `*.ncnn.param` / `*.ncnn.bin` into every export —
 without it, exported builds crash with `cannot read model files`.
+
+### Ready-made inference scene (issue #506)
+
+All of the above is pre-wired in
+[`inference_scene.tscn`](inference_scene.tscn): an `NcnnSync` in
+NCNN_INFERENCE mode (never contacts a Python trainer — it has no training
+agents, so no socket is opened) with one `Level` environment and a `Bot`
+node running [`InferenceBot.gd`](InferenceBot.gd) (extends `TrainingBot`):
+`control_mode = NCNN_INFERENCE`, `model_param_path`/`model_bin_path` =
+`res://models/policy.ncnn.{param,bin}`, `obs_norm_stats_path` =
+`res://models/vecnormalize_stats.json` (the defaults `InferenceBot._init()`
+sets). Open the scene and press Play — with the training server stopped the
+bot still acts every decision step (`NcnnSync._inference_process` drives
+`infer_and_act()` every `action_repeat` physics frames).
+
+**Head order (issue #506).** `InferenceBot.get_action_space()` returns the
+same four heads as `TrainingBot` but insertion-ordered `aim, attack, move,
+target` = SB3 `MultiDiscrete([3, 8, 6, 4])` — the layout the exported
+network's 21 output logits actually use (`ActionDecode` slices the output by
+dict insertion order; `tests/test_issue505.gd` pins the layout against the
+ONNX reference). `TrainingBot.gd` keeps the ACTION_SPEC.md wire order for
+the training bridge; only the deploy-side twin re-orders. Headless DoD
+check: `godot --headless res://tests/test_issue506.tscn`.
 
 ## 5. Platform-specific build notes
 
@@ -145,3 +384,10 @@ without it, exported builds crash with `cannot read model files`.
 2. `rl_connectivity_test.py --steps 96` passes (training bridge healthy).
 3. Run the game: bot loads the model without `cannot read model files` /
    `Failed to load ncnn model` errors and acts on every step.
+4. `python3 rl_vecnormalize_check.py` passes (obs-norm stats sidecar
+   reproduces the training-time normalization, #503); headless Godot:
+   `godot --headless res://tests/test_issue503.tscn` → exit 0.
+5. Native inference wired (#506): `godot --headless res://tests/test_issue506.tscn`
+   → exit 0 — the inference scene acts with no Python trainer, feeds
+   VecNormalize-normalized obs to the runner, and decodes non-constant
+   valid actions in the training-time head order.

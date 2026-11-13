@@ -108,17 +108,19 @@ Optional footer text:
 
 ### 4.3 Main menu options
 
-The main menu must contain exactly three primary options:
+The main menu must contain exactly four primary options:
 
 1. NEW GAME
-2. SETTINGS
-3. QUIT
+2. LEVEL EDITOR
+3. SETTINGS
+4. QUIT
 
 Do not display Level Selection or Continue on the main menu.
 
 ### 4.4 Button behavior
 
 - **New Game:** Opens the existing level selection flow.
+- **Level Editor:** Opens the level editor screen (issue #464).
 - **Settings:** Opens the Settings screen.
 - **Quit:** Requests application exit.
 
@@ -147,11 +149,12 @@ Level Selection must only be accessible through the New Game flow.
 
 ## 6. Settings
 
-The Settings screen must contain three categories:
+The Settings screen must contain four categories:
 
 1. Teams Customization
 2. Controls
 3. Graphics
+4. Audio
 
 Each category must open its corresponding settings screen.
 
@@ -212,6 +215,7 @@ If a setting cannot be implemented reliably, report the limitation instead of ex
 - Teams Customization opens the existing TeamMenu.
 - Controls opens the existing HotkeysMenu.
 - Graphics opens the new Graphics settings screen.
+- Audio opens the audio settings screen.
 - Every settings screen must provide a way to return to Settings.
 - Settings must provide a way to return to the main menu.
 
@@ -226,6 +230,22 @@ Do not create a third independent implementation of settings.
 Where practical, share UI components and settings logic between the main menu and in-game settings overlay. Ensure that settings changed in either location remain consistent.
 
 Do not modify the pause-menu behavior unnecessarily.
+
+### 6.6 Audio
+
+The audio settings screen (issue #472) exposes one volume slider per audio bus of the project's `default_bus_layout.tres`:
+
+- Master volume.
+- Music volume.
+- SFX volume.
+
+Requirements:
+
+- Persist user-selected volumes in `settings.cfg`.
+- Apply changes immediately through `AudioServer` bus volumes.
+- 0% is silence (the -80 dB hard-mute floor).
+- Sensible defaults keep today's authored mix (Master 100%, Music 50%, SFX 100%).
+- The category stays available on touch devices.
 
 ## 7. Navigation and state management
 
@@ -331,9 +351,9 @@ If an existing requirement conflicts with this specification, stop and request c
 
 - [ ] Main menu displays the Forms title and subtitle.
 - [ ] Background is completely static.
-- [ ] Main menu contains exactly New Game, Settings, and Quit.
+- [ ] Main menu contains exactly New Game, Level Editor, Settings, and Quit.
 - [ ] No gameplay HUD is visible.
-- [ ] All three options work.
+- [ ] All four options work.
 - [ ] Visual style follows the approved dark minimalist direction.
 
 ### New Game

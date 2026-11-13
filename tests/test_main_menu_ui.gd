@@ -1,6 +1,7 @@
 extends Node
-## Main-menu UI checks per docs/ui/main_menu.md §11 (M1 scope):
-## branding, exactly three primary options, footer version, shared
+## Main-menu UI checks per docs/ui/main_menu.md §11 (M1 scope +
+## issue #464):
+## branding, the four primary options, footer version, shared
 ## theme, static background, no gameplay HUD leak ("level" group stays
 ## empty), and working NEW GAME / SETTINGS navigation. QUIT is checked
 ## last — the test process exits 0 when it fires (issue #303 pattern).
@@ -24,7 +25,7 @@ func _ready() -> void:
 class MainMenuDriver extends Node:
 	signal done(ok: bool)
 
-	const EXPECTED_BUTTONS := ["NEW GAME", "SETTINGS", "QUIT"]
+	const EXPECTED_BUTTONS := ["NEW GAME", "LEVEL EDITOR", "SETTINGS", "QUIT"]
 
 
 	func run() -> void:
@@ -32,15 +33,15 @@ class MainMenuDriver extends Node:
 		var menu: Node = _fresh_main()
 		await get_tree().process_frame
 
-		# --- Structure (spec §4): branding + exactly three options. ---
+		# --- Structure (spec §4): branding + the four primary options. ---
 		var buttons: Array = _all_buttons(menu)
 		var labels: Array[String] = []
 		for b in buttons:
 			labels.append((b as Button).text)
-		var three: bool = labels.size() == 3 \
+		var primary: bool = labels.size() == 4 \
 			and labels == EXPECTED_BUTTONS
-		print("MAINMENU buttons=", labels, " three=", three)
-		ok = ok and three
+		print("MAINMENU buttons=", labels, " primary=", primary)
+		ok = ok and primary
 
 		var title: Label = _find_label(menu, "FORMS")
 		var subtitle: Label = _find_label(
@@ -89,6 +90,9 @@ class MainMenuDriver extends Node:
 		# --- Navigation (spec §5): NEW GAME -> existing LevelsMenu. ---
 		ok = ok and await _nav_check("%NewGameButton",
 			"res://LevelsMenu.tscn", "new_game")
+		# --- LEVEL EDITOR -> level editor (issue #464). ---
+		ok = ok and await _nav_check("%LevelEditorButton",
+			"res://LevelEditor.tscn", "level_editor")
 		# --- SETTINGS -> existing SettingsMenu (spec §6.4). ---
 		ok = ok and await _nav_check("%SettingsButton",
 			"res://SettingsMenu.tscn", "settings")

@@ -37,6 +37,9 @@ func _ready() -> void:
 
 
 func _on_start_pressed() -> void:
+	# Issue #463: the picked level's endless background music starts with
+	# the level and survives the scene change (autoload).
+	MusicManager.play_for_level(GameConfig.level_path)
 	get_tree().change_scene_to_file(GameConfig.level_path)
 
 

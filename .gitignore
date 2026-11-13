@@ -2,6 +2,11 @@
 .godot/
 /android/
 
+# Training outputs: exported training builds (issue #465) and SB3
+# experiment directories with TensorBoard logs + final_model.zip (issue #466)
+/builds/
+/runs/
+
 # Godot editor/user artifacts
 *.tmp
 *.bak
@@ -9,9 +14,10 @@
 *.swp
 .DS_Store
 
-# Export builds
-export/
-builds/
+# Export builds (root-anchored: an unanchored `export/` swallowed
+# addons/godot_native_rl/export/ during the v0.4.0 install — PR #349)
+/export/
+/builds/
 *.exe
 *.pck
 *.zip
@@ -31,3 +37,7 @@ Thumbs.db
 
 # Python bytecode (rl_action_mask_check.py imports regenerate it)
 __pycache__/
+
+# Local eval/training artifacts (issue #508): python venv + ncnn/ort caches stay untracked
+/.cache/
+/.venv-train/

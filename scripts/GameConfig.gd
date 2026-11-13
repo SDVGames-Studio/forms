@@ -9,6 +9,11 @@ class_name GameConfig
 ## Path of the level the player picked in the levels menu.
 static var level_path := ""
 
+## Issue #464 rework: stem of the editor-authored level (under
+## user://levels/) the player picked in the levels menu — read by
+## CustomLevel.gd to build the playable scene from the JSON.
+static var custom_level_name := ""
+
 ## Members of the player's team including the hero (1..3; the scenes
 ## pre-place the hero plus Teammate1/Teammate2).
 static var team_size := 3
@@ -66,6 +71,83 @@ static var debug_mode := true
 ## is two character widths wide: at every grid point an arrow points
 ## where gravity pulls a figure there (see scripts/GravityFieldDebug.gd).
 static var debug_gravity_field := false
+
+## Main-menu spec §6.3 (milestone M3, 2026-11-12): display settings —
+## chosen in the graphics settings screen (GraphicsMenu), persisted in
+## settings.cfg next to the debug switches and applied at boot plus on
+## every change (GameConfig.apply_display_settings).
+## display_mode: 0 = windowed, 1 = fullscreen. Defaults keep today's
+## behavior: windowed, base resolution, vsync on.
+static var display_mode := 0
+
+## Windowed resolution preset (16:9 list; fullscreen uses the desktop
+## resolution, so this only applies while windowed).
+static var window_size := Vector2i(1152, 648)
+
+## VSync on/off.
+static var vsync := true
+
+## Issue #472: audio settings — chosen in the audio settings screen
+## (AudioMenu), persisted in settings.cfg next to the display settings
+## and applied at boot plus on every change
+## (GameConfig.apply_audio_settings). Linear 0..1 slider values mapped
+## onto the audio buses' volume in dB. The defaults keep today's mix
+## exactly: Master and SFX ride their authored 0 dB, Music its authored
+## -6 dB (0.5 linear is -6.02 dB).
+static var master_volume := 1.0
+
+## Music bus volume (MusicManager rides the Music bus).
+static var music_volume := 0.5
+
+## SFX bus volume (the sound effects ride the SFX bus).
+static var sfx_volume := 1.0
+
+## Issue #472: push the persisted audio settings to the AudioServer —
+## called at boot (Main, after load_settings) and on every change in
+## AudioMenu. Linear 0..1 maps through linear_to_db(); 0 is floored to
+## the -80 dB hard-mute threshold because linear_to_db(0) is -INF.
+## Safe on the dummy audio driver (headless): wiring and persistence
+## are asserted, not sound.
+static func apply_audio_settings() -> void:
+	_set_bus_volume("Master", master_volume)
+	_set_bus_volume("Music", music_volume)
+	_set_bus_volume("SFX", sfx_volume)
+
+
+## Issue #472: set one bus' linear volume on the AudioServer; unknown
+## bus names (no matching bus in default_bus_layout.tres) are skipped.
+static func _set_bus_volume(bus_name: String, linear: float) -> void:
+	var index := AudioServer.get_bus_index(bus_name)
+	if index < 0:
+		return
+	var clamped := clampf(linear, 0.0, 1.0)
+	var db := -80.0 if clamped <= 0.0001 else linear_to_db(clamped)
+	AudioServer.set_bus_volume_db(index, db)
+
+
+## Owner decision Q2 (2026-11-06): the graphics category is HIDDEN on
+## touch devices — display mode/resolution/vsync are not meaningful
+## there. Detected through OS features so it works before any scene.
+static func is_touch_device() -> bool:
+	return OS.has_feature("android") or OS.has_feature("ios") \
+		or OS.has_feature("mobile")
+
+
+## Main-menu spec §6.3: push the persisted display settings to the
+## DisplayServer — called at boot (Main, after load_settings) and on
+## every change in GraphicsMenu. Headless runs sit on the dummy
+## renderer: the calls are safe no-ops there (tests assert wiring and
+## persistence, not pixels).
+static func apply_display_settings() -> void:
+	if vsync:
+		DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_ENABLED)
+	else:
+		DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
+	if display_mode == 1:
+		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
+	else:
+		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED)
+		DisplayServer.window_set_size(window_size)
 
 ## Issue #294: custom hotkeys — a PHYSICAL keycode per action name,
 ## persisted under [hotkeys] in settings.cfg and applied over the project
@@ -253,6 +335,17 @@ static func load_settings() -> void:
 		return
 	debug_mode = cfg.get_value("settings", "debug_mode", true)
 	debug_gravity_field = cfg.get_value("settings", "gravity_field", false)
+	# Main-menu spec §6.3 (M3): display settings, same defaults as the
+	# statics when the keys are missing (first boot, older settings.cfg).
+	display_mode = cfg.get_value("settings", "display_mode", 0)
+	window_size = cfg.get_value("settings", "window_size",
+		Vector2i(1152, 648))
+	vsync = cfg.get_value("settings", "vsync", true)
+	# Issue #472: audio settings, same defaults as the statics when the
+	# keys are missing (first boot, older settings.cfg).
+	master_volume = cfg.get_value("settings", "master_volume", 1.0)
+	music_volume = cfg.get_value("settings", "music_volume", 0.5)
+	sfx_volume = cfg.get_value("settings", "sfx_volume", 1.0)
 	# Issue #294: custom hotkeys — snapshot the authored defaults FIRST,
 	# then apply whatever was saved over them.
 	capture_hotkey_defaults()
@@ -268,6 +361,14 @@ static func save_settings() -> void:
 	cfg.load(SETTINGS_PATH)  # keep any other keys; missing file is fine
 	cfg.set_value("settings", "debug_mode", debug_mode)
 	cfg.set_value("settings", "gravity_field", debug_gravity_field)
+	# Main-menu spec §6.3 (M3): display settings.
+	cfg.set_value("settings", "display_mode", display_mode)
+	cfg.set_value("settings", "window_size", window_size)
+	cfg.set_value("settings", "vsync", vsync)
+	# Issue #472: audio settings.
+	cfg.set_value("settings", "master_volume", master_volume)
+	cfg.set_value("settings", "music_volume", music_volume)
+	cfg.set_value("settings", "sfx_volume", sfx_volume)
 	cfg.save(SETTINGS_PATH)
 
 

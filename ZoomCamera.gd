@@ -13,7 +13,8 @@ extends Camera2D
 ##
 ## Issue #126: in spectator mode (no controlled member — e.g. the AI vs AI
 ## duel) the camera does not follow anyone, so it can be panned freely:
-## hold the left mouse button and drag on PC, or drag a finger across the
+## hold the left or right mouse button and drag on PC (issue #456 added the
+## right button), or drag a finger across the
 ## screen on touch devices. Input events consumed by UI (virtual stick,
 ## buttons) never reach _unhandled_input, so panning never fights them.
 ##
@@ -22,7 +23,9 @@ extends Camera2D
 ## figure and the pan persists after the drag is released (follow resumes
 ## with the offset). Switching the controlled member (N / P / Switch tool /
 ## new turn) re-centers the camera on it. An armed teleport (issue #170)
-## keeps its click: the destination press never starts a camera drag.
+## keeps its LEFT click: the destination press never starts a camera drag,
+## while the right button still pans even while picking the destination
+## (#456 rework — ToolInventory consumes only the left click).
 ##
 ## Issue #289: two camera types. The default STATIC camera keeps the view
 ## world-aligned (exactly the old behaviour). The CHARACTER camera is
@@ -166,17 +169,37 @@ func _unhandled_input(event: InputEvent) -> void:
 				_apply_zoom(ZOOM_STEP)
 			MOUSE_BUTTON_WHEEL_DOWN:
 				_apply_zoom(1.0 / ZOOM_STEP)
-	# Issue #170: while a teleport is armed the next left click picks the
+	# Issue #170: while a teleport is armed the next LEFT click picks the
 	# destination — it must reach ToolInventory, not start a camera drag.
+	# Issue #456 (rework): the RIGHT button never picks a destination
+	# (ToolInventory consumes only MOUSE_BUTTON_LEFT), so RMB falls through
+	# to the pan code below and moves the camera while the player is still
+	# choosing where to teleport. Touch presses keep falling through — on a
+	# touchscreen the tap IS the destination pick.
 	if ToolInventory.armed_tool == ToolInventory.TOOL_TELEPORT:
-		if (event is InputEventMouseButton and event.pressed) \
+		var teleport_pick_press := false
+		if event is InputEventMouseButton and event.pressed \
+				and (event as InputEventMouseButton).button_index \
+				== MOUSE_BUTTON_LEFT:
+			teleport_pick_press = true
+		if teleport_pick_press \
 				or (event is InputEventScreenTouch and event.pressed):
 			return
-	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
-		_dragging = event.pressed
-		if _dragging:
+	# Issue #456: the camera pans with EITHER mouse button — hold the left
+	# OR the right button and drag; both behave identically.
+	if event is InputEventMouseButton \
+			and (event.button_index == MOUSE_BUTTON_LEFT \
+			or event.button_index == MOUSE_BUTTON_RIGHT):
+		if event.pressed:
+			_dragging = true
 			_drag_last = event.position
 			get_viewport().set_input_as_handled()
+		elif not Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT) \
+				and not Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT):
+			# A release only ends the drag when the other pan button is not
+			# still held (pressing both buttons, then releasing one, keeps
+			# panning).
+			_dragging = false
 	elif event is InputEventScreenTouch:
 		# Screen-drag panning (issue #126); touches on the virtual stick or
 		# buttons are consumed as GUI input and never arrive here.
@@ -185,7 +208,9 @@ func _unhandled_input(event: InputEvent) -> void:
 			_drag_last = event.position
 	elif event is InputEventScreenDrag and _dragging:
 		_pan_by(event.relative)
-	elif event is InputEventMouseMotion and _dragging and Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
+	elif event is InputEventMouseMotion and _dragging \
+			and (Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT) \
+			or Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT)):
 		_pan_by(event.relative)
 
 
