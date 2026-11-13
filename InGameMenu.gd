@@ -30,6 +30,13 @@ const ACCENT := Color(0.655, 0.545, 0.98, 1)
 var _settings_menu: Control = null
 
 
+## Issue #392: emitted on open/close. The gameplay hints (TurnController's
+## controls window and one-line top hint) live on a UI layer ABOVE this
+## menu and would overlap its title — they follow this signal to hide
+## while the menu is up and to come back afterwards.
+signal menu_open_changed(open: bool)
+
+
 func _init() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 
@@ -67,11 +74,13 @@ func _open() -> void:
 	_panel.visible = true
 	get_tree().paused = true
 	_cancel_button.grab_focus()
+	menu_open_changed.emit(true)
 
 
 func _close() -> void:
 	_panel.visible = false
 	get_tree().paused = false
+	menu_open_changed.emit(false)
 
 
 func _build_ui() -> void:

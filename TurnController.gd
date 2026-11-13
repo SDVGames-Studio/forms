@@ -138,6 +138,12 @@ var _controls_panel: PanelContainer
 var _controls_word: Button
 var _controls_root: Control
 var _controls_hidden := false
+## Issue #392: while the in-game menu is open the hints must hide —
+## they live on the turn HUD's layer 50, which renders ABOVE the
+## pause menu's layer 10, so the controls window overlapped the
+## menu's "PAUSED" title. InGameMenu reports open/close through its
+## menu_open_changed signal.
+var _menu_hints_hidden := false
 ## Issue #87: one-line hint of what the player should do right now.
 const HINT_ROLL := "Rolling for the first team..."
 ## Issue #377: the player-turn controls list moved from the one-line top
@@ -781,6 +787,7 @@ func _build_ui() -> void:
 	_layer.add_child(_hint_label)
 	_build_controls_panel()
 	_update_label()
+	_apply_hint_visibility()
 
 
 ## Issue #377 rework: compact controls window at the center of the left
@@ -869,6 +876,33 @@ func _on_controls_close_pressed() -> void:
 func _on_controls_word_pressed() -> void:
 	_controls_hidden = false
 	_update_controls_visibility()
+
+
+func _ready() -> void:
+	# Issue #392: the in-game menu is an autoload sibling — it exists by
+	# the time this later autoload comes alive, so the hint visibility
+	# can follow the menu from the first frame on.
+	InGameMenu.menu_open_changed.connect(_on_menu_open_changed)
+
+
+## Issue #392: opening the in-game menu hides the hint elements (the
+## controls window with its "controls" word and the one-line top hint)
+## because the turn HUD's layer renders above the menu; closing the
+## menu restores them. The player's own hidden/shown choice for the
+## controls window is kept untouched — only the container is masked.
+func _on_menu_open_changed(open: bool) -> void:
+	_menu_hints_hidden = open
+	_apply_hint_visibility()
+
+
+## Issue #392: gate the hint elements with the menu state. The controls
+## root carries BOTH the window and the "controls" word, so hiding it
+## covers the closed variant too.
+func _apply_hint_visibility() -> void:
+	if is_instance_valid(_controls_root):
+		_controls_root.visible = not _menu_hints_hidden
+	if is_instance_valid(_hint_label):
+		_hint_label.visible = not _menu_hints_hidden
 
 
 func _update_label() -> void:
