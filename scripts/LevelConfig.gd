@@ -9,3 +9,6 @@ func _ready() -> void:
 	# configuration menu and applied when the level starts.
 	if GameConfig.night_regime:
 		NightRegime.apply(self)
+	# Issue #523: the spawn regime places the figures once the
+	# configuration has trimmed and dressed them.
+	SpawnRegime.apply(self)

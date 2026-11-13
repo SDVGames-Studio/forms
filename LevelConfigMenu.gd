@@ -27,6 +27,7 @@ const SHAPES: Array[String] = ["square", "circle", "triangle", "star", "ellipse"
 @onready var _enemy_count: SpinBox = %EnemyCountSpinBox
 @onready var _turn_time: SpinBox = %TurnTimeSpinBox
 @onready var _night_regime: CheckButton = %NightRegimeCheck
+@onready var _spawn_regime: OptionButton = %SpawnRegimeOption
 @onready var _teams_list: VBoxContainer = %TeamsList
 @onready var _add_team_button: Button = %AddTeamButton
 @onready var _start_button: Button = %StartButton
@@ -39,6 +40,14 @@ func _ready() -> void:
 	_turn_time.value_changed.connect(func(value: float) -> void: GameConfig.turn_time = value)
 	# Issue #367: the night regime is picked here, before the game.
 	_night_regime.toggled.connect(func(on: bool) -> void: GameConfig.night_regime = on)
+	# Issue #523: the spawn regime is picked here, before the game.
+	for label in SpawnRegime.REGIME_LABELS:
+		_spawn_regime.add_item(label)
+	_spawn_regime.item_selected.connect(func(index: int) -> void:
+		GameConfig.spawn_regime = index)
+	# `select` does not emit `item_selected`, so the stored choice is
+	# restored without being written back.
+	_spawn_regime.select(GameConfig.spawn_regime)
 	# Issue #521: the team set for the level — loaded here (once) and
 	# edited directly in GameConfig.teams; Start persists it.
 	GameConfig.load_teams()

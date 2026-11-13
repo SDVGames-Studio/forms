@@ -44,6 +44,11 @@ func _ready() -> void:
 	# Issue #367: the night regime applies to custom levels as well.
 	if GameConfig.night_regime:
 		NightRegime.apply(self)
+	# Issue #523: the spawn regime applies to custom levels as well —
+	# the designer regime is their default (the editor's JSON spawn
+	# points already staged the figures); the random regimes scatter
+	# them over the generated terrain like in any stock level.
+	SpawnRegime.apply(self)
 
 
 ## The figure plan, in GameConfig.apply order: the hero + teammates
