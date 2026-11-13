@@ -18,6 +18,13 @@ func _ready() -> void:
 
 
 func _team() -> Array:
+	# Issue #521: switching is scoped to the ACTIVE human team — the hero
+	# team's group, or the members of any hot-seat team currently taking
+	# its turn (they live in the enemy_team group).
+	var active := TurnController.active_team
+	if active != "" and active != TurnController.TEAM_PLAYER \
+			and TurnController.is_player_team(active):
+		return TurnController.members_of(active)
 	return get_tree().get_nodes_in_group("player_team")
 
 

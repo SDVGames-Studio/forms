@@ -339,6 +339,15 @@ func _build_health_bar() -> void:
 	name_label.offset_bottom = -46.0
 	add_child(name_label)
 
+
+## Issue #521: rename the figure after the level was staged — the name
+## label above the health bar was already built from the old name.
+func set_display_name(value: String) -> void:
+	display_name = value
+	var label := get_node_or_null("NameLabel") as Label
+	if label != null:
+		label.text = value
+
 	var background := ColorRect.new()
 	# Issue #270: named so FigurePose (and any pose/HUD pass, like
 	# Player.gd's) can tell the health bar from the BODY visual rect.

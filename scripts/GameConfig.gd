@@ -207,14 +207,40 @@ static func default_teams() -> Array:
 			"label": "Team 1", "color": team_color,
 			"shape": team_shape, "names": first_names,
 			"skill": ai_skill, "friendly_fire": ai_friendly_fire,
+			"controller": "player",
 		},
 		{
 			"label": "Team 2", "color": Color(0.75, 0.2, 0.45, 1),
 			"shape": "circle",
 			"names": second_names,
 			"skill": ai_skill, "friendly_fire": ai_friendly_fire,
+			"controller": "computer",
 		},
 	]
+
+
+## Issue #521: who plays a team — "player" (a human, hot-seat on this
+## device) or "computer" (the AI). The stored set may predate the key
+## (older team.cfg), so a missing value defaults by SLOT: the first team
+## is the classic human hero team, every other team plays the computer.
+static func team_controller(index: int) -> String:
+	if index < 0 or index >= teams.size():
+		return "computer"
+	var controller := str(teams[index].get("controller", ""))
+	if controller == "player" or controller == "computer":
+		return controller
+	return "player" if index == 0 else "computer"
+
+
+## Issue #521: the controller of the configured team that wears this
+## COLOR (levels stage extra teams by color — TurnController gives each
+## enemy color its own team id and asks this map whether that team is
+## human). Unknown colors play the computer.
+static func team_controller_for_color(color: Color) -> String:
+	for i in teams.size():
+		if teams[i].get("color") is Color and teams[i]["color"] == color:
+			return team_controller(i)
+	return "computer"
 
 
 ## Issue #208: load the saved set of teams (falling back to the default
@@ -285,12 +311,16 @@ static func _sanitize_teams(raw: Array) -> Array:
 		var shape := str(team.get("shape", "square"))
 		if not ["square", "circle", "triangle", "star", "ellipse"].has(shape):
 			shape = "square"
+		var controller := str(team.get("controller", ""))
+		if controller != "player" and controller != "computer":
+			controller = "player" if out.is_empty() else "computer"
 		out.append({
 			"label": str(team.get("label", "Team %d" % (out.size() + 1))),
 			"color": team["color"] if typeof(team.get("color")) == TYPE_COLOR else Color(1, 1, 1),
 			"shape": shape, "names": names,
 			"skill": clampi(int(team.get("skill", 5)), 0, 10),
 			"friendly_fire": clampi(int(team.get("friendly_fire", 0)), 0, 10),
+			"controller": controller,
 		})
 	return out.slice(0, MAX_TEAMS) if not out.is_empty() else default_teams()
 
@@ -431,6 +461,8 @@ static func save_hotkeys() -> void:
 
 
 static func apply(level: Node) -> void:
+	_dealt = 0
+	_dealt_counts = {}
 	# Issue #226: make sure the team set is loaded (fresh defaults give
 	# every team its own shape) even if the player never opened the team
 	# menu.
@@ -448,10 +480,16 @@ static func apply(level: Node) -> void:
 	# Issue #180: AI behavior parameters come from the team configuration:
 	# skill maps onto the difficulty bands, friendly-fire passes through.
 	var ai_difficulty := 0 if ai_skill <= 3 else (1 if ai_skill <= 7 else 2)
-	# Issue #226: the computer team wears its own body shape — enemy NPCs
-	# take teams[1]'s shape, NPCs staged for the player side (duel levels,
-	# team = "player") take teams[0]'s, mirroring how the colors are staged.
-	var enemy_shape := str(teams[1]["shape"]) if teams.size() > 1 else team_shape
+	# Issue #521: the configured teams BEYOND the first are dealt
+	# round-robin onto the kept enemy figures — every configured team gets
+	# its own color/shape/names, so TurnController._scan_teams discovers
+	# one distinct team per configured team (as long as enough enemy
+	# figures are staged — the "enemy count" field above). A team marked
+	# "player" (hot-seat) replaces its computer figures with human
+	# Player.gd figures staged on the enemy side (team_side = "enemy").
+	var extra := maxi(1, teams.size() - 1)
+	# Issue #226: NPCs staged for the player side (duel levels,
+	# team = "player") keep taking teams[0]'s looks.
 	for i in npcs.size():
 		var npc := level.get_node_or_null(NodePath(npcs[i]))
 		if npc == null:
@@ -459,19 +497,35 @@ static func apply(level: Node) -> void:
 		if i >= enemy_count:
 			npc.queue_free()
 			continue
-		if npc.get("difficulty") != null:
-			npc.set("difficulty", ai_difficulty)
-		if npc.get("ai_friendly_fire") != null:
-			npc.set("ai_friendly_fire", ai_friendly_fire)
-		if npc.has_method("set_team_shape"):
-			npc.call("set_team_shape",
-				team_shape if str(npc.get("team")) == "player" else enemy_shape)
+		if str(npc.get("team")) == "player":
+			if npc.get("difficulty") != null:
+				npc.set("difficulty", ai_difficulty)
+			if npc.get("ai_friendly_fire") != null:
+				npc.set("ai_friendly_fire", ai_friendly_fire)
+			if npc.has_method("set_team_shape"):
+				npc.call("set_team_shape", team_shape)
+			continue
+		_apply_extra_team(level, npc, 1 + (_dealt % extra))
+		_dealt += 1
 	# Issue #226 rework: shape EVERY enemy figure, not only Npc..Npc3 —
-	# Level4 stages Npc4..Npc9, which the name list above never reached
-	# (they stayed square while the team played circles).
+	# Level4 stages Npc4..Npc9, which the name list above never reached.
+	# Issue #521: those extras join the same round-robin deal.
 	for npc_node in level.get_tree().get_nodes_in_group("enemy_team"):
-		if npc_node != null and npc_node.has_method("set_team_shape"):
-			npc_node.call("set_team_shape", enemy_shape)
+		if npc_node == null or npc_node.is_queued_for_deletion():
+			continue
+		if npc_node.get_parent() != level or npcs.has(str(npc_node.name)):
+			continue
+		if not npc_node.has_method("_shoot"):
+			# Issue #521: a human figure staged in the deal above is
+			# already fully dressed — only staged COMPUTER figures
+			# (Level4's Npc4..Npc9, the duel levels' figures) join here.
+			continue
+		if str(npc_node.get("team")) == "player":
+			if npc_node.has_method("set_team_shape"):
+				npc_node.call("set_team_shape", team_shape)
+			continue
+		_apply_extra_team(level, npc_node, 1 + (_dealt % extra))
+		_dealt += 1
 	# Issue #169: apply the customised team color, shape and names.
 	var members := level.get_tree().get_nodes_in_group("player_team")
 	for member in members:
@@ -480,3 +534,82 @@ static func apply(level: Node) -> void:
 			member.set("display_name", member_names[mini(idx, member_names.size() - 1)])
 		if member.has_method("apply_team_setup"):
 			member.call("apply_team_setup")
+
+
+## Issue #521: dress (or replace) one enemy FIGURE for configured team
+## `team_index` — its color/shape/names/AI parameters — and, when that
+## team is played by a human, swap the Npc figure for an identical
+## Player.gd figure staged on the enemy side, so the human drives it
+## with the usual controls during the team's turns (hot-seat).
+static var _dealt := 0
+## Issue #521: figures already dealt to each configured team (index ->
+## count) — name assignment uses the DEAL ORDER, never the colors on the
+## field (a not-yet-recolorized figure still wears its default pink).
+static var _dealt_counts := {}
+
+
+static func _apply_extra_team(level: Node, npc: Node, team_index: int) -> void:
+	var team: Dictionary = teams[team_index]
+	var member_names: Array = team["names"]
+	var member_index := int(_dealt_counts.get(team_index, 0))
+	_dealt_counts[team_index] = member_index + 1
+	if team_controller(team_index) == "player" and npc.has_method("_shoot"):
+		# Human team: replace the computer figure with a Player figure at
+		# the same spot. The freed Npc leaves the tree at the end of the
+		# frame, so the swap cannot wedge anything mid-apply.
+		var at: Vector2 = npc.get("position") if npc is Node2D else Vector2.ZERO
+		_spawn_human_figure(level, at, team,
+			str(member_names[mini(member_index, member_names.size() - 1)]))
+		npc.queue_free()
+		return
+	if npc.get("difficulty") != null:
+		var skill := clampi(int(team["skill"]), 0, 10)
+		npc.set("difficulty", 0 if skill <= 3 else (1 if skill <= 7 else 2))
+	if npc.get("ai_friendly_fire") != null:
+		npc.set("ai_friendly_fire", clampi(int(team["friendly_fire"]), 0, 10))
+	if npc.get("team_color") != null:
+		npc.set("team_color", team["color"])
+	if npc.has_method("_apply_team_color"):
+		npc.call("_apply_team_color")
+	if npc.get("display_name") != null:
+		npc.set("display_name",
+			str(member_names[mini(member_index, member_names.size() - 1)]))
+	if npc.has_method("set_display_name"):
+		npc.call("set_display_name",
+			str(member_names[mini(member_index, member_names.size() - 1)]))
+	if npc.has_method("set_team_shape"):
+		npc.call("set_team_shape", str(team["shape"]))
+
+
+## Issue #521: build a human-controlled figure (Player.gd) fighting on
+## the ENEMY side — the body visual, collision capsule and Weapon node
+## the level scenes author by hand, created in code so apply() can
+## stage it where the computer figure stood.
+static func _spawn_human_figure(level: Node, at: Vector2,
+		team: Dictionary, member_name: String) -> void:
+	var figure := CharacterBody2D.new()
+	figure.set_script(load("res://Player.gd"))
+	figure.position = at
+	figure.set("team_color", team["color"])
+	figure.set("team_shape", str(team["shape"]))
+	figure.set("display_name", member_name)
+	figure.set("team_side", "enemy")
+	var capsule := CollisionShape2D.new()
+	var shape := CapsuleShape2D.new()
+	shape.radius = 24.0
+	shape.height = 57.6
+	capsule.shape = shape
+	capsule.name = "BodyShape"
+	figure.add_child(capsule)
+	var visual := ColorRect.new()
+	visual.name = "BodyVisual"
+	visual.offset_left = -32.0
+	visual.offset_top = -32.0
+	visual.offset_right = 32.0
+	visual.offset_bottom = 32.0
+	figure.add_child(visual)
+	var weapon := Node2D.new()
+	weapon.name = "Weapon"
+	weapon.set_script(load("res://Weapon.gd"))
+	figure.add_child(weapon)
+	level.add_child(figure)
