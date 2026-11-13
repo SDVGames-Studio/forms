@@ -43,6 +43,7 @@ func _ready() -> void:
 				WeaponFire.RAILGUN_MAX_DAMAGE],
 		"%d × %d shots" % [WeaponFire.PISTOL_DAMAGE,
 				int(WeaponFire.SHOTS_PER_TURN[7])],
+		"%d + knockback" % WeaponFire.BAT_DAMAGE,
 	]
 	for i in mini(slots.size(), names.size()):
 		var tip: String = slots[i].tooltip_text

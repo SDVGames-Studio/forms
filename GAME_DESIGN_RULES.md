@@ -16,7 +16,8 @@ successions are noted inline. Reference point for the whole game:
    resolving — the next turn begins only after every effect finished
    (#119, #244, #312).
 4. Weapons have per-turn shot counts: shotgun 2, spear 2, pistol 3
-   (#526), rocket/grenade/mine/railgun 1 (#101, #114, #359).
+   (#526), baseball bat 1 (#527), rocket/grenade/mine/railgun 1
+   (#101, #114, #359).
 5. **Tab skips the turn** (#102).
 6. The player may **not switch characters after moving or aiming** —
    control switching locks in for the rest of the member's turn (#104).
@@ -70,12 +71,12 @@ successions are noted inline. Reference point for the whole game:
 ## 4. Weapons
 
 1. Standard weapons: **Shotgun, Rocket, Grenade, Spear, Mine, Jackhammer,
-   Railgun, Pistol** (#49, #246, #307, #359, #526) — all rendered held
-   in-hand in front of the figure (#68, #282).
+   Railgun, Pistol, Baseball Bat** (#49, #246, #307, #359, #526, #527) —
+   all rendered held in-hand in front of the figure (#68, #282).
 2. Fixed damage (surfaced in the inventory hints, #271): shotgun 5×6,
-   pistol 10, rocket 35, grenade 40, spear 25, mine 40; the railgun's
-   damage scales with its charge: 60 on a tap, up to 150 at full charge
-   (#359).
+   pistol 10, baseball bat 30, rocket 35, grenade 40, spear 25, mine 40;
+   the railgun's damage scales with its charge: 60 on a tap, up to 150
+   at full charge (#359).
 3. **Friendly fire is on** — blasts damage every figure in range,
    including the shooter's team (#57).
 4. **One weapon per character per turn**: after the first shot the
@@ -114,6 +115,12 @@ successions are noted inline. Reference point for the whole game:
     shotgun — but each shot deals less damage than a shotgun volley;
     select on key **P**; 5 uses per team per round like the standard
     weapons.
+14. The **baseball bat** (#527) is a melee swing along the aim: the hit
+    not only damages the figure it reaches, it launches them — an
+    acceleration along the shot direction that keeps pushing after the
+    contact, so victims fly the way the bat was swung; one swing per
+    turn; select on key **B**; 5 uses per team per round like the
+    standard weapons.
 
 ## 5. Tools
 
@@ -124,7 +131,7 @@ successions are noted inline. Reference point for the whole game:
 3. Tools and weapons share **one unified inventory panel** (#179) laid
    out as a slot table with shape icons (#64); weapons on keys 1–5,
    tools on keys 5–8, mine on key 9 (#246, #179), railgun on key R
-   (#359), pistol on key P (#526).
+   (#359), pistol on key P (#526), baseball bat on key B (#527).
 4. **Switch** hands control to the next/previous team member; blocked
    after the member moved or aimed (#104, #170, #215, #306).
 5. **Teleport** moves the member to the next left-clicked point —

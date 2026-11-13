@@ -17,8 +17,9 @@ extends Node
 ## (railgun starts at ONE use, issue #359; everything else at five,
 ## spear infinite). Kept in sync by hand for issue #364's run: the
 ## railgun PR left this local copy at six weapons and check 1 red.
-## Issue #526 added the PISTOL as the eighth weapon (standard 5 uses).
-const WEAPONS := ["Shotgun", "Rocket", "Grenade", "Spear", "Mine", "Jackhammer", "Railgun", "Pistol"]
+## Issue #526 added the PISTOL as the eighth weapon (standard 5 uses);
+## issue #527 added the BASEBALL BAT as the ninth (standard 5 uses).
+const WEAPONS := ["Shotgun", "Rocket", "Grenade", "Spear", "Mine", "Jackhammer", "Railgun", "Pistol", "Baseball Bat"]
 const SPEAR := 3
 const RAILGUN := 6
 const RAILGUN_START := 1

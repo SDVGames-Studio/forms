@@ -44,7 +44,8 @@ const PICKUP_RADIUS := 0.75 * SIZE
 ## hardest, spear (3) absent forever. Tool: switch easiest, teleport
 ## hardest. Nothing can roll "no item".
 ## Issue #526: the pistol joins at the mine's tier (weight 3).
-const WEAPON_BUNDLE_WEIGHTS := {0: 6, 1: 4, 2: 4, 4: 3, 5: 2, 6: 1, 7: 3}
+## Issue #527: the baseball bat joins at the same tier (weight 3).
+const WEAPON_BUNDLE_WEIGHTS := {0: 6, 1: 4, 2: 4, 4: 3, 5: 2, 6: 1, 7: 3, 8: 3}
 const TOOL_BUNDLE_WEIGHTS := {0: 6, 1: 1, 2: 4, 3: 3}
 
 const WeaponPanel := preload("res://scripts/WeaponInventory.gd")

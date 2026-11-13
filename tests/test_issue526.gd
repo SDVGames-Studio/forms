@@ -122,8 +122,9 @@ func _ready() -> void:
 	# Held-visual wiring: weapon 7 maps to its own HELD_STYLES entry.
 	pistol.selected_weapon = WEAPON_SLOT_PISTOL
 	_check(pistol._held_style_index() == 8
-			and WeaponScript.HELD_STYLES.size() == 9,
-			"the pistol must have its own held-weapon style (index 8)")
+			and WeaponScript.HELD_STYLES.size() == 10,
+			"the pistol must have its own held-weapon style (index 8; the bat"
+			+ " took index 9 in #527, so HELD_STYLES now has 10 entries)")
 
 	if failures == 0:
 		print("PASS: issue #526 pistol")
