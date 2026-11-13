@@ -41,9 +41,9 @@ func get_reward() -> float:
 ## as the game itself allows):
 ##   "move":   0 hold | 1 walk right | 2 walk left | 3 jump | 4 backflip | 5 skip turn
 ##   "aim":    0 hold | 1 aim up | 2 aim down
-##   "attack": 0 hold fire | 1-7 select+fire weapon slot 1-7 — the InputMap
-##             has exactly weapon_1..weapon_7 and WeaponInventory.WEAPONS
-##             has 7 entries (#382's "keys 1-4"/size-5 grounding was stale)
+##   "attack": 0 hold fire | 1-8 select+fire weapon slot 1-8 — the InputMap
+##             has exactly weapon_1..weapon_8 and WeaponInventory.WEAPONS
+##             has 8 entries (the pistol joined as slot 8, #526)
 ##   "target": 0 keep/no target | 1-3 the k-th alive opposing figure within
 ##             ATTACK_REACH (GameConfig.MAX_TEAM_MEMBERS == 3 caps the enemy
 ##             team, so 1+3 = 4 is the whole legal option set)
@@ -57,7 +57,7 @@ func get_action_space() -> Dictionary:
 	return {
 		"move": {"size": 6, "action_type": "discrete"},
 		"aim": {"size": 3, "action_type": "discrete"},
-		"attack": {"size": 8, "action_type": "discrete"},
+		"attack": {"size": 9, "action_type": "discrete"},
 		"target": {"size": 4, "action_type": "discrete"},
 	}
 
@@ -71,7 +71,7 @@ const ATTACK_REACH := 620.0
 ## discrete head (true = legal), the same shape as get_action_space().
 ## "move" and "aim" have no legality constraints in the scaffold (every
 ## index is always legal). On "attack" (#410), index 0 (hold fire) is always
-## legal while indices 1-7 (select+fire a weapon slot) are legal only when
+## legal while indices 1-8 (select+fire a weapon slot) are legal only when
 ## at least one alive opposing figure is within ATTACK_REACH. On "target"
 ## (#422), index k is legal exactly while the k-th VISIBLE enemy (alive,
 ## opposing side, within ATTACK_REACH, stable group order) exists — one

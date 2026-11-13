@@ -13,10 +13,16 @@ extends "res://scripts/TrainingBot.gd"
 ## [aim(3), attack(8), move(6), target(4)]; tests/test_issue505.gd pins that
 ## layout against the ONNX reference. TrainingBot.gd keeps the ACTION_SPEC.md
 ## §1 wire order (move, aim, attack, target) for the Python training bridge
-## and masks, so this deploy-side override re-orders the SAME heads (same
-## names, sizes and action_type) into the network's output layout — the
-## multi-discrete structure used during training — so the ncnn path
-## interprets the network's output correctly (issue #506).
+## and masks, so this deploy-side override re-orders the training heads into
+## the network's output layout — the multi-discrete structure used during
+## training — so the ncnn path interprets the network's output correctly
+## (issue #506).
+## Issue #526 caveat: the pistol grew the TRAINING scaffold's attack head
+## to 9 (1 hold + 8 weapon slots), but the DEPLOYED net was trained on the
+## pre-pistol 7-weapon space and its layout is FROZEN at attack(8) — this
+## override deliberately keeps the deployed sizes (pinned by
+## tests/test_issue506.gd) until the policy is retrained; the deployed bot
+## simply never selects the pistol.
 
 func _init() -> void:
 	# Deploy defaults (issue #506): the res://models/ artifacts from
@@ -31,6 +37,10 @@ func get_action_space() -> Dictionary:
 	# insertion-ordered to the deployed policy's output layout —
 	# MultiDiscrete([3, 8, 6, 4]) = aim, attack, move, target — so
 	# ActionDecode slices the network's logits onto the right heads.
+	# Issue #526: the sizes stay at the DEPLOYED net's frozen layout
+	# (attack 8 = the pre-pistol 7 weapon slots) even though the training
+	# scaffold grew to attack 9 — the net itself must be retrained before
+	# its output layout can grow (see the class comment).
 	# get_action_mask() (inherited) iterates these keys by name, so the
 	# mask stays correct under the reordering.
 	return {

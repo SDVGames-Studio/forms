@@ -30,6 +30,10 @@ extends Node2D
 ##                    the line lingers 1 s. Charging slows the wielder
 ##                    and shakes the sight. ONE use per team per round
 ##                    (issue #359)
+##  8 Pistol (key P)  — three shots per turn: ONE bullet straight along
+##                    the aim (no spread — more accurate than the
+##                    shotgun's 5-pellet cone), less damage per shot
+##                    than the shotgun volley (issue #526)
 ## Visuals are plain rectangles built in code — no extra assets.
 
 const ProjectileScript := preload("res://scripts/Projectile.gd")
@@ -53,10 +57,10 @@ var _drill_player: AudioStreamPlayer
 const COOLDOWN := 0.3
 
 ## Issue #101: shots each weapon allows during ONE turn (index = weapon:
-## shotgun 2, rocket 1, grenade 1, spear 2, mine 1, jackhammer 1, railgun 1)
-## and the 3-second delay after every shot during which the character
-## cannot shoot.
-const SHOTS_PER_TURN: Array = [2, 1, 1, 2, 1, 1, 1]
+## shotgun 2, rocket 1, grenade 1, spear 2, mine 1, jackhammer 1, railgun 1,
+## pistol 3 — issue #526) and the 3-second delay after every shot during
+## which the character cannot shoot.
+const SHOTS_PER_TURN: Array = [2, 1, 1, 2, 1, 1, 1, 3]
 const SHOT_DELAY := 3.0
 
 const PELLET_SPEED := 900.0
@@ -154,13 +158,21 @@ const RAILGUN_CHARGE_SLOWDOWN := 0.5
 const RAILGUN_SIGHT_SHAKE := 0.035
 ## "Infinite" range — far beyond any level, but keeps the ray finite.
 const RAILGUN_RANGE := 20000.0
+## Issue #526: the pistol — three single-bullet shots per turn, each
+## dead straight along the aim (NO spread — more accurate than the
+## shotgun's 5-pellet ±8° cone) and cheaper in damage: 10 per bullet vs
+## the shotgun's 30-damage volley (5 × PELLET_DAMAGE). The bullet flies
+## at the pellet speed but outlives it: 900 px/s × 0.6 s = 540 px.
+const PISTOL_SPEED := 900.0
+const PISTOL_LIFETIME := 0.6
+const PISTOL_DAMAGE := 10
 
 var _facing := 1.0
 var _cooldown_left := 0.0
 ## Issue #101: shots already made this turn by this member, per weapon
 ## (issue #116: the quota is per weapon so switching after a shot keeps
 ## the newly selected weapon's own quota).
-var _shots_used := [0, 0, 0, 0, 0, 0, 0]
+var _shots_used := [0, 0, 0, 0, 0, 0, 0, 0]
 
 ## Issue #101: seconds left before the character may shoot again.
 var _shot_delay_left := 0.0
@@ -280,6 +292,8 @@ func _held_style_index() -> int:
 		return 6  # jackhammer
 	if selected_weapon == 6:
 		return 7  # railgun (#359)
+	if selected_weapon == 7:
+		return 8  # pistol (#526)
 	return selected_weapon
 
 ## Issue #68: size and color of the held weapon per selected weapon index.
@@ -294,6 +308,7 @@ const HELD_STYLES: Array = [
 	{"size": Vector2(14, 14), "color": Color(0.22, 0.24, 0.3, 1)},  # mine (#246)
 	{"size": Vector2(10, 18), "color": Color(0.85, 0.85, 0.95, 1)},  # jackhammer (#307)
 	{"size": Vector2(46, 4), "color": Color(0.55, 0.85, 1.0, 1)},   # railgun (#359)
+	{"size": Vector2(18, 6), "color": Color(0.5, 0.55, 0.6, 1)},   # pistol (#526)
 ]
 
 ## Currently selected weapon index (0..5), shared through the inventory HUD.
@@ -601,6 +616,7 @@ func _fire(power := 1.0) -> void:
 		4: _throw_mine(power)
 		5: _start_jackhammer(power)
 		6: _fire_railgun(power)
+		7: _fire_pistol()
 	# Issue #101+#65: only the LAST shot of the turn hands the turn over;
 	# with quota remaining the character keeps acting after the pause.
 	if _shots_used[clampi(selected_weapon, 0, _shots_used.size() - 1)] >= _shot_limit():
@@ -668,6 +684,14 @@ func _fire_shotgun() -> void:
 		var velocity := aim.rotated(spread) * PELLET_SPEED
 		_spawn_projectile(Projectile.Type.PELLET, velocity, PELLET_DAMAGE,
 			PELLET_LIFETIME, Vector2(10, 4), Color(0.95, 0.85, 0.3, 1))
+
+
+## Issue #526: the pistol shot — ONE bullet straight along the aim (the
+## whole point: no shotgun spread), less damage per shot than the volley.
+func _fire_pistol() -> void:
+	var velocity := _aim() * PISTOL_SPEED
+	_spawn_projectile(Projectile.Type.PELLET, velocity, PISTOL_DAMAGE,
+		PISTOL_LIFETIME, Vector2(10, 4), Color(0.5, 0.55, 0.6, 1))
 
 
 func _fire_rocket(power := 1.0) -> void:
