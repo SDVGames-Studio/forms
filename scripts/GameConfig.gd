@@ -200,6 +200,14 @@ static var teams: Array = []
 const MAX_TEAM_MEMBERS := 3
 const MAX_TEAMS := 8
 
+## Issue #524: the languages a team may speak — picked per team in the
+## team menu; that team's teammates' spoken lines (CharacterLines)
+## follow it.
+const LANGUAGES: Array[String] = ["English", "Spanish", "Russian", "French", "Arabic"]
+## Issue #524: the language every team speaks unless configured otherwise
+## (also the fallback for a stored value that is no longer supported).
+const DEFAULT_LANGUAGE := "English"
+
 
 ## Issue #226: the default set of teams = the teams that are in the
 ## levels, with NEUTRAL names (owner rework: no player/enemies concept
@@ -216,6 +224,7 @@ static func default_teams() -> Array:
 			"label": "Team 1", "color": team_color,
 			"shape": team_shape, "names": first_names,
 			"skill": ai_skill, "friendly_fire": ai_friendly_fire,
+			"language": DEFAULT_LANGUAGE,
 			"controller": "player",
 		},
 		{
@@ -223,6 +232,7 @@ static func default_teams() -> Array:
 			"shape": "circle",
 			"names": second_names,
 			"skill": ai_skill, "friendly_fire": ai_friendly_fire,
+			"language": DEFAULT_LANGUAGE,
 			"controller": "computer",
 		},
 	]
@@ -250,6 +260,23 @@ static func team_controller_for_color(color: Color) -> String:
 		if teams[i].get("color") is Color and teams[i]["color"] == color:
 			return team_controller(i)
 	return "computer"
+
+
+## Issue #524: the language of the configured team that wears this
+## COLOR — figures carry their team's color on the field, and that is
+## how their spoken lines (CharacterLines) find the team's language.
+## Unknown colors speak the default (English).
+static func team_language_for_color(color: Color) -> String:
+	for team in teams:
+		if team.get("color") is Color and team["color"] == color:
+			return _valid_language(str(team.get("language", DEFAULT_LANGUAGE)))
+	return DEFAULT_LANGUAGE
+
+
+## Issue #524: clamp a stored language to the supported set — a
+## missing or unsupported value falls back to the default.
+static func _valid_language(language: String) -> String:
+	return language if LANGUAGES.has(language) else DEFAULT_LANGUAGE
 
 
 ## Issue #208: load the saved set of teams (falling back to the default
@@ -329,6 +356,7 @@ static func _sanitize_teams(raw: Array) -> Array:
 			"shape": shape, "names": names,
 			"skill": clampi(int(team.get("skill", 5)), 0, 10),
 			"friendly_fire": clampi(int(team.get("friendly_fire", 0)), 0, 10),
+			"language": _valid_language(str(team.get("language", DEFAULT_LANGUAGE))),
 			"controller": controller,
 		})
 	return out.slice(0, MAX_TEAMS) if not out.is_empty() else default_teams()
