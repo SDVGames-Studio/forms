@@ -132,6 +132,20 @@ unique_name_in_owner = true
 custom_minimum_size = Vector2(120, 44)
 layout_mode = 2
 
+[node name="LanguageRow" type="HBoxContainer" parent="Layout/Columns/Column/Scroll/Rows"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="LanguageLabel" type="Label" parent="Layout/Columns/Column/Scroll/Rows/LanguageRow"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+text = "Team language:"
+
+[node name="LanguageSelect" type="OptionButton" parent="Layout/Columns/Column/Scroll/Rows/LanguageRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(200, 44)
+layout_mode = 2
+
 [node name="MembersPanel" type="PanelContainer" parent="Layout/Columns/Column/Scroll/Rows"]
 layout_mode = 2
 

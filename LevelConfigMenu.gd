@@ -137,6 +137,7 @@ func _on_add_team_pressed() -> void:
 		"skill": 5,
 		"friendly_fire": 0,
 		"controller": "computer",
+		"language": GameConfig.DEFAULT_LANGUAGE,
 	})
 	_rebuild_team_rows()
 

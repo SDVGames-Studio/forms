@@ -46,6 +46,9 @@ var in_game := false
 @onready var _editing_label: Label = %EditingLabel
 @onready var _shape_picker: HBoxContainer = %ShapePicker
 @onready var _color: ColorPickerButton = %TeamColorPicker
+## Issue #524: per-team language picker (English/Spanish/Russian/
+## French/Arabic) — the team's teammates' spoken lines follow it.
+@onready var _language: OptionButton = %LanguageSelect
 @onready var _members_row: HBoxContainer = %MembersRow
 @onready var _skill: HSlider = %SkillSlider
 @onready var _friendly_fire: HSlider = %FriendlyFireSlider
@@ -81,6 +84,10 @@ func _ready() -> void:
 	_add_team_button.pressed.connect(_on_add_team_pressed)
 	_team_select.item_selected.connect(_on_team_selected)
 	_color.color_changed.connect(_on_color_changed)
+	for language in GameConfig.LANGUAGES:
+		_language.add_item(language)
+	_language.item_selected.connect(func(index: int) -> void:
+		_team()["language"] = GameConfig.LANGUAGES[index])
 	_skill.value_changed.connect(
 		func(value: float) -> void: _team()["skill"] = int(value))
 	_friendly_fire.value_changed.connect(
@@ -127,6 +134,10 @@ func _sync_controls() -> void:
 	var team := _team()
 	_editing_label.text = "Editing: %s" % team["label"]
 	_color.color = team["color"]
+	# Issue #524: the team's language — sanitized against the supported
+	# set (an old/corrupt team.cfg value shows and saves as English).
+	_language.select(maxi(0, GameConfig.LANGUAGES.find(
+			GameConfig._valid_language(str(team.get("language", GameConfig.DEFAULT_LANGUAGE))))))
 	_skill.set_value_no_signal(clampi(int(team["skill"]), 0, 10))
 	_friendly_fire.set_value_no_signal(clampi(int(team["friendly_fire"]), 0, 10))
 	for i in _shape_buttons.size():
@@ -163,6 +174,7 @@ func _on_add_team_pressed() -> void:
 		"names": names,
 		"skill": 5,
 		"friendly_fire": 0,
+		"language": GameConfig.DEFAULT_LANGUAGE,
 	})
 	_selected = GameConfig.teams.size() - 1
 	_refresh_all()
