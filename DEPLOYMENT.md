@@ -342,6 +342,29 @@ The plugin must be **enabled** (Project → Project Settings → Plugins → *Go
 Native RL*): it auto-packs `*.ncnn.param` / `*.ncnn.bin` into every export —
 without it, exported builds crash with `cannot read model files`.
 
+### Ready-made inference scene (issue #506)
+
+All of the above is pre-wired in
+[`inference_scene.tscn`](inference_scene.tscn): an `NcnnSync` in
+NCNN_INFERENCE mode (never contacts a Python trainer — it has no training
+agents, so no socket is opened) with one `Level` environment and a `Bot`
+node running [`InferenceBot.gd`](InferenceBot.gd) (extends `TrainingBot`):
+`control_mode = NCNN_INFERENCE`, `model_param_path`/`model_bin_path` =
+`res://models/policy.ncnn.{param,bin}`, `obs_norm_stats_path` =
+`res://models/vecnormalize_stats.json` (the defaults `InferenceBot._init()`
+sets). Open the scene and press Play — with the training server stopped the
+bot still acts every decision step (`NcnnSync._inference_process` drives
+`infer_and_act()` every `action_repeat` physics frames).
+
+**Head order (issue #506).** `InferenceBot.get_action_space()` returns the
+same four heads as `TrainingBot` but insertion-ordered `aim, attack, move,
+target` = SB3 `MultiDiscrete([3, 8, 6, 4])` — the layout the exported
+network's 21 output logits actually use (`ActionDecode` slices the output by
+dict insertion order; `tests/test_issue505.gd` pins the layout against the
+ONNX reference). `TrainingBot.gd` keeps the ACTION_SPEC.md wire order for
+the training bridge; only the deploy-side twin re-orders. Headless DoD
+check: `godot --headless res://tests/test_issue506.tscn`.
+
 ## 5. Platform-specific build notes
 
 - **Linux** — works as committed; nothing extra to do.
@@ -364,3 +387,7 @@ without it, exported builds crash with `cannot read model files`.
 4. `python3 rl_vecnormalize_check.py` passes (obs-norm stats sidecar
    reproduces the training-time normalization, #503); headless Godot:
    `godot --headless res://tests/test_issue503.tscn` → exit 0.
+5. Native inference wired (#506): `godot --headless res://tests/test_issue506.tscn`
+   → exit 0 — the inference scene acts with no Python trainer, feeds
+   VecNormalize-normalized obs to the runner, and decodes non-constant
+   valid actions in the training-time head order.
