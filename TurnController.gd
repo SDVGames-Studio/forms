@@ -644,8 +644,12 @@ func _begin_turn(team: String) -> void:
 	# Issue #434: REWARD_SPEC §2.4/§2.5 — the agent controller that plays
 	# the acting member is notified its own turn started (survival credit
 	# + shaping rebase). Human teams have no AGENT controller, so the
-	# dispatch is a no-op for them.
-	BotController.notify_own_turn_started(active_member)
+	# dispatch is a no-op for them. The validity guard must live HERE: a
+	# freed instance fails the callee's typed `member: Node2D` argument
+	# check before its own is_instance_valid can run (verified headless,
+	# issue #506 run: "argument 1 (previously freed)").
+	if active_member != null and is_instance_valid(active_member):
+		BotController.notify_own_turn_started(active_member)
 
 
 func _end_turn(from_serial: int = -1) -> void:
@@ -657,8 +661,12 @@ func _end_turn(from_serial: int = -1) -> void:
 	# Issue #434: REWARD_SPEC §2.5/§2.7/§2.8 — the acting member's
 	# controller closes the ended turn (shaped positioning remainder,
 	# idle-command audit, danger-tile penalty) BEFORE _check_win() or the
-	# next _begin_turn() could free or replace the member.
-	BotController.notify_own_turn_ended(active_member)
+	# next _begin_turn() could free or replace the member. Same guard as
+	# above: a queue_free'd figure (death tween) must not cross the typed
+	# Node2D argument boundary — the error would abort _end_turn before
+	# _check_win()/_begin_turn() and freeze the turn loop.
+	if active_member != null and is_instance_valid(active_member):
+		BotController.notify_own_turn_ended(active_member)
 	_switch_wait = 0.0
 	_switching = false
 	# Issue #343: remember who acted this team's turn (a mid-turn Switch

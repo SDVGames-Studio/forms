@@ -6,7 +6,7 @@ It is the **single source of truth** for three consumers:
 
 - the Godot-side `set_action()` / `get_action_mask()` implementations,
 - the Python-side action-masking wrapper (`rl_action_mask.py`), and
-- any future ncnn inference wrapper (`ActionMask` on the deploy path).
+- the ncnn inference deploy path (`InferenceBot` + `ActionMask`, #507).
 
 **Update this file whenever an action space changes** — the
 integer-to-command mapping and per-index masking rules below are what the
@@ -142,6 +142,38 @@ head (`mask 1 0 0 0 0 0 0 0`), while the Python side emits
 `rl_action_mask.format_decision` lines (`attack=0 mask=10000000 | …`).
 In-trainer PPO distribution masking (MaskablePPO-style, so SB3's own
 sampler consumes the masks live) is the training-pipeline follow-up.
+
+### Deploy-path fallback (issue #507)
+
+The deployed ncnn bot (`InferenceBot.gd`, `inference_scene.tscn`, issue
+#506) applies the SAME per-index rules on its inference path — recomputed
+from live battlefield state at **every decision step**, per head, exactly
+as §1 defines them — before the per-head argmax/softmax accepts the
+network's choice. The deployed net re-orders the same four heads to the
+trained policy's SB3 `MultiDiscrete([3,8,6,4])` output layout
+(`aim, attack, move, target`), so the mask (keyed by head name) is applied
+to the flat 21-value output in that order.
+
+**Fallback behavior** (what #507 orders documented): if the network's
+chosen action for a head is illegal, it is **overridden by the
+highest-scoring legal action of that head** — `ActionMask.apply_to_logits`
+inspects the raw output scores, overwrites the illegal slots with
+`ILLEGAL_LOGIT`, and the subsequent argmax lands on the best legal slot.
+No heuristic "idle" default is ever needed: index 0 of every head is
+always legal (hold position / hold aim / hold fire / keep target) and
+`ActionMask.validate` enforces that at least one index per head stays
+legal, so a deterministic legal fallback always exists. An **invalid**
+mask (wrong head, wrong size, or an all-illegal head) fails loud instead:
+the decision step is skipped — no action is applied that step — because a
+silently mis-applied mask is worse than no action.
+
+**Logging**: the `inference_step` debug payload (consumed by the Policy
+Debugger overlay) ships the mask application alongside the **raw network
+output**: `raw_output` (the net's unmasked scores), `logits` (the
+effective post-mask scores that drove the choice, illegal slots at
+`ILLEGAL_LOGIT`), `action_mask`, and the decoded `action` — so an
+override like "net preferred attack slot 4.3 → held fire" is auditable
+per decision step.
 
 ## 2. `BotController.gd` — battlefield controller (`Level*.tscn`)
 

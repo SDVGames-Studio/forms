@@ -9,10 +9,12 @@ const RecurrentState = preload("res://addons/godot_native_rl/controllers/recurre
 
 # Emitted once per inference decision with an immutable debug payload consumed by
 # PolicyDebugOverlay. Keys: agent_name:String, obs:PackedFloat32Array (normalized vector fed to
-# the net; [] on the image path), obs_image:Dictionary ({"w","h","c"} or {}), logits:PackedFloat32Array
-# (EFFECTIVE post-mask network output, pre-decode — #410), action_space:Dictionary,
-# action:Dictionary (decoded), action_mask:Dictionary (per-head boolean mask; {} when the agent
-# supplies none — #410), deterministic:bool. Inert when no listener is connected.
+# the net; [] on the image path), obs_image:Dictionary ({"w","h","c"} or {}), raw_output:PackedFloat32Array
+# (the UNMASKED network output — #507: the mask application is logged alongside the raw scores),
+# logits:PackedFloat32Array (EFFECTIVE post-mask network output, pre-decode — #410),
+# action_space:Dictionary, action:Dictionary (decoded), action_mask:Dictionary (per-head boolean
+# mask; {} when the agent supplies none — #410), deterministic:bool. Inert when no listener is
+# connected.
 signal inference_step(debug: Dictionary)
 
 enum ControlModes { INHERIT_FROM_SYNC, HUMAN, TRAINING, NCNN_INFERENCE }

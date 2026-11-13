@@ -126,6 +126,10 @@ func accumulate(adapters: Array, ctx) -> void:
 # (-1e9), so deterministic argmax can never pick them and stochastic softmax samples them with ~0
 # probability. An invalid mask skips the step (fail loud, same contract as a decode failure):
 # a wrong mask silently applied is worse than no action this frame.
+# #507: the raw, pre-mask network output stays intact in `output` and ships in the debug payload
+# (`raw_output`) next to the post-mask `logits` and the `action_mask` — the mask application is
+# logged alongside the raw network output, so the override (illegal argmax -> highest-scoring
+# legal action of the head) is auditable per decision step.
 func choose_and_apply_action(agent, runner) -> void:
 	if runner == null or not runner.is_model_loaded():
 		return
@@ -174,23 +178,25 @@ func choose_and_apply_action(agent, runner) -> void:
 	if action.is_empty():
 		push_error("NcnnControllerCore.choose_and_apply_action: action decode failed (empty/mismatched output); skipping action.")
 		return
-	_emit_debug(agent, debug_obs, debug_img, logits, action, action_space, action_mask)
+	_emit_debug(agent, debug_obs, debug_img, output, logits, action, action_space, action_mask)
 	agent.set_action(action)
 
 # Emit the immutable debug payload through the agent (the node owns the signal; the core is
 # node-agnostic). Inert when nothing declares/listens for the signal — only the small Dictionary
-# is built, at decision cadence. See PolicyDebugOverlay for the consumer. The logged `logits`
-# are the EFFECTIVE (post-mask) logits that drove the choice, and `action_mask` carries the
-# per-head boolean mask itself (#410: "the mask is logged alongside the action") — so a
-# 0% probability on the overlay is explainable by the mask, and the raw logits stay
-# recoverable as "slot where mask is false was ILLEGAL_LOGIT".
-func _emit_debug(agent, obs_vec: PackedFloat32Array, obs_image: Dictionary, logits: PackedFloat32Array, action: Dictionary, action_space: Dictionary, action_mask: Dictionary = {}) -> void:
+# is built, at decision cadence. See PolicyDebugOverlay for the consumer. `raw_output` is the
+# network's UNMASKED output; `logits` are the EFFECTIVE (post-mask) logits that drove the choice
+# (#507: the mask application is logged alongside the raw network output), and `action_mask`
+# carries the per-head boolean mask itself (#410: "the mask is logged alongside the action") —
+# so a 0% probability on the overlay is explainable by the mask while the raw score it replaced
+# stays visible in raw_output.
+func _emit_debug(agent, obs_vec: PackedFloat32Array, obs_image: Dictionary, raw_output: PackedFloat32Array, logits: PackedFloat32Array, action: Dictionary, action_space: Dictionary, action_mask: Dictionary = {}) -> void:
 	if not agent.has_signal("inference_step"):
 		return
 	agent.emit_signal("inference_step", {
 		"agent_name": String(agent.name),
 		"obs": obs_vec,
 		"obs_image": obs_image,
+		"raw_output": raw_output,
 		"logits": logits,
 		"action_space": action_space,
 		"action": action,
