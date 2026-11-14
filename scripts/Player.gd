@@ -352,6 +352,10 @@ func take_damage(amount: int, attacker: Node2D = null) -> void:
 	# the figures never manage it.
 	BotController.credit_combat_reward(attacker, self, amount)
 	_hit_flash()
+	# Issue #559: the hit shows on the FACE too — a short SURPRISED
+	# flinch (purely visual; the animator restores the resting face).
+	if _animator != null:
+		_animator.flash_expression("SURPRISED", 0.8)
 	# Issue #252: debug damage number + action-log line.
 	DebugInfo.show_damage(self, amount)
 	DebugInfo.log("%s takes %d damage (%d/%d)" % [display_name, amount, health, MAX_HEALTH])
