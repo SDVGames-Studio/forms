@@ -38,6 +38,12 @@ extends Control
 ## 6) renames it, also for this game only. Start persists the set with
 ## the ORIGINAL names and colors — the overrides live and die with the
 ## level run.
+##
+## Issue #537 rework v4 (owner follow-up 2026-11-14): the color square
+## is a plain ColorRect filled with the team's ACTUAL color — the old
+## ColorPickerButton wore the menu theme's flat gray Button style and
+## hid the color — and it keeps one size, vertically centered, in
+## every row (a taller 2x8-tier row stretched it before).
 
 ## Palette for teams added here (mirrors TeamMenu's).
 const TEAM_PALETTE: Array[Color] = [
@@ -81,6 +87,13 @@ var _game_identity: Array = []
 ## renamed right now (-1 = none) — that row builds a LineEdit instead
 ## of the name Label.
 var _rename_team_index := -1
+
+## Issue #537 rework v4: the color square's picker — one shared popup,
+## created on first open (see _open_color_picker). The square itself
+## stays a plain ColorRect so the team color always reads.
+var _color_popup: Popup
+var _color_picker: ColorPicker
+var _color_team_index := -1
 
 @onready var _title: Label = %Title
 @onready var _turn_time: SpinBox = %TurnTimeSpinBox
@@ -196,17 +209,25 @@ func _rebuild_team_rows() -> void:
 						and event.double_click:
 					_begin_team_rename(i))
 			row.add_child(label)
-		# Issue #537 rework v3 (item 5): the color square between the
-		# team name and the grid — the picker recolors the team for this
-		# game only (Start persists the original).
+		# Issue #537 rework v4 (owner 2026-11-14): the color square must
+		# SHOW the team's actual color — a themed ColorPickerButton painted
+		# as a flat gray button (the menu theme styles every Button, and
+		# ColorPickerButton inherits those styles), hiding the color. The
+		# square is now a plain ColorRect FILLED with the team color —
+		# theme-proof — that opens a color picker popup on click. The
+		# recolor stays for this game only (Start persists the original).
 		var color: Color = team["color"] if team.get("color") is Color else Color(1, 1, 1)
-		var swatch := ColorPickerButton.new()
+		var swatch := ColorRect.new()
 		swatch.color = color
 		swatch.custom_minimum_size = Vector2(38, 38)
-		swatch.edit_alpha = false
-		swatch.color_changed.connect(func(picked: Color) -> void:
-			GameConfig.teams[i]["color"] = picked)
-		swatch.popup_closed.connect(func() -> void: _rebuild_team_rows())
+		# Same size and vertical CENTER in every row — a 2x8-tier row is
+		# taller, and a stretched swatch sat larger than in other rows.
+		swatch.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		swatch.mouse_filter = Control.MOUSE_FILTER_STOP
+		var swatch_team_index := i
+		swatch.gui_input.connect(func(event: InputEvent) -> void:
+			if _is_left_click(event):
+				_open_color_picker(swatch_team_index, swatch))
 		row.add_child(swatch)
 		row.add_child(_build_member_grid(team, i))
 		var controller := OptionButton.new()
@@ -245,6 +266,14 @@ func _build_member_grid(team: Dictionary, team_index: int) -> GridContainer:
 	var cell_size := (GRID_WIDTH - (columns - 1) * GRID_SEPARATION) / columns
 	var grid := GridContainer.new()
 	grid.columns = columns
+	# Issue #537 rework v4 (owner: "check the position of first Color
+	# square"): every tier's cell rounding made the grid a few pixels
+	# narrower/wider, and the EXPAND name label ate the difference — so
+	# the color square sat further right on taller-tier rows. The grid
+	# now owns ONE fixed slot of GRID_WIDTH in every row, so the square
+	# keeps the same x in all rows at any window width.
+	grid.custom_minimum_size = Vector2(GRID_WIDTH, 0)
+	grid.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	grid.add_theme_constant_override("h_separation", int(GRID_SEPARATION))
 	grid.add_theme_constant_override("v_separation", int(GRID_SEPARATION))
 	for slot in rows * columns:
@@ -308,6 +337,52 @@ static func _tier_for(member_count: int) -> Array:
 func _is_left_click(event: InputEvent) -> bool:
 	return event is InputEventMouseButton and event.pressed \
 			and (event as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT
+
+
+## Issue #537 rework v4: recolor a team in the LIVE set (this game
+## only — Start persists the original from _game_identity). The
+## picker's color_changed drives this; kept as a method so tests can
+## drive the exact same path.
+func _apply_team_color(team_index: int, picked: Color) -> void:
+	if team_index >= 0 and team_index < GameConfig.teams.size():
+		GameConfig.teams[team_index]["color"] = picked
+
+
+## Issue #537 rework v4: open the shared color-picker popup under the
+## clicked color square. Live color_changed updates the team's color
+## in the live set; closing rebuilds the rows so the member-grid
+## shapes wear the new color too. The popup is clamped on screen.
+func _open_color_picker(team_index: int, swatch: Control) -> void:
+	if team_index < 0 or team_index >= GameConfig.teams.size():
+		return
+	_color_team_index = team_index
+	if _color_popup == null:
+		_color_picker = ColorPicker.new()
+		_color_picker.edit_alpha = false
+		_color_picker.custom_minimum_size = Vector2(296, 396)
+		var margin := MarginContainer.new()
+		margin.add_theme_constant_override("margin_left", 12)
+		margin.add_theme_constant_override("margin_top", 12)
+		margin.add_theme_constant_override("margin_right", 12)
+		margin.add_theme_constant_override("margin_bottom", 12)
+		margin.add_child(_color_picker)
+		_color_popup = Popup.new()
+		_color_popup.add_child(margin)
+		add_child(_color_popup)
+		_color_picker.color_changed.connect(func(picked: Color) -> void:
+			_apply_team_color(_color_team_index, picked))
+		# Rebuilding on close recolors the member-grid shapes as well.
+		_color_popup.popup_hide.connect(func() -> void:
+			_color_team_index = -1
+			_rebuild_team_rows())
+	_color_picker.color = GameConfig.teams[team_index]["color"] \
+			if GameConfig.teams[team_index].get("color") is Color else Color(1, 1, 1)
+	var origin: Vector2 = swatch.global_position
+	var size := Vector2(320, 420)
+	var view := get_viewport().get_visible_rect().size
+	origin.x = minf(origin.x, maxf(view.x - size.x, 0.0))
+	origin.y = minf(origin.y + swatch.size.y + 8.0, maxf(view.y - size.y, 0.0))
+	_color_popup.popup(Rect2i(origin, size))
 
 
 ## Issue #537 rework v3 (item 6): a double-click on the team name turns
