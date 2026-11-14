@@ -278,13 +278,22 @@ func set_controlled(value: bool) -> void:
 			add_child(_camera)
 		if not _camera.is_in_group("player_camera"):
 			_camera.add_to_group("player_camera")
-	# Only the member hosting the camera node toggles it with control;
-	# the shared camera itself just follows the controlled member.
-	if _camera.get_parent() == self:
-		_camera.enabled = value
-	else:
-		# Non-hosting member takes control: make sure the shared camera is on.
-		_camera.enabled = _camera.enabled or value
+	# Issue #534 rework: the shared camera stays ENABLED through every
+	# control change. The old host toggle (`_camera.enabled = value`)
+	# disabled the camera exactly when its hosting figure dropped
+	# control — which happens at the start of every computer turn
+	# (TurnController._begin_turn clears controlled figures of other
+	# teams) — and a disabled Camera2D stops driving the viewport: the
+	# camera NODE kept following the acting NPC (issue #534's first fix)
+	# while the PICTURE froze on the human's figure for the whole
+	# computer turn (owner: "camera still blocks time to time, especially
+	# on the first turns" — the first turns are when the original host
+	# figure is still alive to drop control; deaths reparent the camera
+	# away, which masked the bug later in the match). The camera is
+	# per-VIEW, not per-figure (issue #63): always on — following the
+	# controlled member, the acting figure of a computer turn (#534), or
+	# nobody between turns (the free spectator camera, issue #126).
+	_camera.enabled = true
 
 
 ## Issue #6: apply damage and update the health bar.
