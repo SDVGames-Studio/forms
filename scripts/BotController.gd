@@ -580,6 +580,11 @@ func on_episode_outcome(winner_team: String) -> void:
 	else:
 		episode_lost.emit(delta)
 
+func game_over(reward_delta: float = 0.0) -> void:
+	self.reward += reward_delta
+	done = true
+	needs_reset = true
+
 ## Issue #437: whose side does the outcome belong to? The LINKED figure, else
 ## the spawn snapshot — both survive the figure's own death (a bot can die
 ## while its team wins). Deliberately NO alive-figure fallback: after the own
