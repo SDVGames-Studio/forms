@@ -135,6 +135,11 @@ func reanchor_gravity_frame() -> void:
 var _bar_fill: ColorRect
 var _camera: Camera2D
 
+## Issue #558: procedural idle/walk/jump animation driver — a purely
+## visual Node that bends the body visual from this figure's movement
+## state (see CharacterAnimator.gd). Never touches physics or input.
+var _animator: CharacterAnimator = null
+
 ## Issue #33: true for the member currently driven by player input.
 var controlled := false
 
@@ -163,6 +168,7 @@ func _ready() -> void:
 	platform_floor_layers = 1
 	_apply_team_color()
 	_apply_team_shape()
+	_attach_animator()
 	_build_health_bar()
 	# Issue #252: debug-mode visuals — HP number, damage popup, arrow.
 	_build_debug_visuals()
@@ -196,6 +202,7 @@ func apply_team_setup() -> void:
 		team_shape = GameConfig.team_shape
 	_apply_team_color()
 	_apply_team_shape()
+	_attach_animator()
 
 
 ## Issue #60: tint every ColorRect visual authored in the scene (captured
@@ -234,6 +241,29 @@ func _apply_team_shape() -> void:
 	# so the held weapon/tool drew BEHIND the figure — keep the Weapon the
 	# last child; it draws in front of every body visual.
 	_keep_weapon_in_front()
+
+
+## Issue #558: point the procedural animator at whichever child
+## currently depicts the body — the authored ColorRect (square teams) or
+## the ShapeVisual replacement (other silhouettes). Re-run after every
+## shape change (apply_team_setup); the animator itself is created once.
+func _attach_animator() -> void:
+	var visual: Control = null
+	for child in get_children():
+		var ctrl := child as Control
+		# FigurePose.is_body_child picks the body visuals (and collision
+		# shapes — excluded here by the Control cast, the animator only
+		# ever bends a visual).
+		if ctrl != null and ctrl.visible and FigurePose.is_body_child(ctrl):
+			visual = ctrl
+			break
+	if visual == null:
+		return
+	if _animator == null:
+		_animator = CharacterAnimator.new()
+		_animator.name = "CharacterAnimator"
+		add_child(_animator)
+	_animator.setup(self, visual)
 
 
 ## Issue #282: the held weapon/tool must render IN FRONT of the character
@@ -541,6 +571,9 @@ func _physics_process(delta: float) -> void:
 			# inverted form pushed the figure INTO the floor and jump never
 			# lifted the character.
 			velocity = grav * JUMP_VELOCITY
+			# Issue #558: squash-before-takeoff impulse — purely visual.
+			if _animator != null:
+				_animator.notify_jump()
 
 		var direction := Input.get_axis("move_left", "move_right")
 		# Issue #104: any move or aim action locks character switching for
