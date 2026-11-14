@@ -13,6 +13,12 @@ extends Control
 ## the level's enemy figures; GameConfig.apply swaps a player team's
 ## computer figures for human figures). Start persists the set to
 ## team.cfg together with the controller choices.
+##
+## Issue #537 rework: the "Your team size" and "Enemy count" rows are
+## GONE — since #521 the level follows the team set, so each team's
+## size is shown right in the team row as a little grid of member
+## squares (one square per member, wearing the team's shape and color)
+## next to the team name on the left.
 
 ## Palette for teams added here (mirrors TeamMenu's).
 const TEAM_PALETTE: Array[Color] = [
@@ -22,9 +28,12 @@ const TEAM_PALETTE: Array[Color] = [
 ]
 const SHAPES: Array[String] = ["square", "circle", "triangle", "star", "ellipse"]
 
+## Issue #537: recessed background of one member square (matches the
+## theme's darker panel tone so the shape pops on it).
+const MEMBER_CELL_BG := Color(0.122, 0.137, 0.169)
+const MEMBER_CELL_SIZE := 30.0
+
 @onready var _title: Label = %Title
-@onready var _team_size: SpinBox = %TeamSizeSpinBox
-@onready var _enemy_count: SpinBox = %EnemyCountSpinBox
 @onready var _turn_time: SpinBox = %TurnTimeSpinBox
 @onready var _night_regime: CheckButton = %NightRegimeCheck
 @onready var _spawn_regime: OptionButton = %SpawnRegimeOption
@@ -35,8 +44,6 @@ const SHAPES: Array[String] = ["square", "circle", "triangle", "star", "ellipse"
 
 
 func _ready() -> void:
-	_team_size.value_changed.connect(func(value: float) -> void: GameConfig.team_size = int(value))
-	_enemy_count.value_changed.connect(func(value: float) -> void: GameConfig.enemy_count = int(value))
 	_turn_time.value_changed.connect(func(value: float) -> void: GameConfig.turn_time = value)
 	# Issue #367: the night regime is picked here, before the game.
 	_night_regime.toggled.connect(func(on: bool) -> void: GameConfig.night_regime = on)
@@ -55,8 +62,6 @@ func _ready() -> void:
 	_rebuild_team_rows()
 	_start_button.pressed.connect(_on_start_pressed)
 	_back_button.pressed.connect(_on_back_pressed)
-	_team_size.set_value_no_signal(GameConfig.team_size)
-	_enemy_count.set_value_no_signal(GameConfig.enemy_count)
 	_turn_time.set_value_no_signal(GameConfig.turn_time)
 	# Setting the property directly does not emit `toggled`, so the
 	# stored choice is restored without being written back.
@@ -80,33 +85,34 @@ func _on_start_pressed() -> void:
 
 # -------------------------------------------------- teams (issue #521) --
 
-## One row per configured team: color swatch, team label, who plays it
-## (Computer/Player), and a Remove button. The minimum is two teams, the
-## maximum GameConfig.MAX_TEAMS.
+## One row per configured team (issue #537 layout): the team NAME on
+## the left, then the little member GRID — one square per member of the
+## team, each square wearing the team's shape and color — then who
+## plays it (Computer/Player) and a Remove button. The minimum is two
+## teams, the maximum GameConfig.MAX_TEAMS.
 func _rebuild_team_rows() -> void:
 	for child in _teams_list.get_children():
 		_teams_list.remove_child(child)
 		child.queue_free()
 	for i in GameConfig.teams.size():
 		var team: Dictionary = GameConfig.teams[i]
+		var color: Color = team["color"] if team.get("color") is Color else Color(1, 1, 1)
+		var shape := str(team["shape"])
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation", 10)
-		var swatch := ColorRect.new()
-		swatch.custom_minimum_size = Vector2(28, 28)
-		swatch.color = team["color"] if team.get("color") is Color else Color(1, 1, 1)
-		row.add_child(swatch)
 		var label := Label.new()
 		label.text = str(team["label"])
-		label.custom_minimum_size = Vector2(110, 0)
+		label.custom_minimum_size = Vector2(96, 0)
 		label.add_theme_font_size_override("font_size", 18)
 		label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		label.clip_text = true
 		row.add_child(label)
+		row.add_child(_build_member_grid(team, shape, color))
 		var controller := OptionButton.new()
 		controller.add_item("Computer")
 		controller.add_item("Player")
 		controller.select(1 if GameConfig.team_controller(i) == "player" else 0)
-		controller.custom_minimum_size = Vector2(150, 40)
+		controller.custom_minimum_size = Vector2(140, 40)
 		var team_index := i
 		controller.item_selected.connect(func(index: int) -> void:
 			var choice := "player" if index == 1 else "computer"
@@ -114,12 +120,42 @@ func _rebuild_team_rows() -> void:
 		row.add_child(controller)
 		var remove := Button.new()
 		remove.text = "Remove"
-		remove.custom_minimum_size = Vector2(110, 40)
+		remove.custom_minimum_size = Vector2(100, 40)
 		remove.disabled = GameConfig.teams.size() <= 2
 		remove.pressed.connect(func() -> void: _on_remove_team_pressed(i))
 		row.add_child(remove)
 		_teams_list.add_child(row)
 	_add_team_button.disabled = GameConfig.teams.size() >= GameConfig.MAX_TEAMS
+
+
+## Issue #537: the team's little grid table — one square per member
+## (names drives the count), each square a recessed cell with the team's
+## shape drawn in the team's color, so a triangle team shows triangles.
+## Fixed three columns (MAX_TEAM_MEMBERS) keep the squares of different
+## team sizes aligned into a grid; hovering a square names its member.
+func _build_member_grid(team: Dictionary, shape: String, color: Color) -> GridContainer:
+	var grid := GridContainer.new()
+	grid.columns = GameConfig.MAX_TEAM_MEMBERS
+	grid.add_theme_constant_override("h_separation", 4)
+	grid.add_theme_constant_override("v_separation", 4)
+	var members: Array = team["names"]
+	for member_index in members.size():
+		var cell := Control.new()
+		cell.custom_minimum_size = Vector2(MEMBER_CELL_SIZE, MEMBER_CELL_SIZE)
+		cell.tooltip_text = str(members[member_index])
+		var bg := ColorRect.new()
+		bg.color = MEMBER_CELL_BG
+		bg.set_anchors_preset(Control.PRESET_FULL_RECT)
+		cell.add_child(bg)
+		var visual: Control = load("res://scripts/ShapeVisual.gd").new()
+		visual.custom_minimum_size = Vector2(20, 20)
+		visual.set_anchors_and_offsets_preset(Control.PRESET_CENTER,
+				Control.PRESET_MODE_MINSIZE)
+		visual.set_shape(shape)
+		visual.set_shape_color(color)
+		cell.add_child(visual)
+		grid.add_child(cell)
+	return grid
 
 
 func _on_add_team_pressed() -> void:

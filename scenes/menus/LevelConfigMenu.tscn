@@ -70,44 +70,6 @@ layout_mode = 2
 layout_mode = 2
 theme_override_constants/separation = 14
 
-[node name="TeamSizeRow" type="HBoxContainer" parent="Layout/Columns/Nav/Form/FormBox"]
-layout_mode = 2
-theme_override_constants/separation = 16
-
-[node name="TeamSizeLabel" type="Label" parent="Layout/Columns/Nav/Form/FormBox/TeamSizeRow"]
-custom_minimum_size = Vector2(180, 0)
-layout_mode = 2
-theme_override_font_sizes/font_size = 20
-text = "Your team size"
-
-[node name="TeamSizeSpinBox" type="SpinBox" parent="Layout/Columns/Nav/Form/FormBox/TeamSizeRow"]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(140, 0)
-layout_mode = 2
-theme_override_font_sizes/font_size = 20
-min_value = 1.0
-max_value = 3.0
-value = 3.0
-
-[node name="EnemyCountRow" type="HBoxContainer" parent="Layout/Columns/Nav/Form/FormBox"]
-layout_mode = 2
-theme_override_constants/separation = 16
-
-[node name="EnemyCountLabel" type="Label" parent="Layout/Columns/Nav/Form/FormBox/EnemyCountRow"]
-custom_minimum_size = Vector2(180, 0)
-layout_mode = 2
-theme_override_font_sizes/font_size = 20
-text = "Enemy count"
-
-[node name="EnemyCountSpinBox" type="SpinBox" parent="Layout/Columns/Nav/Form/FormBox/EnemyCountRow"]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(140, 0)
-layout_mode = 2
-theme_override_font_sizes/font_size = 20
-min_value = 1.0
-max_value = 3.0
-value = 2.0
-
 [node name="TurnTimeRow" type="HBoxContainer" parent="Layout/Columns/Nav/Form/FormBox"]
 layout_mode = 2
 theme_override_constants/separation = 16
