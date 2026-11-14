@@ -60,8 +60,7 @@ const BAR_HEIGHT := Stats.BAR_HEIGHT
 
 ## Issue #226: figure body shape of this NPC's team (square, circle,
 ## triangle, star or ellipse — same vocabulary as Player.team_shape).
-## Square keeps the plain ColorRect body; other shapes draw a
-## ShapeVisual body (see _apply_team_shape).
+## Every team wears the modular character body (see _apply_team_shape).
 @export var team_shape := "square"
 
 ## Issue #121: which side this AI fights for. "enemy" (default) behaves
@@ -76,8 +75,8 @@ const BAR_HEIGHT := Stats.BAR_HEIGHT
 var health: int = MAX_HEALTH
 var _bar_fill: ColorRect
 var _visual: ColorRect
-## Issue #226: ShapeVisual body drawn instead of the ColorRect body when
-## the team shape is not a square.
+## Issue #226: a shape body drawn instead of the ColorRect body when
+## the team shape is not a square (the modular character since #560).
 var _shape_visual: Control
 
 ## Issue #558: procedural idle/walk/jump animation driver — a purely
@@ -255,7 +254,8 @@ func set_team_shape(value: String) -> void:
 
 
 ## Issue #558: point the procedural animator at whichever body visual is
-## active — the ShapeVisual silhouette or the ColorRect square (mirrors
+## active — the modular character silhouette or the ColorRect square
+## (mirrors
 ## Player.gd; created once, re-targeted after every shape change).
 func _attach_animator() -> void:
 	var visual: Control = null
@@ -304,7 +304,7 @@ func _apply_team_shape() -> void:
 
 
 ## Issue #282: the held weapon/tool must render IN FRONT of the character
-## body — every body visual (ColorRect, ShapeVisual) stays BEFORE the
+## body — every body visual (ColorRect, the modular character) stays BEFORE the
 ## Weapon node in the child order (tree order decides which CanvasItem
 ## draws on top among same-z siblings). Mirrors Player.gd.
 func _keep_weapon_in_front() -> void:

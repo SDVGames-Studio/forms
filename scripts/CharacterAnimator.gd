@@ -17,8 +17,7 @@ extends Node
 ## FigurePose assigns every physics frame (the animator runs after the
 ## physics step in the frame loop), so the same animation works under
 ## any gravity direction, radial arenas included, and for every
-## geometric body (ColorRect square, ShapeVisual silhouettes, the
-## modular character).
+## geometric body (ColorRect square, the modular character).
 ##
 ## Issue #559: the grounded face follows the visual's EXPRESSION (its
 ## set_expression API), a transient flash wins for a moment (the damage

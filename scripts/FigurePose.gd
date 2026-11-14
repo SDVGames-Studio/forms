@@ -9,7 +9,7 @@ extends RefCounted
 ## up_direction and the walk tangent), but the BODY VISUAL stayed vertical.
 ##
 ## This helper rotates only the children that REPRESENT the figure's body
-## — the body visual (authored ColorRect, the ShapeVisual replacement or
+## — the body visual (authored ColorRect, the modular character or
 ## the collision capsule). The name label, health bar, shield, the debug
 ## TEXT (HP number, damage popup), the weapon and the camera keep the
 ## world-aligned frame so text stays readable, the held weapon keeps
@@ -56,7 +56,7 @@ static func align_to_gravity(figure: Node2D, grav: Vector2) -> void:
 
 
 ## True for the children that depict/carry the figure's BODY geometry:
-## collision shapes, ShapeVisual bodies and plain body ColorRects. The
+## collision shapes, modular character bodies and plain body ColorRects. The
 ## HUD rects (Shield, HealthBarBackground) are excluded by name; Labels,
 ## the Weapon node, the Camera and the debug attachments are not
 ## ColorRects/shapes and fall out on their own. Public so the regression

@@ -30,12 +30,18 @@ func _ready() -> void:
 		await get_tree().physics_frame
 	npc.set_team_shape("circle")
 	var visual := npc.get_node_or_null("VisualShape")
+	# Issue #560: the VisualShape node is the modular character — read
+	# its properties through get() (body_shape/body_color; the legacy
+	# ShapeVisual's shape/shape_color names are gone).
+	var body_shape := str(visual.get("body_shape")) if visual != null else "-"
+	var color_ok: bool = visual != null \
+			and visual.get("body_color") == npc.team_color
 	print("ISSUE226 npc VisualShape=", visual != null,
-		" shape=", visual.shape if visual else "-",
-		" color_ok=", visual.shape_color == npc.team_color if visual else false,
+		" shape=", body_shape,
+		" color_ok=", color_ok,
 		" rect_hidden=", not npc._visual.visible)
-	ok = ok and visual != null and str(visual.shape) == "circle"
-	ok = ok and visual.shape_color == npc.team_color
+	ok = ok and visual != null and body_shape == "circle"
+	ok = ok and color_ok
 	ok = ok and not npc._visual.visible
 	npc.queue_free()
 	for i in 5:

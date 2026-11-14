@@ -77,9 +77,11 @@ func _ready() -> void:
 		for cell in grid.get_children():
 			var is_shape := false
 			for cell_child in cell.get_children():
+				# Issue #560: grid cells wear the modular character — its
+				# properties are body_shape/body_color (legacy shape names gone).
 				if cell_child.get_script() != null \
-						and str(cell_child.get("shape")) == str(GameConfig.teams[0]["shape"]) \
-						and cell_child.get("shape_color") == GameConfig.teams[0]["color"]:
+						and str(cell_child.get("body_shape")) == str(GameConfig.teams[0]["shape"]) \
+						and cell_child.get("body_color") == GameConfig.teams[0]["color"]:
 					is_shape = true
 					# Item 1: full-rect anchors with an inset keep the
 					# shape centered in the gray square.

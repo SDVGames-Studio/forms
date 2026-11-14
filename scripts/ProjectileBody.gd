@@ -34,8 +34,8 @@ enum Kind { ROCKET, GRENADE, ROCK, MINE }
 const BOUNCE := {Kind.ROCKET: 0.0, Kind.GRENADE: 0.45, Kind.ROCK: 0.45, Kind.MINE: 0.2}
 
 ## Issue #246: mine parameters. The proximity trigger is 1.2 of a
-## character's width (the figure visual is 64 px, like ShapeVisual and
-## ROCK_CHAR_CLEAR above) — doubled from the original 0.6 in issue #262;
+## character's width (the figure visual is 64 px, like the character
+## bodies and ROCK_CHAR_CLEAR above) — doubled from the original 0.6 in issue #262;
 ## once triggered the mine counts MINE_FUSE
 ## seconds before it explodes. A mine is only "a projectile" while it
 ## flies: once it slows below MINE_REST_SPEED it is settled — a dormant
@@ -54,8 +54,8 @@ const MINE_HP := 1
 
 ## Issue #227: rock crumble parameters. The created soil disk is a little
 ## larger than a grenade blast (GRENADE_BLAST = 100 in Weapon.gd); it
-## clears every character by 1.3 x the figure shape size (ShapeVisual =
-## 64 px) and never overlaps solid terrain — the fill hugs indestructible
+## clears every character by 1.3 x the figure shape size (the 64 px
+## figure visual) and never overlaps solid terrain — the fill hugs indestructible
 ## ground with a common border instead of covering it.
 const ROCK_GROUND_RADIUS := 110.0
 ## Issue #324: precision of the crumble disk. The disk is filled with

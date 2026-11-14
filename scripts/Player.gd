@@ -255,7 +255,7 @@ func _apply_team_shape() -> void:
 
 ## Issue #558: point the procedural animator at whichever child
 ## currently depicts the body — the authored ColorRect (square teams) or
-## the ShapeVisual replacement (other silhouettes). Re-run after every
+## the modular character (every silhouette). Re-run after every
 ## shape change (apply_team_setup); the animator itself is created once.
 func _attach_animator() -> void:
 	var visual: Control = null
@@ -277,7 +277,7 @@ func _attach_animator() -> void:
 
 
 ## Issue #282: the held weapon/tool must render IN FRONT of the character
-## body. All body visuals (scene ColorRect, ShapeVisual) stay BEFORE the
+## body. All body visuals (scene ColorRect, the modular character) stay BEFORE the
 ## Weapon node in the child order — tree order decides which CanvasItem
 ## draws on top among same-z siblings.
 func _keep_weapon_in_front() -> void:
