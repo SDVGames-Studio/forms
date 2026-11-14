@@ -72,18 +72,24 @@ var view_angle := 0.0
 ## (the legacy default).
 var _aim_grav := Vector2.DOWN
 
-## Issue #277 rework: the walking/aiming tangent of the CURRENT gravity
-## frame. It is oriented by CONTINUITY — the raw tangent (grav.y, -grav.x)
-## keeps whichever orientation is closest to the previous frame's — instead
-## of the old "flip while tangent.x < 0" rule. That rule pinned the basis
-## to the world x axis and flipped 180° exactly where the tangent is
-## vertical (a disc's 3/9 o'clock rims): there the gravity's tiny numeric
-## wobble reversed the basis between frames, so the weapon direction
-## flipped up/down at those POSITIONS and holding D made the figure
-## oscillate instead of walking on around the rim. Starting at RIGHT (the
-## legacy flat-frame axis), flat and center-line levels keep the exact old
-## behaviour — under the center line the raw tangent flips to (-1, 0) and
-## continuity keeps it (1, 0), so "right" stays screen-right upside-down.
+## Issue #277 rework / #518 rework: the walking/aiming tangent of the
+## CURRENT gravity frame — the CHARACTER'S LOCAL +X. The body children
+## are rotated to the gravity frame by FigurePose.align_to_gravity (angle
+## grav.angle() - PI/2) and the character camera (#289) renders exactly
+## that local frame as the screen frame — rotating Vector2.RIGHT by that
+## angle gives precisely the raw perpendicular (grav.y, -grav.x), so THIS
+## tangent is the character's own right hand. The owner directive for the
+## #518 rework: "each character has a local coordinate system, which used
+## by the character's cam, so use this local coordinate system to choose
+## where should a/d keys lead" — pressing D walks the character's local
+## right, which is ALWAYS screen-right in the character camera, flat
+## ground, a floor's underside or a disc rim alike. The previous rules
+## (continuity with the previous frame / the non-negative-world-x anchor)
+## pinned the basis to the WORLD x axis: under upward gravity the raw
+## tangent is (-1, 0), they flipped it to world +x, and with the camera
+## rotated 180° that world +x renders screen-LEFT — D walked left. The
+## tangent is now a pure function of gravity (no sign state, no hysteresis):
+## it rotates smoothly with the gravity around a disc rim by construction.
 var _aim_tangent := Vector2.RIGHT
 
 ## Issue #67/#277: direction the character looks/aims in — the gravity
@@ -110,31 +116,20 @@ func current_gravity() -> Vector2:
 func current_tangent() -> Vector2:
 	return _aim_tangent
 
-## Issue #518: re-anchor the gravity frame after a DISCRETE position
-## jump (teleport). The walking/aiming tangent is oriented by CONTINUITY
-## with the previous physics frame (see _aim_tangent) — right while a
-## figure walks or falls to a place, but a teleport arrives carrying
-## whatever orientation the OLD position had. On Level4 a figure
-## standing on the bottom-right corner arc (tangent rotated steeply
-## downward) that teleports to the underside of the level floor kept a
-## 180°-mirrored frame there: pressing D walked LEFT, A walked RIGHT.
-## This snaps the frame to the same anchor a freshly spawned figure
-## starts with: the tangent orientation whose x component is
-## NON-NEGATIVE, so "right" is screen-right wherever the teleport
-## lands — flat ground, the underside of a floor, a disc rim (the exact
-## vertical rim tangent is the degenerate tie and keeps its raw
-## orientation, like a fresh spawn's first tick would). Level-agnostic:
-## every level whose gravity comes from indestructible ground benefits,
-## not only Level4.
+## Issue #518 rework: refresh the gravity frame right after a DISCRETE
+## position jump (teleport) instead of waiting for the next physics tick,
+## so same-frame consumers (aim, sight) see the destination's frame. The
+## tangent is the character's LOCAL +x (see _aim_tangent): with the owner's
+## #518 directive the teleport destination inherits the same local-frame
+## rule every other position uses — under upward gravity the local +x is
+## world (-1, 0), which the rotated character camera renders screen-RIGHT
+## (the previous world-x "screen-right" anchor was exactly the bug).
 func reanchor_gravity_frame() -> void:
 	var grav := Vector2.DOWN
 	if LevelTerrain.has_sources(self):
 		grav = LevelTerrain.gravity_vector(self)
 	_aim_grav = grav
-	var tangent := Vector2(grav.y, -grav.x)
-	if tangent.x < 0.0:
-		tangent = -tangent
-	_aim_tangent = tangent
+	_aim_tangent = Vector2(grav.y, -grav.x)
 	up_direction = -grav
 	FigurePose.align_to_gravity(self, grav)
 var _bar_fill: ColorRect
@@ -489,11 +484,13 @@ func _physics_process(delta: float) -> void:
 	up_direction = -grav
 	# Issue #277: the aim/view lives in the CURRENT gravity frame.
 	_aim_grav = grav
-	# Issue #277 rework: re-orient the tangent by continuity (see _aim_tangent).
-	var tangent := Vector2(grav.y, -grav.x)
-	if tangent.dot(_aim_tangent) < 0.0:
-		tangent = -tangent
-	_aim_tangent = tangent
+	# Issue #518 rework: the tangent is the CHARACTER'S LOCAL +x (see
+	# _aim_tangent) — the raw perpendicular of gravity, no sign flip. The
+	# character camera renders the local frame as the screen frame, so D
+	# (positive input along the tangent) always walks screen-right there;
+	# the old continuity/world-x anchor rules flipped it under upward
+	# gravity and D walked screen-left (the #518 report).
+	_aim_tangent = Vector2(grav.y, -grav.x)
 	# Issue #270: rotate the BODY visual/collision so the figure's bottom
 	# faces the ground under any gravity direction (radial arenas included);
 	# HUD, weapon and camera keep the world frame (FigurePose for details).
@@ -538,9 +535,10 @@ func _physics_process(delta: float) -> void:
 			# world-x movement on the circular arena the figure launched off
 			# the curved slope and flew up and down ballistically; on flat
 			# levels the tangent IS the x axis, so nothing changes there. The
-			# tangent orientation follows the previous frame by continuity (see
-			# _aim_tangent), so "right" stays right under flipped gravity AND
-			# never flips 180° mid-walk around a disc rim.
+			# tangent is the character's LOCAL +x (#518 rework, see
+			# _aim_tangent), so D walks the character's own right — screen-right
+			# in the character camera wherever gravity points, and it rotates
+			# smoothly around a disc rim by construction (no sign hysteresis).
 			velocity = _aim_tangent * direction * speed \
 					+ grav * velocity.dot(grav)
 		else:

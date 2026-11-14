@@ -425,11 +425,11 @@ func _physics_process(delta: float) -> void:
 		if parent.has_method("current_tangent"):
 			tangent = parent.current_tangent()
 		elif parent.has_method("current_gravity"):
+			# Issue #518 rework: the same LOCAL-frame tangent the figures use
+			# (the character's own +x) — no world-x flip.
 			var grav: Vector2 = parent.current_gravity()
 			if grav.length_squared() > 0.5:
 				tangent = Vector2(grav.y, -grav.x)
-				if tangent.x < 0.0:
-					tangent = -tangent
 		var walk := parent.velocity.dot(tangent)
 		if walk != 0.0:
 			new_facing = signf(walk)

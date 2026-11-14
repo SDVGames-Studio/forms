@@ -57,12 +57,10 @@ func _figure(script: Script, grav: Vector2, view: float) -> CharacterBody2D:
 	var fig := script.new() as CharacterBody2D
 	fig.set("view_angle", view)
 	fig.set("_aim_grav", grav)
-	# Rework: the tangent is hysteresis state — seed it the way the first
-	# physics tick would have (legacy orientation against the +x axis).
-	var tangent := Vector2(grav.y, -grav.x)
-	if tangent.x < 0.0:
-		tangent = -tangent
-	fig.set("_aim_tangent", tangent)
+	# Rework (#518 rework): seed the LOCAL-frame tangent the physics tick
+	# now uses — the raw perpendicular (grav.y, -grav.x), the character's
+	# own +x (see Player._aim_tangent).
+	fig.set("_aim_tangent", Vector2(grav.y, -grav.x))
 	return fig
 
 
@@ -84,8 +82,12 @@ func _check_script(script: Script, label: String) -> bool:
 	ok = _expect(label + " flat tangent", flat.current_tangent(),
 			Vector2.RIGHT) and ok
 	# 2. Flipped frame (the old center-line underside) — legacy dir = -1.
+	# #518 rework: the tangent is now the character's LOCAL +x ((-1, 0)
+	# here), and `facing` is local to that frame — so aiming at the same
+	# WORLD direction (cos, +sin) needs facing -1 (the character's local
+	# LEFT under upward gravity is world +x).
 	var flipped := _figure(script, Vector2.UP, view)
-	ok = _expect(label + " flipped aim", flipped.aim_dir(1.0, -1.0),
+	ok = _expect(label + " flipped aim", flipped.aim_dir(-1.0, -1.0),
 			Vector2(cos(view), sin(view))) and ok
 	# 3. Radial frame — disc left rim, gravity pulls +x toward the core.
 	var radial := _figure(script, Vector2(1.0, 0.0), 0.0)
