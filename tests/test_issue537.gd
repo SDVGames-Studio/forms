@@ -177,6 +177,82 @@ func _ready() -> void:
 	else:
 		_check("added team comes from the game's set", false)
 
+	# ---- Issue #537 rework v3 (owner follow-up 2026-11-14) ----
+
+	# Item 1: the teams hint is gone.
+	_check("the teams hint is gone",
+		menu.get_node_or_null("%TeamsHint") == null)
+
+	# Item 5: a color square sits between the team name and the grid.
+	var first_row: HBoxContainer = null
+	for row in menu.get_node("%TeamsList").get_children():
+		if row is HBoxContainer:
+			first_row = row
+			break
+	_check("color square between name and grid",
+		first_row != null and first_row.get_child(0) is Label
+		and first_row.get_child(1) is ColorPickerButton
+		and first_row.get_child(2) is GridContainer)
+	if first_row != null and first_row.get_child(1) is ColorPickerButton:
+		var picked := Color(0.5, 0.25, 0.75)
+		(first_row.get_child(1) as ColorPickerButton).color_changed.emit(picked)
+		_check("the picker recolors the team",
+			GameConfig.teams[0]["color"] == picked)
+
+	# Item 6: a double-click renames the team through an inline LineEdit.
+	menu._begin_team_rename(0)
+	var edit: LineEdit = null
+	for row in menu.get_node("%TeamsList").get_children():
+		if row is HBoxContainer and row.get_child(0) is LineEdit:
+			edit = row.get_child(0)
+			break
+	_check("double-click swaps the name for an editor", edit != null)
+	if edit != null:
+		menu._commit_team_rename(0, " Renamed Team ")
+		_check("the rename commits (trimmed)",
+			str(GameConfig.teams[0]["label"]) == "Renamed Team")
+	menu._commit_team_rename(0, "")
+	_check("an empty rename keeps the name",
+		str(GameConfig.teams[0]["label"]) == "Renamed Team")
+
+	# Item 2: the level fields EXACTLY the menu's per-team counts.
+	var level := Node2D.new()
+	add_child(level)
+	for node_name: String in ["Player", "Teammate1", "Teammate2", "Npc", "Npc2", "Npc3"]:
+		var body := CharacterBody2D.new()
+		body.name = node_name
+		if node_name.begins_with("Npc"):
+			body.set_script(load("res://scripts/Npc.gd"))
+		level.add_child(body)
+	var foe_color := Color(0, 0, 1)
+	GameConfig.menu_team_sizes = true
+	GameConfig.teams = [
+		{"label": "Heroes", "color": Color(1, 0, 0), "shape": "square",
+			"names": ["H1", "H2", "H3", "H4", "H5"], "skill": 5,
+			"friendly_fire": 0, "controller": "player", "language": "English"},
+		{"label": "Foes", "color": foe_color, "shape": "circle",
+			"names": ["F1", "F2", "F3", "F4"], "skill": 5,
+			"friendly_fire": 0, "controller": "computer", "language": "English"},
+	]
+	GameConfig.apply(level)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	_check("player team fields the configured 5",
+		_live_count(get_tree(), "player_team", null) == 5)
+	_check("enemy team fields the configured 4",
+		_live_count(get_tree(), "enemy_team", foe_color) == 4)
+	# Shrinking the grid shrinks the level team; the player side stays.
+	(GameConfig.teams[1]["names"] as Array).resize(1)
+	GameConfig.apply(level)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	_check("shrinking the menu grid shrinks the level team",
+		_live_count(get_tree(), "enemy_team", foe_color) == 1)
+	_check("player team unchanged by the enemy shrink",
+		_live_count(get_tree(), "player_team", null) == 5)
+	level.queue_free()
+	GameConfig.menu_team_sizes = false
+
 	menu.queue_free()
 	GameConfig.teams = saved_teams
 
@@ -186,3 +262,14 @@ func _ready() -> void:
 	else:
 		print("FAIL: %d check(s) failed" % _fails.size())
 		get_tree().quit(1)
+
+
+## Live figures of `group` (optionally wearing `color`).
+func _live_count(tree: SceneTree, group: String, color: Variant) -> int:
+	var count := 0
+	for figure in tree.get_nodes_in_group(group):
+		if figure == null or figure.is_queued_for_deletion():
+			continue
+		if color == null or figure.get("team_color") == color:
+			count += 1
+	return count

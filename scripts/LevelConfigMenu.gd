@@ -29,6 +29,15 @@ extends Control
 ## team PULLS the next definition from the game's team set (the team
 ## menu is where new teams are made) — past the end of the set the
 ## deal wraps to the first team wearing a FRESH color.
+##
+## Issue #537 rework v3 (owner follow-up 2026-11-14): the hints are
+## GONE (item 1) and the level now fields EXACTLY the per-team counts
+## picked here (item 2, GameConfig.menu_team_sizes). Between the team
+## name and the grid sits a COLOR SQUARE (item 5) — the picker recolors
+## the team for THIS GAME ONLY; a DOUBLE-CLICK on the team name (item
+## 6) renames it, also for this game only. Start persists the set with
+## the ORIGINAL names and colors — the overrides live and die with the
+## level run.
 
 ## Palette for teams added here (mirrors TeamMenu's).
 const TEAM_PALETTE: Array[Color] = [
@@ -61,6 +70,18 @@ const PLUS_COLOR := Color(0.467, 0.49, 0.545)
 ## ones).
 var _game_team_set: Array = []
 
+## Issue #537 rework v3 (items 5+6): every team's ORIGINAL label and
+## color as the menu opened, by team index — Start persists these while
+## the level plays the per-game overrides. Kept index-aligned with the
+## live set (a removed team drops its entry, an added team has none —
+## additions persist, being new definitions).
+var _game_identity: Array = []
+
+## Issue #537 rework v3 (item 6): the team row whose name is being
+## renamed right now (-1 = none) — that row builds a LineEdit instead
+## of the name Label.
+var _rename_team_index := -1
+
 @onready var _title: Label = %Title
 @onready var _turn_time: SpinBox = %TurnTimeSpinBox
 @onready var _night_regime: CheckButton = %NightRegimeCheck
@@ -87,6 +108,12 @@ func _ready() -> void:
 	# edited directly in GameConfig.teams; Start persists it.
 	GameConfig.load_teams()
 	_game_team_set = GameConfig.teams.duplicate(true)
+	_game_identity = []
+	for team in GameConfig.teams:
+		_game_identity.append({
+			"label": str(team["label"]),
+			"color": team["color"] if team.get("color") is Color else Color(1, 1, 1),
+		})
 	_add_team_button.pressed.connect(_on_add_team_pressed)
 	_rebuild_team_rows()
 	_start_button.pressed.connect(_on_start_pressed)
@@ -103,9 +130,22 @@ func _ready() -> void:
 
 
 func _on_start_pressed() -> void:
+	# Issue #537 rework v3 (item 2): from here on the level takes every
+	# team's SIZE from this menu's grids.
+	GameConfig.menu_team_sizes = true
 	# Issue #521: persist the edited team set (with the controller
-	# choices) before the level applies it.
+	# choices) before the level applies it. Issue #537 rework v3
+	# (items 5+6): the per-game color/name overrides are NOT persisted —
+	# the save carries each team's ORIGINAL label and color while the
+	# live set (the one the level plays) keeps the overrides.
+	var live: Array = GameConfig.teams.duplicate(true)
+	GameConfig.teams = GameConfig.teams.duplicate(true)
+	for i in mini(GameConfig.teams.size(), _game_identity.size()):
+		GameConfig.teams[i]["label"] = _game_identity[i]["label"]
+		GameConfig.teams[i]["color"] = _game_identity[i]["color"]
 	GameConfig.save_teams()
+	GameConfig.teams = live
+	GameConfig._sync_from_teams()
 	# Issue #463: the picked level's endless background music starts with
 	# the level and survives the scene change (autoload).
 	MusicManager.play_for_level(GameConfig.level_path)
@@ -127,13 +167,47 @@ func _rebuild_team_rows() -> void:
 		var team: Dictionary = GameConfig.teams[i]
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation", 10)
-		var label := Label.new()
-		label.text = str(team["label"])
-		label.custom_minimum_size = Vector2(96, 0)
-		label.add_theme_font_size_override("font_size", 18)
-		label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		label.clip_text = true
-		row.add_child(label)
+		# Issue #537 rework v3 (item 6): a DOUBLE-CLICK on the team name
+		# swaps it for an inline LineEdit; Enter (or clicking away)
+		# commits the rename — for this game only (see _on_start_pressed).
+		if i == _rename_team_index:
+			var edit := LineEdit.new()
+			edit.text = str(team["label"])
+			edit.custom_minimum_size = Vector2(96, 0)
+			edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			edit.add_theme_font_size_override("font_size", 16)
+			edit.select_all()
+			edit.text_submitted.connect(func(_text: String) -> void:
+				_commit_team_rename(i, edit.text))
+			edit.focus_exited.connect(func() -> void:
+				_commit_team_rename(i, edit.text))
+			row.add_child(edit)
+			edit.call_deferred("grab_focus")
+		else:
+			var label := Label.new()
+			label.text = str(team["label"])
+			label.custom_minimum_size = Vector2(96, 0)
+			label.add_theme_font_size_override("font_size", 18)
+			label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			label.clip_text = true
+			label.mouse_filter = Control.MOUSE_FILTER_STOP
+			label.gui_input.connect(func(event: InputEvent) -> void:
+				if event is InputEventMouseButton and event.pressed \
+						and event.double_click:
+					_begin_team_rename(i))
+			row.add_child(label)
+		# Issue #537 rework v3 (item 5): the color square between the
+		# team name and the grid — the picker recolors the team for this
+		# game only (Start persists the original).
+		var color: Color = team["color"] if team.get("color") is Color else Color(1, 1, 1)
+		var swatch := ColorPickerButton.new()
+		swatch.color = color
+		swatch.custom_minimum_size = Vector2(38, 38)
+		swatch.edit_alpha = false
+		swatch.color_changed.connect(func(picked: Color) -> void:
+			GameConfig.teams[i]["color"] = picked)
+		swatch.popup_closed.connect(func() -> void: _rebuild_team_rows())
+		row.add_child(swatch)
 		row.add_child(_build_member_grid(team, i))
 		var controller := OptionButton.new()
 		controller.add_item("Computer")
@@ -184,7 +258,6 @@ func _build_member_grid(team: Dictionary, team_index: int) -> GridContainer:
 		bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		cell.add_child(bg)
 		if filled:
-			cell.tooltip_text = "Remove %s" % str(members[slot])
 			# Owner item 1: the shape sits CENTERED in the gray square —
 			# a full-rect anchor with a small inset does exactly that at
 			# every tier's cell size.
@@ -206,7 +279,6 @@ func _build_member_grid(team: Dictionary, team_index: int) -> GridContainer:
 		else:
 			# Owner item 3: every free spot shows a "+" and appends a
 			# teammate when clicked.
-			cell.tooltip_text = "Add a teammate"
 			var plus := Label.new()
 			plus.text = "+"
 			plus.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -236,6 +308,29 @@ static func _tier_for(member_count: int) -> Array:
 func _is_left_click(event: InputEvent) -> bool:
 	return event is InputEventMouseButton and event.pressed \
 			and (event as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT
+
+
+## Issue #537 rework v3 (item 6): a double-click on the team name turns
+## the label into an inline LineEdit (rebuilt with _rename_team_index).
+func _begin_team_rename(team_index: int) -> void:
+	if team_index < 0 or team_index >= GameConfig.teams.size():
+		return
+	_rename_team_index = team_index
+	_rebuild_team_rows()
+
+
+## Issue #537 rework v3 (item 6): Enter or clicking away commits the
+## rename (an empty name keeps the old one). The LineEdit's own signals
+## may fire twice (submit + focus loss) — committing an already-committed
+## index is a harmless rebuild.
+func _commit_team_rename(team_index: int, text: String) -> void:
+	if team_index < 0 or team_index >= GameConfig.teams.size():
+		return
+	_rename_team_index = -1
+	var cleaned := text.strip_edges()
+	if not cleaned.is_empty():
+		GameConfig.teams[team_index]["label"] = cleaned
+	_rebuild_team_rows()
 
 
 ## Owner item 2: a filled square's click drops that teammate; one is
@@ -313,6 +408,11 @@ func _on_remove_team_pressed(index: int) -> void:
 	if GameConfig.teams.size() <= 2:
 		return
 	GameConfig.teams.remove_at(index)
+	# Issue #537 rework v3: keep the original-identity list aligned with
+	# the live set — the removed team's original leaves with it.
+	if index >= 0 and index < _game_identity.size():
+		_game_identity.remove_at(index)
+	_rename_team_index = -1
 	_rebuild_team_rows()
 
 

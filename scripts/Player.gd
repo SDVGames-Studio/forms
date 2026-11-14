@@ -172,11 +172,28 @@ func _ready() -> void:
 ## Issue #169: apply color, shape and name customisation after the fact
 ## (called by GameConfig.apply once the level trimmed the team).
 func apply_team_setup() -> void:
-	display_name = GameConfig.member_names[mini(
-		get_tree().get_nodes_in_group("player_team").find(self),
-		GameConfig.member_names.size() - 1)]
-	team_color = GameConfig.team_color
-	team_shape = GameConfig.team_shape
+	# Issue #537 rework v3: figures trimmed moments ago sit in the group
+	# until the frame ends — name by the LIVE index. With menu-driven
+	# team sizes the FIRST team's names/color/shape come straight from
+	# the menu set (the grids go to 64 members and carry the per-game
+	# color/name overrides); the classic fields stay the source otherwise.
+	var live: Array = []
+	for figure in get_tree().get_nodes_in_group("player_team"):
+		if not figure.is_queued_for_deletion():
+			live.append(figure)
+	var names: Array = GameConfig.member_names
+	var menu_driven := GameConfig.menu_team_sizes \
+			and not GameConfig.teams.is_empty()
+	if menu_driven:
+		names = GameConfig.teams[0]["names"]
+	display_name = str(names[mini(maxi(live.find(self), 0),
+			names.size() - 1)])
+	if menu_driven:
+		team_color = GameConfig.teams[0]["color"]
+		team_shape = str(GameConfig.teams[0]["shape"])
+	else:
+		team_color = GameConfig.team_color
+		team_shape = GameConfig.team_shape
 	_apply_team_color()
 	_apply_team_shape()
 
