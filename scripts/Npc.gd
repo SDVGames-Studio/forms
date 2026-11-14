@@ -159,11 +159,14 @@ var _weapon_locked := false
 ## frame the aim/view lives in (see aim_dir). Mirrors Player.
 var _aim_grav := Vector2.DOWN
 
-## Issue #277 rework: the frame's walking/aiming tangent, oriented by
-## CONTINUITY with the previous frame instead of the world-x pin — the
-## old "flip while tangent.x < 0" rule flipped 180° at a disc's 3/9
-## o'clock rims (vertical tangent) and reversed the NPC's walk/aim there.
-## Mirrors Player._aim_tangent; starts at the legacy flat-frame axis.
+## Issue #277 rework / #518 rework: the frame's walking/aiming tangent —
+## the CHARACTER'S LOCAL +x, the raw perpendicular (grav.y, -grav.x) of
+## the current gravity, mirroring Player._aim_tangent. The character
+## camera (#289) renders the figure's local frame as the screen frame,
+## so this tangent is always the character's own right hand (the owner's
+## #518 directive); the previous continuity/world-x anchor rules flipped
+## it under upward gravity and D walked screen-left. Starts at the legacy
+## flat-frame axis.
 var _aim_tangent := Vector2.RIGHT
 
 ## Issue #66/#277: aim direction — the gravity frame's surface tangent
@@ -188,23 +191,18 @@ func current_gravity() -> Vector2:
 func current_tangent() -> Vector2:
 	return _aim_tangent
 
-## Issue #518: re-anchor the gravity frame after a DISCRETE position
-## jump — the NPC's teleport-away hop (issue #221) must not carry the
-## old spot's tangent orientation to the new one: on Level4 a hop from
-## the bottom-right corner arc to the floor underside kept a 180°
-## mirrored frame and the NPC walked the wrong way. Same anchor as a
-## fresh spawn (and Player.reanchor_gravity_frame): the tangent
-## orientation with a NON-NEGATIVE x component, so the walk/aim frame
-## is screen-right wherever the hop lands.
+## Issue #518 rework: refresh the gravity frame right after a DISCRETE
+## position jump — the NPC's teleport-away hop (issue #221) — instead of
+## waiting for the next physics tick. The tangent is the character's
+## LOCAL +x (see _aim_tangent): under upward gravity that is world (-1, 0),
+## which the rotated character camera renders screen-RIGHT — the previous
+## world-x "screen-right" anchor was exactly the #518 bug.
 func reanchor_gravity_frame() -> void:
 	var grav := Vector2.DOWN
 	if LevelTerrain.has_sources(self):
 		grav = LevelTerrain.gravity_vector(self)
 	_aim_grav = grav
-	var tangent := Vector2(grav.y, -grav.x)
-	if tangent.x < 0.0:
-		tangent = -tangent
-	_aim_tangent = tangent
+	_aim_tangent = Vector2(grav.y, -grav.x)
 	up_direction = -grav
 	FigurePose.align_to_gravity(self, grav)
 
@@ -490,11 +488,11 @@ func _physics_process(delta: float) -> void:
 	up_direction = -grav
 	# Issue #277: the aim/view lives in the CURRENT gravity frame.
 	_aim_grav = grav
-	# Issue #277 rework: re-orient the tangent by continuity (see _aim_tangent).
-	var tangent := Vector2(grav.y, -grav.x)
-	if tangent.dot(_aim_tangent) < 0.0:
-		tangent = -tangent
-	_aim_tangent = tangent
+	# Issue #518 rework: the tangent is the CHARACTER'S LOCAL +x (see
+	# _aim_tangent) — the raw perpendicular of gravity, no sign flip, so
+	# the walk/aim basis always matches the frame the character camera
+	# renders (D = the character's own right).
+	_aim_tangent = Vector2(grav.y, -grav.x)
 	# Issue #270: rotate the BODY visual/collision so the figure's bottom
 	# faces the ground under any gravity direction (radial arenas included);
 	# HUD, weapon and camera keep the world frame (FigurePose for details).
@@ -507,8 +505,9 @@ func _physics_process(delta: float) -> void:
 	# Issue #250 rework: NPC walking lives in the gravity frame's tangent,
 	# not on the world x axis — on the circular arena world-x movement
 	# launched figures off the curved surface into ballistic up-down
-	# flights. The tangent itself (_aim_tangent, updated above) is oriented
-	# by continuity, so the walk never flips 180° around a disc rim.
+	# flights. The tangent is the character's LOCAL +x (#518 rework, see
+	# _aim_tangent): a pure function of gravity, so it never flips 180°
+	# around a disc rim by construction.
 	if not is_on_floor():
 		velocity += grav * GRAVITY * delta
 
