@@ -45,6 +45,57 @@ enum EyeStyle { NONE, NORMAL, WIDE, SLEEPY, HAPPY }
 enum EyebrowStyle { NONE, FLAT, ANGRY, RAISED, WORRIED }
 enum MouthStyle { NONE, NEUTRAL, SMILE, FROWN, OPEN }
 
+## Issue #559: whole-face EXPRESSIONS — a named mood composed from an
+## eye, an eyebrow and a mouth configuration (the feature enums above).
+## Setting `expression` (or calling set_expression) applies the whole
+## composition at once; each feature stays independently settable
+## afterwards for fine-tuning. The weapon system is a SEPARATE sibling
+## node and never reads or moves the face — expressions and weapons do
+## not affect each other (see Weapon.HELD_ANCHOR for the face-clear
+## weapon anchor).
+enum ExpressionType { NEUTRAL, ANGRY, FRIENDLY, CONFIDENT, SCARED, SURPRISED }
+
+## The feature composition of every expression: which eye, eyebrow and
+## mouth style each mood is made of. Faces are BUILT from these three
+## parts, exactly as the issue asks — no per-expression sprites.
+const EXPRESSION_FEATURES := {
+	ExpressionType.NEUTRAL: {
+		"eye": EyeStyle.NORMAL, "brow": EyebrowStyle.FLAT,
+		"mouth": MouthStyle.NEUTRAL,
+	},
+	ExpressionType.ANGRY: {
+		"eye": EyeStyle.NORMAL, "brow": EyebrowStyle.ANGRY,
+		"mouth": MouthStyle.FROWN,
+	},
+	ExpressionType.FRIENDLY: {
+		"eye": EyeStyle.HAPPY, "brow": EyebrowStyle.RAISED,
+		"mouth": MouthStyle.SMILE,
+	},
+	ExpressionType.CONFIDENT: {
+		"eye": EyeStyle.SLEEPY, "brow": EyebrowStyle.FLAT,
+		"mouth": MouthStyle.SMILE,
+	},
+	ExpressionType.SCARED: {
+		"eye": EyeStyle.WIDE, "brow": EyebrowStyle.WORRIED,
+		"mouth": MouthStyle.OPEN,
+	},
+	ExpressionType.SURPRISED: {
+		"eye": EyeStyle.WIDE, "brow": EyebrowStyle.RAISED,
+		"mouth": MouthStyle.OPEN,
+	},
+}
+
+## Issue #559: the character's current mood. The property setter IS the
+## simple API — `visual.expression = ExpressionType.ANGRY` restyles the whole
+## face in one assignment (see also set_expression for name-based calls).
+@export var expression: ExpressionType = ExpressionType.NEUTRAL:
+	set(value):
+		var key := expression_key(value)
+		if key < 0:
+			return
+		expression = key
+		apply_expression_features(key)
+
 @export var eye_style: EyeStyle = EyeStyle.NORMAL:
 	set(value):
 		eye_style = value
@@ -118,6 +169,52 @@ func _draw() -> void:
 func set_team_look(color: Color, shape: String) -> void:
 	body_color = color
 	body_shape = shape
+
+
+## Issue #559 simple API: set the whole face in one call. Accepts an
+## Expression enum value or its name in any letter case ("angry",
+## "Scared", "SURPRISED"). An unknown name changes NOTHING — the face
+## keeps its current look — so gameplay code can feed names straight
+## from data tables without a crash risk.
+func set_expression(value: Variant) -> void:
+	var key := expression_key(value)
+	if key >= 0:
+		expression = key
+
+
+## Apply the feature composition of one expression (an Expression key).
+## Publishing point of the expression system: everything routes here.
+func apply_expression_features(key: int) -> void:
+	if not EXPRESSION_FEATURES.has(key):
+		return
+	var features: Dictionary = EXPRESSION_FEATURES[key]
+	eye_style = features["eye"]
+	eyebrow_style = features["brow"]
+	mouth_style = features["mouth"]
+	_expression_authored = true
+
+
+## Normalize anything a call site offers — an Expression enum value or
+## its name in any letter case — to the enum key. -1 = unknown value.
+static func expression_key(value: Variant) -> int:
+	if value is int:
+		return value if EXPRESSION_FEATURES.has(value) else -1
+	if value is float:
+		var as_int := int(value)
+		return as_int if EXPRESSION_FEATURES.has(as_int) else -1
+	var key: Variant = ExpressionType.get(String(value).to_upper())
+	return int(key) if key != null else -1
+
+
+## True once an expression has been applied — CharacterAnimator shows
+## the expression's face on the ground instead of the authored trio
+## (authored #557 faces keep their authored look until then).
+func has_expression() -> bool:
+	return _expression_authored
+
+
+## Set by apply_expression_features (see has_expression).
+var _expression_authored := false
 
 
 ## Same silhouette drawer as ShapeVisual (kept identical so every

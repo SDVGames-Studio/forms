@@ -20,6 +20,11 @@ extends Node
 ## geometric body (ColorRect square, ShapeVisual silhouettes, the
 ## modular character).
 ##
+## Issue #559: the grounded face follows the visual's EXPRESSION (its
+## set_expression API), a transient flash wins for a moment (the damage
+## flinch, flash_expression), and charging a weapon shows the angry
+## focus — airborne states still override mid-jump.
+##
 ## States (mapped 1:1 onto the movement state):
 ##   IDLE — breathing squash/stretch, blinking, small eye movements;
 ##   WALK — repeated bouncing with a step-rate tilt oscillation and a
@@ -133,6 +138,12 @@ var _blink_time_left := 0.0
 var _dart_wait := 0.0
 var _dart := Vector2.ZERO
 var _dart_target := Vector2.ZERO
+## Issue #559: transient gameplay expression state — flash_expression
+## shows one mood for a short moment (the damage flinch), and the
+## figure's Weapon is polled for the angry charge-focus face.
+var _flash_left := 0.0
+var _flash_key := -1
+var _weapon: Node = null
 
 
 ## Point the animator at the figure it animates and at the node that
@@ -156,6 +167,23 @@ func setup(figure: CharacterBody2D, visual: Control) -> void:
 		visual.set("pupil_shift", Vector2.ZERO)
 	_blink_wait = randf_range(blink_interval_min, blink_interval_max)
 	_dart_wait = randf_range(0.2, eye_dart_interval)
+	# Issue #559: the figure's Weapon, polled for the charge-focus face
+	# (re-resolved on the fly when the node appears later).
+	_weapon = figure.get_node_or_null("Weapon")
+
+
+## Issue #559 gameplay hook: show one expression for a short moment —
+## e.g. the SURPRISED flinch when a figure takes damage (Player/Npc
+## take_damage call this). Purely visual; airborne states still win
+## mid-jump, and the resting face returns once the flash expires.
+func flash_expression(expr: Variant, duration: float) -> void:
+	if not _has_face or not is_instance_valid(_visual):
+		return
+	var key := FaceVisual.expression_key(expr)
+	if key < 0:
+		return
+	_flash_key = key
+	_flash_left = maxf(duration, 0.0)
 
 
 ## Movement-state hook for the jump edge: gameplay jumps immediately
@@ -281,20 +309,22 @@ func _volume(sy: float) -> Vector2:
 
 
 func _tick_face(delta: float) -> void:
-	# Airborne expression while off the ground; authored face restored
+	# Issue #559 flash countdown — a transient gameplay expression
+	# (a hit SURPRISE) wins over every grounded face while it lasts.
+	if _flash_left > 0.0:
+		_flash_left = maxf(_flash_left - delta, 0.0)
+	# Airborne expression while off the ground; the resting face returns
 	# as soon as the figure is grounded again.
 	if state == State.RISE:
-		_visual.set("eye_style", FaceVisual.EyeStyle.WIDE)
-		_visual.set("eyebrow_style", FaceVisual.EyebrowStyle.RAISED)
-		_visual.set("mouth_style", FaceVisual.MouthStyle.OPEN)
+		_set_face("eye_style", FaceVisual.EyeStyle.WIDE)
+		_set_face("eyebrow_style", FaceVisual.EyebrowStyle.RAISED)
+		_set_face("mouth_style", FaceVisual.MouthStyle.OPEN)
 	elif state == State.FALL:
-		_visual.set("eye_style", FaceVisual.EyeStyle.WIDE)
-		_visual.set("eyebrow_style", FaceVisual.EyebrowStyle.WORRIED)
-		_visual.set("mouth_style", FaceVisual.MouthStyle.FROWN)
+		_set_face("eye_style", FaceVisual.EyeStyle.WIDE)
+		_set_face("eyebrow_style", FaceVisual.EyebrowStyle.WORRIED)
+		_set_face("mouth_style", FaceVisual.MouthStyle.FROWN)
 	else:
-		_visual.set("eye_style", _idle_eye)
-		_visual.set("eyebrow_style", _idle_brow)
-		_visual.set("mouth_style", _idle_mouth)
+		_show_grounded_face()
 
 	# Blinking (grounded states; wide airborne eyes never blink).
 	if state == State.RISE or state == State.FALL:
@@ -324,6 +354,49 @@ func _tick_face(delta: float) -> void:
 	_dart = _dart.lerp(_dart_target,
 			1.0 - exp(-delta / maxf(blend_time * 2.0, 0.001)))
 	_visual.set("pupil_shift", _dart)
+
+
+## Issue #559: the grounded face, by priority — a transient flash (the
+## damage flinch) first, the ANGRY focus while the figure charges a
+## shot, then the visual's own expression when one has been applied,
+## and the authored feature trio as the final fallback (pre-#559
+## visuals and authored faces keep their exact look).
+func _show_grounded_face() -> void:
+	var key := -1
+	if _flash_left > 0.0:
+		key = _flash_key
+	elif _charging_now():
+		key = FaceVisual.ExpressionType.ANGRY
+	elif _visual.get("has_expression") != null \
+			and _visual.has_expression():
+		key = int(_visual.get("expression"))
+	if key >= 0:
+		var features: Dictionary = FaceVisual.EXPRESSION_FEATURES[key]
+		_set_face("eye_style", features["eye"])
+		_set_face("eyebrow_style", features["brow"])
+		_set_face("mouth_style", features["mouth"])
+	else:
+		_set_face("eye_style", _idle_eye)
+		_set_face("eyebrow_style", _idle_brow)
+		_set_face("mouth_style", _idle_mouth)
+
+
+## True while the figure's Weapon is charging a shot — the grounded
+## face shows the angry attack focus then (issue #559, visual only).
+func _charging_now() -> bool:
+	if _weapon == null or not is_instance_valid(_weapon):
+		if _figure != null and is_instance_valid(_figure):
+			_weapon = _figure.get_node_or_null("Weapon")
+		if _weapon == null:
+			return false
+	return _weapon.has_method("is_charging") and _weapon.call("is_charging")
+
+
+## Write one facial feature only when it differs — the per-frame
+## grounded re-application never spams redundant redraws.
+func _set_face(prop: String, value: Variant) -> void:
+	if _visual.get(prop) != value:
+		_visual.set(prop, value)
 
 
 ## True while the figure was airborne moments ago (landing detection

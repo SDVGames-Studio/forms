@@ -358,6 +358,24 @@ const HELD_STYLES: Array = [
 ## Currently selected weapon index (0..5), shared through the inventory HUD.
 var selected_weapon := 0
 
+## Issue #559: how far from the body CENTRE the held weapon floats,
+## along the aim axis — the 64 px reference body's EDGE (32 px), outside
+## the modular character's face zone (eyes and mouth span the middle
+## ±16 px of the body), so the weapon anchor itself never sits over a
+## facial feature. The weapon stays what it always was: a handless
+## rectangle pinned to the AIM alone — positioned and rotated by the
+## aim, never by the body visual or the face (a separate sibling node,
+## see ModularCharacterVisual), so expressions and weapons never affect
+## each other.
+const HELD_ANCHOR := 32.0
+## Issue #559: the spearhead position the DAMAGE corridor uses stays at
+## its authored reach — weapon mechanics are frozen by this issue (no
+## damage, firing or balance changes). The drawn spear now floats
+## further out (HELD_ANCHOR above), so the visible tip may overhang the
+## damage tip by a few px — the hit NEVER reaches beyond what the player
+## sees (the conservative direction).
+const SPEAR_TIP_BASE := 26.0
+
 
 func _ready() -> void:
 	_held = ColorRect.new()
@@ -528,7 +546,7 @@ func _physics_process(delta: float) -> void:
 		if _drill_left > 0.0:
 			aim = _drill_dir
 		var style: Dictionary = HELD_STYLES[_held_style_index()]
-		_held.position = aim * 26.0 - style["size"] / 2.0
+		_held.position = aim * HELD_ANCHOR - style["size"] / 2.0
 		# Issue #133: the spear (and every held weapon) rotates to the aim
 		# axis instead of staying parallel to the ground.
 		_held.pivot_offset = style["size"] / 2.0
@@ -549,7 +567,8 @@ func _physics_process(delta: float) -> void:
 			# wielder and the current tip position is damaged as it is
 			# reached, instead of one instant press-time check.
 			if _thrust_t >= 0.0:
-				_spear_sweep_hit(26.0 + thrust + HELD_STYLES[3]["size"].x / 2.0)
+				_spear_sweep_hit(SPEAR_TIP_BASE + thrust
+						+ HELD_STYLES[3]["size"].x / 2.0)
 		_held.position += aim * thrust
 		# Issue #527: the bat swing — a quick forward swipe along the aim
 		# axis, fast out (0.1 s) and slower back (0.3 s), mirroring the
@@ -601,7 +620,7 @@ func _update_held() -> void:
 	var style: Dictionary = HELD_STYLES[_held_style]
 	var size: Vector2 = style["size"]
 	_held.size = size
-	_held.position = Vector2(_facing * 26.0, 0.0) - size / 2.0
+	_held.position = Vector2(_facing * HELD_ANCHOR, 0.0) - size / 2.0
 	_held.color = style["color"]
 
 
@@ -629,6 +648,13 @@ func is_busy() -> bool:
 ## velocity intact) through the frozen-input handover.
 func is_drilling() -> bool:
 	return _drill_left > 0.0
+
+
+## Issue #559: true while this weapon is charging a shot (hold F on a
+## charged weapon). Read-only query for the character animator's angry
+## charge-focus face — no mechanics, no behavior change.
+func is_charging() -> bool:
+	return _charging
 
 
 func _fire(power := 1.0) -> void:
