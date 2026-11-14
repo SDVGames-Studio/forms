@@ -228,6 +228,9 @@ const DEFAULT_LANGUAGE := "English"
 ## in the team configuration) and DISTINCT body shapes per team.
 ## Issue #572: a third default team joins the set — RED STARS speaking
 ## Russian (the TeamMenu palette's red, so a hand-made red matches).
+## Issue #571: a fourth default team joins the set — WHITE, almost
+## transparent TRIANGLES speaking French (the alpha carries the
+## transparency straight into the figure bodies).
 static func default_teams() -> Array:
 	var first_names: Array[String] = []
 	for member_name in member_names:
@@ -238,6 +241,9 @@ static func default_teams() -> Array:
 	var third_names: Array[String] = []
 	for i in range(1, DEFAULT_TEAM_MEMBERS + 1):
 		third_names.append("Member %d" % i)
+	var fourth_names: Array[String] = []
+	for i in range(1, DEFAULT_TEAM_MEMBERS + 1):
+		fourth_names.append("Member %d" % i)
 	return [
 		{
 			"label": "Team 1", "color": team_color,
@@ -260,6 +266,14 @@ static func default_teams() -> Array:
 			"names": third_names,
 			"skill": ai_skill, "friendly_fire": ai_friendly_fire,
 			"language": "Russian",
+			"controller": "computer",
+		},
+		{
+			"label": "Team 4", "color": Color(1, 1, 1, 0.25),
+			"shape": "triangle",
+			"names": fourth_names,
+			"skill": ai_skill, "friendly_fire": ai_friendly_fire,
+			"language": "French",
 			"controller": "computer",
 		},
 	]
