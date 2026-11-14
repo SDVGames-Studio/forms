@@ -34,11 +34,13 @@ extends Node2D
 ##                    the aim (no spread — more accurate than the
 ##                    shotgun's 5-pellet cone), less damage per shot
 ##                    than the shotgun volley (issue #526)
-##  9 Baseball bat (key B) — a melee swing along the aim: the hit not
-##                    only damages the figure it reaches, it LAUNCHES
-##                    them — an acceleration along the shot direction
-##                    that keeps pushing for a moment after the contact
-##                    (issue #527)
+##  9 Baseball bat (key B) — hold F to charge, release to swing
+##                    (issue #527 rework: the swing power is chosen
+##                    like a rocket launch) — a melee swing along the
+##                    aim: the hit not only damages the figure it
+##                    reaches, it LAUNCHES them — an acceleration along
+##                    the shot direction scaled by the charge that keeps
+##                    pushing for a moment after the contact (issue #527)
 ## Visuals are plain rectangles built in code — no extra assets.
 
 const ProjectileScript := preload("res://scripts/Projectile.gd")
@@ -208,6 +210,13 @@ var _thrust_t := -1.0
 ## Issue #257: bodies already damaged by the CURRENT thrust — each target
 ## on the spearhead's path takes the spear hit at most once per thrust.
 var _thrust_hit: Array = []
+## Issue #527 rework: the bat is a CHARGED weapon like the rocket
+## (issue #114) — hold F, release to swing. The charge picks the swing
+## power: the launch speed scales from 40% (a tap) to the full
+## BAT_KNOCKBACK_SPEED at the MAX_CHARGE_TIME hold, so the player
+## chooses how far the victim flies (damage stays fixed).
+var _bat_push_speed := BAT_KNOCKBACK_SPEED
+
 ## Issue #527: the baseball bat swing — a quick lunge of the held bat
 ## along the aim axis (visual only; the hit itself is instant, see
 ## _swing_bat), plus the knockback state: every hit figure is pushed
@@ -466,9 +475,10 @@ func _physics_process(delta: float) -> void:
 	# anything (the not-can_act branch below).
 	var frozen: bool = TurnController.is_input_frozen()
 	var rock_armed := _rock_armed()
+	# Issue #359: the railgun; issue #527 rework: the baseball bat.
 	var charged := rock_armed or selected_weapon == 1 or selected_weapon == 2 \
 			or selected_weapon == 4 or selected_weapon == 5 \
-			or selected_weapon == 6  # railgun (#359)
+			or selected_weapon == 6 or selected_weapon == 8
 	var can_act: bool = (rock_armed or can_shoot) and not frozen
 	if controlled and can_act and not _charging \
 			and Input.is_action_just_pressed("shoot"):
@@ -669,7 +679,7 @@ func _fire(power := 1.0) -> void:
 		5: _start_jackhammer(power)
 		6: _fire_railgun(power)
 		7: _fire_pistol()
-		8: _swing_bat()
+		8: _swing_bat(power)
 	# Issue #101+#65: only the LAST shot of the turn hands the turn over;
 	# with quota remaining the character keeps acting after the pause.
 	if _shots_used[clampi(selected_weapon, 0, _shots_used.size() - 1)] >= _shot_limit():
@@ -754,11 +764,15 @@ func _fire_pistol() -> void:
 ## along the shot direction: the knockback runs for BAT_KNOCKBACK_TIME
 ## seconds (see _tick_bat_push), gated as a turn effect so the post-shot
 ## handover waits while the hit figures fly (same pattern as the drill).
-func _swing_bat() -> void:
+## Issue #527 rework: the swing power (chosen by the hold-F charge, the
+## rocket's issue-#114 recipe) scales the launch — a tap pushes at 40%
+## of BAT_KNOCKBACK_SPEED, the full hold at 100%.
+func _swing_bat(power := 1.0) -> void:
 	_bat_swing_t = 0.0
 	_bat_push.clear()
 	_bat_push_dir = _aim().normalized()
 	_bat_push_left = 0.0
+	_bat_push_speed = BAT_KNOCKBACK_SPEED * lerpf(MIN_SHOT_POWER, 1.0, power)
 	var parent := get_parent() as Node2D
 	if parent == null:
 		return
@@ -796,7 +810,7 @@ func _swing_bat() -> void:
 ## tangential velocity write, so the body itself is moved every tick).
 func _tick_bat_push(delta: float) -> void:
 	_bat_push_left -= delta
-	var push := _bat_push_dir * BAT_KNOCKBACK_SPEED
+	var push := _bat_push_dir * _bat_push_speed
 	for body in _bat_push:
 		if body == null or not is_instance_valid(body):
 			continue

@@ -115,12 +115,15 @@ successions are noted inline. Reference point for the whole game:
     shotgun — but each shot deals less damage than a shotgun volley;
     select on key **P**; 5 uses per team per round like the standard
     weapons.
-14. The **baseball bat** (#527) is a melee swing along the aim: the hit
-    not only damages the figure it reaches, it launches them — an
-    acceleration along the shot direction that keeps pushing after the
-    contact, so victims fly the way the bat was swung; one swing per
-    turn; select on key **B**; 5 uses per team per round like the
-    standard weapons.
+14. The **baseball bat** (#527) is a charged melee swing along the
+    aim — hold **F** to charge, release to swing, and the charge picks
+    the swing power (a tap launches at 40% of the knockback speed, the
+    full hold at 100%): the hit not only damages the figure it
+    reaches, it launches them — an acceleration along the shot
+    direction that keeps pushing after the contact, so victims fly the
+    way the bat was swung (damage is fixed); one swing per turn;
+    select on key **B**; 5 uses per team per round like the standard
+    weapons.
 
 ## 5. Tools
 
