@@ -37,6 +37,15 @@ extends Camera2D
 ## (like zoom), and is switched with the bottom-left button (CameraSwitch)
 ## or the C key (issue #294: the "camera_switch" action, rebindable in the
 ## settings hotkeys screen).
+##
+## Issue #534: on a COMPUTER team's turn nobody is controlled (NPC figures
+## receive no input), and the view used to freeze wherever the human's
+## figure last stood — the whole computer turn happened off screen. Now the
+## camera follows the ACTING figure of a computer turn (see _focus_member)
+## exactly like the controlled member on a human turn: drag-panning still
+## moves the view away (issue #212) and the next controlled member
+## re-centers it. Between turns and after the game nobody owns the view —
+## it stays the free spectator camera of issue #126.
 
 const ZOOM_STEP := 1.25
 const MIN_ZOOM := 0.25
@@ -95,7 +104,7 @@ func _process(delta: float) -> void:
 	# the switch is off nothing is created (the overlay itself hides by
 	# the same flag, and stays hidden until it is flipped on again).
 	_ensure_gravity_field()
-	var member := _controlled_member()
+	var member := _focus_member()
 	# Issue #289: ease the view rotation to the current type's target — 0 in
 	# the static mode, the character's gravity frame in the character mode
 	# (no member to follow → back to world-aligned).
@@ -109,6 +118,24 @@ func _process(delta: float) -> void:
 		_pan_offset = Vector2.ZERO
 	if not _dragging:
 		global_position = member.global_position + _pan_offset
+
+
+## Issue #534: whoever owns the view this frame. A controlled member (a
+## HUMAN team's turn — the classic hero team or a hot-seat team, issue
+## #521) keeps the camera, but during a COMPUTER team's turn nobody is
+## controlled, so the camera follows that turn's ACTING figure from
+## TurnController instead — without this the view stayed pinned to the
+## human's last figure for the whole computer turn. Between turns (the
+## first-team roll, handover gaps) and after the game nobody owns the
+## view: null → the free spectator camera (issue #126).
+func _focus_member() -> Node2D:
+	if TurnController.active_team != "" \
+			and not TurnController.is_player_team(TurnController.active_team):
+		if TurnController.active_member != null \
+				and is_instance_valid(TurnController.active_member):
+			return TurnController.active_member
+		return null
+	return _controlled_member()
 
 
 func _is_spectator() -> bool:
