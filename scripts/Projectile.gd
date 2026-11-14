@@ -122,6 +122,16 @@ func _on_body_entered(body: Node2D) -> void:
 		# Issue #335: pass the shooter so the victim can tell friend from
 		# foe when it reacts with a comics line.
 		body.take_damage(damage, shooter)
+		# Issue #536: a small hit spark where the bullet LANDS. A pellet
+		# that stops on a figure — a teammate standing in the line of fire
+		# ~100 px ahead, or an enemy — died completely silently: the shot's
+		# sound and muzzle flash played, the bullet vanished with no impact,
+		# and it looked like the pistol/shotgun never fired. The spark marks
+		# the impact point the same way the muzzle flash marks the launch
+		# (the rocket/grenade already show themselves via _explode).
+		if get_parent() != null:
+			ShotLight.flash(get_parent(), global_position,
+					Color(1.0, 0.92, 0.55), 44.0, 2.2, 0.16)
 	queue_free()
 
 
