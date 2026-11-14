@@ -214,30 +214,40 @@ func _apply_team_color() -> void:
 			rect.color = team_color
 
 
-## Issue #169: non-square body shapes replace the square ColorRect visual
-## with a ShapeVisual drawing the picked polygon.
+## Issue #556: every team figure wears the modular expressive character
+## (the issue #557 component) as its body — square teams included: the
+## authored square ColorRect is hidden and replaced exactly like the
+## other silhouettes replaced it before (issue #169). The look (team
+## color + silhouette + the member's personality) is applied on every
+## call, so GameConfig re-runs restyle the SAME node instead of leaving
+## a stale first shape. Physics, collisions and gameplay untouched.
 func _apply_team_shape() -> void:
-	if team_shape == "square":
-		return
+	var member_index := get_index()
 	for child in get_children():
 		var rect := child as ColorRect
 		# Issue #178: the health bar background must stay a bar — converting
-		# it drew a second body shape over each figure.
-		if rect != null and rect.name != "HealthBarBackground":
+		# it drew a second body shape over each figure. The Shield bubble
+		# (issue #170) is a gameplay overlay, not a body — never hidden.
+		if rect != null and rect.name != "HealthBarBackground" \
+				and rect.name != "Shield":
 			rect.visible = false
 			var visual_name := String(rect.name) + "Shape"
-			if get_node_or_null(NodePath(visual_name)) != null:
-				continue
-			var visual: Control = load("res://scripts/ShapeVisual.gd").new()
-			visual.name = String(rect.name) + "Shape"
-			for anchor in ["anchor_left", "anchor_top", "anchor_right", "anchor_bottom"]:
-				visual.set(anchor, rect.get(anchor))
-			visual.position = rect.position
-			visual.size = rect.size
-			visual.set_shape(team_shape)
-			visual.set_shape_color(team_color)
-			add_child(visual)
-	# Issue #282: the ShapeVisual body was appended AFTER the Weapon node,
+			var visual: Control = get_node_or_null(NodePath(visual_name))
+			if visual == null:
+				visual = load("res://scripts/ModularCharacterVisual.gd").new()
+				visual.name = visual_name
+				for anchor in ["anchor_left", "anchor_top", "anchor_right", "anchor_bottom"]:
+					visual.set(anchor, rect.get(anchor))
+				visual.position = rect.position
+				visual.size = rect.size
+				add_child(visual)
+			if visual.has_method("apply_team_look"):
+				visual.call("apply_team_look", team_color, team_shape,
+					member_index)
+			else:
+				visual.set_shape(team_shape)
+				visual.set_shape_color(team_color)
+	# Issue #282: the body visual was appended AFTER the Weapon node,
 	# so the held weapon/tool drew BEHIND the figure — keep the Weapon the
 	# last child; it draws in front of every body visual.
 	_keep_weapon_in_front()

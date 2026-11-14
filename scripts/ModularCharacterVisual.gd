@@ -171,6 +171,40 @@ func set_team_look(color: Color, shape: String) -> void:
 	body_shape = shape
 
 
+## Issue #556: ShapeVisual API parity — Player/Npc embed this component
+## as the gameplay body visual exactly where the old ShapeVisual sat
+## (FigurePose.is_body_child, the damage hit flashes and the Npc body
+## tint all speak the set_shape/set_shape_color protocol).
+func set_shape(value: String) -> void:
+	body_shape = value
+
+
+func set_shape_color(value: Color) -> void:
+	body_color = value
+
+
+## Issue #556: per-figure resting PERSONALITIES — a stable member index
+## picks a mood so one team reads as several characters (the confident
+## one, the friendly one, the grumpy one...), not identical clones.
+const PERSONALITIES := [
+	ExpressionType.NEUTRAL, ExpressionType.FRIENDLY,
+	ExpressionType.CONFIDENT, ExpressionType.ANGRY,
+]
+
+
+static func personality_for_index(index: int) -> ExpressionType:
+	return PERSONALITIES[absi(index) % PERSONALITIES.size()]
+
+
+## Issue #556: full team look in one call — body color, silhouette and
+## the member's resting personality (a stable member index; the mood is
+## the RESTING face, gameplay still overrides it — charge focus, damage
+## flinch and the airborne face all win, see CharacterAnimator).
+func apply_team_look(color: Color, shape: String, member_index := 0) -> void:
+	set_team_look(color, shape)
+	set_expression(personality_for_index(member_index))
+
+
 ## Issue #559 simple API: set the whole face in one call. Accepts an
 ## Expression enum value or its name in any letter case ("angry",
 ## "Scared", "SURPRISED"). An unknown name changes NOTHING — the face

@@ -272,23 +272,31 @@ func _attach_animator() -> void:
 	_animator.setup(self, visual)
 
 
-## Issue #226: non-square team shapes replace the plain ColorRect body
-## with a ShapeVisual drawing the team polygon (mirrors Player.gd).
+## Issue #556: every NPC wears the modular expressive character (the
+## issue #557 component) as its body — square teams included (mirrors
+## Player.gd). The look (team color + silhouette + the member's
+## personality) is applied on EVERY call, so re-runs after a team-shape
+## change (set_team_shape / GameConfig) restyle the SAME node instead of
+## keeping the first shape.
 func _apply_team_shape() -> void:
-	if team_shape == "square" or _visual == null:
+	if _visual == null:
 		return
 	if _shape_visual == null:
 		_visual.visible = false
-		_shape_visual = load("res://scripts/ShapeVisual.gd").new()
+		_shape_visual = load("res://scripts/ModularCharacterVisual.gd").new()
 		_shape_visual.name = "VisualShape"
 		_shape_visual.offset_left = -32.0
 		_shape_visual.offset_top = -32.0
 		_shape_visual.offset_right = 32.0
 		_shape_visual.offset_bottom = 32.0
 		add_child(_shape_visual)
+	if _shape_visual.has_method("apply_team_look"):
+		_shape_visual.call("apply_team_look", team_color, team_shape,
+				get_index())
+	else:
 		_shape_visual.set_shape(team_shape)
 		_shape_visual.set_shape_color(team_color)
-	# Issue #282: the ShapeVisual body is appended after the Weapon node
+	# Issue #282: the body visual is appended after the Weapon node
 	# (Npc._ready adds the weapon last, but GameConfig.apply calls
 	# set_team_shape AFTER _ready) — that drew the held weapon/tool BEHIND
 	# the figure. Keep the Weapon the last child; it draws in front.
