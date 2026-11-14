@@ -63,6 +63,8 @@ var _key_buttons: Dictionary = {}
 
 
 func _ready() -> void:
+	# Main-menu spec §9 (M4 hardening): adapt to the viewport width.
+	MenuAdapt.apply(self)
 	# Issue #304 (rework, #348 template): when opened on top of the in-game
 	# settings overlay the game stays visible behind the shared shadow dim
 	# — the same dim the pause panel casts — instead of the standalone

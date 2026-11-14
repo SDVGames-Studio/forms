@@ -106,6 +106,8 @@ var _color_team_index := -1
 
 
 func _ready() -> void:
+	# Main-menu spec §9 (M4 hardening): adapt to the viewport width.
+	MenuAdapt.apply(self)
 	_turn_time.value_changed.connect(func(value: float) -> void: GameConfig.turn_time = value)
 	# Issue #367: the night regime is picked here, before the game.
 	_night_regime.toggled.connect(func(on: bool) -> void: GameConfig.night_regime = on)

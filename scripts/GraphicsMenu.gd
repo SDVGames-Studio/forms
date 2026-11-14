@@ -60,6 +60,8 @@ var _native_size := Vector2i.ZERO
 
 
 func _ready() -> void:
+	# Main-menu spec §9 (M4 hardening): adapt to the viewport width.
+	MenuAdapt.apply(self)
 	# Issue #304 (rework, #348 template): inside the pause overlay the
 	# game stays visible behind the shared shadow dim while the
 	# template's background artwork and footer are hidden.

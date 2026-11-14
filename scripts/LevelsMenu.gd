@@ -25,6 +25,8 @@ const LEVELS_DIR := "user://levels"
 
 
 func _ready() -> void:
+	# Main-menu spec §9 (M4 hardening): adapt to the viewport width.
+	MenuAdapt.apply(self)
 	_level1_button.pressed.connect(_on_level1_pressed)
 	_level2_button.pressed.connect(_on_level2_pressed)
 	_level3_button.pressed.connect(_on_level3_pressed)
