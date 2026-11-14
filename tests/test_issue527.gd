@@ -14,6 +14,10 @@ extends Node
 ##     BAT_KNOCKBACK_TIME), and while it runs the turn-effect gate keeps
 ##     the post-shot handover waiting — until the push ends and the gate
 ##     is released.
+##  4. POWER (#527 rework): the bat is a CHARGED weapon — the hold-F
+##     charge picks the swing power, scaling the launch speed from 40%
+##     (a tap) to the full BAT_KNOCKBACK_SPEED (the full hold), so a
+##     full-charge swing sends the victim far further.
 ##
 ## Run headless: godot --headless res://tests/test_issue527.tscn
 ## Exit code 0 = pass.
@@ -144,6 +148,45 @@ func _ready() -> void:
 	fresh.selected_weapon = WEAPON_SLOT_BAT
 	_check(fresh._held_style_index() == 9,
 			"the baseball bat must have its own held-weapon style (index 9)")
+
+	# 5) Power scaling (#527 rework): the hold-F charge picks the swing
+	# power — a tap launches at MIN_SHOT_POWER of the knockback speed,
+	# the full hold at 100%.
+	var tap_gun := _make_weapon()
+	var tap_victim := FakeFigure.new()
+	tap_victim.position = Vector2(60.0, 0.0)
+	add_child(tap_victim)
+	tap_victim.add_to_group("enemy_team")
+	tap_gun._swing_bat(0.0)
+	var full_gun := _make_weapon()
+	(full_gun.get_parent() as Node2D).position = Vector2(0.0, 500.0)
+	var full_victim := FakeFigure.new()
+	full_victim.position = Vector2(60.0, 500.0)
+	add_child(full_victim)
+	full_victim.add_to_group("enemy_team")
+	full_gun._swing_bat(1.0)
+	_check(absf(tap_gun._bat_push_speed
+				- WeaponScript.BAT_KNOCKBACK_SPEED * WeaponScript.MIN_SHOT_POWER) < 0.001,
+			"a tapped swing must launch at MIN_SHOT_POWER of the speed (got %f)"
+			% tap_gun._bat_push_speed)
+	_check(absf(full_gun._bat_push_speed
+				- WeaponScript.BAT_KNOCKBACK_SPEED) < 0.001,
+			"a full-charge swing must launch at the full speed (got %f)"
+			% full_gun._bat_push_speed)
+	_check(tap_victim.health == 100 - WeaponScript.BAT_DAMAGE
+			and full_victim.health == 100 - WeaponScript.BAT_DAMAGE,
+			"the charge must scale the launch, not the damage")
+	# Wait out both knockbacks, then compare how far each victim flew.
+	for i in 40:
+		await get_tree().physics_frame
+		if tap_gun._bat_push_left <= 0.0 and full_gun._bat_push_left <= 0.0:
+			break
+	await get_tree().physics_frame
+	_check(full_victim.position.x - 60.0 > (tap_victim.position.x - 60.0) * 2.0,
+			"a full-charge swing must send the victim far further (tap %f, full %f)"
+			% [tap_victim.position.x, full_victim.position.x])
+	tap_victim.queue_free()
+	full_victim.queue_free()
 
 	if failures == 0:
 		print("PASS: issue #527 baseball bat")
