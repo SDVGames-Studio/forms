@@ -4,8 +4,9 @@ extends Node
 ## the first shape, a DIFFERENT palette color per further shape. The
 ## overlays are parented to the shape nodes themselves (authored offsets
 ## and the FigurePose tilt #270 are inherited) and lifted above the
-## opaque body visual via z_index. With the debug mode off nothing is
-## built at all (issue #252 behaviour unchanged).
+## opaque body visual via z_index. Since issue #554 the visuals are
+## always built and only VISIBILITY follows the live switch (checked
+## below with a live flip — no level restart needed anymore).
 ##
 ## Run headless: godot --headless res://tests/test_issue402.tscn
 ## Exit code 0 = pass.
@@ -18,18 +19,36 @@ const EPS := 0.05
 func _ready() -> void:
 	var ok := true
 
-	# Debug OFF: attach must build NOTHING (no debug text, no hitboxes).
+	# Debug OFF (issue #554: the visuals are now ALWAYS built and only
+	# HIDDEN — the settings switch must apply to the RUNNING level, not
+	# from the next one): the debug text and the hitbox overlay exist but
+	# stay invisible.
 	GameConfig.debug_mode = false
 	var dark := CharacterBody2D.new()
 	add_child(dark)
 	dark.add_child(_capsule_holder("DarkShape"))
 	Info.attach(dark)
-	if dark.get_node_or_null(NodePath("DebugHp")) != null:
-		print("FAIL debug-off still built the debug text")
+	var dark_hp := dark.get_node_or_null(NodePath("DebugHp")) as CanvasItem
+	var dark_box := dark.get_node_or_null(NodePath("DarkShape/DebugHitbox0")) as CanvasItem
+	if dark_hp == null or dark_box == null:
+		print("FAIL debug-off did not build the debug visuals")
 		ok = false
-	var dark_overlays := _overlay_count(dark)
-	if dark_overlays != 0:
-		print("FAIL debug-off built hitbox overlays: ", dark_overlays)
+	elif dark_hp.visible or dark_box.visible:
+		print("FAIL debug-off debug visuals visible")
+		ok = false
+	# Issue #554 regression: flipping the switch + sync retargets the SAME
+	# nodes live — no figure rebuild, no level restart.
+	GameConfig.debug_mode = true
+	Info.sync_debug_visuals(get_tree())
+	if not (dark_hp != null and dark_hp.visible) \
+			or not (dark_box != null and dark_box.visible):
+		print("FAIL live enable did not show the debug visuals")
+		ok = false
+	GameConfig.debug_mode = false
+	Info.sync_debug_visuals(get_tree())
+	if (dark_hp != null and dark_hp.visible) \
+			or (dark_box != null and dark_box.visible):
+		print("FAIL live disable did not hide the debug visuals")
 		ok = false
 
 	# Debug ON with TWO different hitboxes: one overlay per shape node,

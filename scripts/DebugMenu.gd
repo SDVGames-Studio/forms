@@ -61,11 +61,14 @@ func _ready() -> void:
 	_debug_check.grab_focus()
 
 
-## Issue #252: flip and persist the debug mode. Levels read the flag when
-## they build their figures, so the change applies from the next level on.
+## Issue #252: flip and persist the debug mode. Issue #554: also push the
+## flag into the RUNNING level's visuals right away — the per-figure
+## debug texts/hitbox overlays and the OSD flip visibility immediately,
+## instead of waiting for the next level restart.
 func _on_debug_toggled(pressed: bool) -> void:
 	GameConfig.debug_mode = pressed
 	GameConfig.save_settings()
+	DebugInfo.sync_debug_visuals(get_tree())
 
 
 ## Issue #290: flip and persist the gravity vector field switch; the
