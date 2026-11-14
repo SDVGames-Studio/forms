@@ -87,11 +87,17 @@ var _teams: Array[String] = []
 var _color_to_id := {}
 var _turn_order: Array[String] = []
 var _turn_index := 0
-## Issue #521: team ids played by a HUMAN (hot-seat, one device): always
-## the classic player team, plus every enemy-color team whose configured
-## controller is "player" (GameConfig.team_controller_for_color). Input
-## flows to a team's figures while its id sits here (is_player_team).
+## Issue #521: enemy-color team ids played by a HUMAN (hot-seat, one
+## device) — figures were staged in GameConfig.apply and the team
+## receives input on its turns. The HERO team is governed by
+## _hero_is_human instead (classic default: human).
 var _human_teams := {}
+## Issue #521 rework: is the classic hero team played by a human? The
+## classic default is TRUE (tests and any state a scan has not touched
+## yet keep the legacy behavior); _scan_teams aligns it with the
+## CONFIGURED controller — with every team played by the computer the
+## whole match is AI vs AI and nobody receives input.
+var _hero_is_human := true
 ## Issue #343: per-team member rotation — the member that acted a team's
 ## last turn is remembered (team id -> figure) so the team's NEXT turn
 ## begins with the NEXT member, never the same figure twice in a row.
@@ -223,8 +229,11 @@ func _unhandled_input(event: InputEvent) -> void:
 	# the enemy turn, the roll or after game over.
 	if event is InputEventKey and event.pressed and not event.echo \
 			and event.keycode == KEY_TAB:
+		# Issue #521 rework: Tab skips a turn only of a HUMAN-played team —
+		# a computer-played hero team's turn must run on its own (the AI
+		# ends it), so the gate is is_player_team, not the team id.
 		if _level != null and not game_over and not _switching \
-				and active_team == TEAM_PLAYER:
+				and is_player_team(active_team):
 			get_viewport().set_input_as_handled()
 			# Issue #252: debug action log — the player gave the turn up.
 			var skipper: Variant = "Player"
@@ -254,8 +263,10 @@ func skip_turn(requester: Node) -> void:
 ## Issue #104: the active player member reports a move or aim action —
 ## from that moment character switching is locked until the turn ends.
 func notify_member_action() -> void:
+	# Issue #521 rework: the lock applies to the active HUMAN team's turn
+	# (hero or hot-seat), never to a computer-played hero team.
 	if _level != null and not game_over and not _switching \
-			and active_team == TEAM_PLAYER:
+			and is_player_team(active_team):
 		_switch_locked = true
 		# Issue #306: a move/aim action commits a pending Switch-tool
 		# character change — its use is spent now.
@@ -265,8 +276,10 @@ func notify_member_action() -> void:
 
 
 ## Issue #104: true while N/P character switching is locked for the turn.
+## Issue #521 rework: for the active HUMAN team (hero or hot-seat), never
+## for a computer-played hero team.
 func is_switch_locked() -> bool:
-	return _switch_locked and active_team == TEAM_PLAYER
+	return _switch_locked and is_player_team(active_team)
 
 
 ## Weapon._fire reports every shot (player and NPC alike) — the shot ends
@@ -392,8 +405,11 @@ func team_id_of(member: Node) -> String:
 ## as player-controlled too: every input gate (Player movement, Weapon
 ## firing, Tab skip, tool unlocks) asks this one function, so a human
 ## team's turn plays exactly like the classic player team's.
+## Issue #521 rework: the HERO team id counts as human-played while
+## _hero_is_human says so (see there) — with every team played by the
+## computer the whole match is AI vs AI and nobody receives input.
 func is_player_team(id: String) -> bool:
-	return id == TEAM_PLAYER or _human_teams.has(id)
+	return (id == TEAM_PLAYER and _hero_is_human) or _human_teams.has(id)
 
 
 ## Issue #521: alive figures of one team id, in stable scene order —
@@ -409,7 +425,7 @@ func members_of(id: String) -> Array:
 func _scan_teams() -> void:
 	_teams = []
 	_color_to_id = {}
-	_human_teams = {TEAM_PLAYER: true}
+	_human_teams = {}
 	var enemy_colors: Array[Color] = []
 	var seen := {}
 	for member in _alive("enemy_team"):
@@ -427,6 +443,13 @@ func _scan_teams() -> void:
 		if GameConfig.team_controller_for_color(c) == "player":
 			_human_teams[id] = true
 	_teams.append(TEAM_PLAYER)
+	# Issue #521 rework (owner: "the level totally depends on the level
+	# settings"): the hero team counts as human-played ONLY when its
+	# CONFIGURED controller says "player" — with every team played by
+	# the computer the match is pure AI vs AI (spectated, issue #121's
+	# duel staging) and nobody receives input. GameConfig.apply has
+	# already swapped a computer-played hero side for Npc figures.
+	_hero_is_human = GameConfig.team_controller(0) == "player"
 	_turn_order = _teams.duplicate()
 	_turn_order.shuffle()
 	_turn_index = 0

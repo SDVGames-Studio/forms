@@ -243,6 +243,11 @@ static func default_teams() -> Array:
 ## (older team.cfg), so a missing value defaults by SLOT: the first team
 ## is the classic human hero team, every other team plays the computer.
 static func team_controller(index: int) -> String:
+	# Issue #521 rework: with NO team set at all (tests, a fresh boot
+	# before the team menu or apply() ever loaded one) the CLASSIC
+	# defaults hold — the hero team is human, every other slot computer.
+	if teams.is_empty():
+		return "player" if index == 0 else "computer"
 	if index < 0 or index >= teams.size():
 		return "computer"
 	var controller := str(teams[index].get("controller", ""))
@@ -571,6 +576,65 @@ static func apply(level: Node) -> void:
 			member.set("display_name", member_names[mini(idx, member_names.size() - 1)])
 		if member.has_method("apply_team_setup"):
 			member.call("apply_team_setup")
+	# Issue #521 rework (owner: "the level totally depends on the level
+	# settings"): when the FIRST configured team is played by the COMPUTER,
+	# its human Player figures must not stay on the field answerable to
+	# the keys — swap each for a computer Npc figure (team = "player", the
+	# engine's spectate staging from issue #121) dressed with the team's
+	# own setup, so the side plays itself exactly like an enemy team.
+	if team_controller(0) == "computer":
+		_swap_hero_team_for_computer(level)
+
+
+## Issue #521 rework: the level must follow the team settings TOTALLY —
+## a computer-played FIRST team (the classic hero side) is swapped figure
+## by figure for computer figures. The swap runs AFTER the customise pass
+## above, so each replacement carries over the name the pass assigned;
+## the shared camera a figure hosts (the hero usually hosts it) is
+## rescued to the level first — the view must survive its host's swap.
+static func _swap_hero_team_for_computer(level: Node) -> void:
+	var team: Dictionary = teams[0]
+	for figure in level.get_tree().get_nodes_in_group("player_team"):
+		if figure == null or figure.is_queued_for_deletion():
+			continue
+		# Only HUMAN figures (Player.gd) are swapped — a duel level may
+		# already stage computer figures (Npc.gd, issue #121) on the player
+		# side; they keep fighting exactly as authored.
+		if not figure.has_method("set_controlled"):
+			continue
+		var at: Vector2 = figure.position if figure is Node2D else Vector2.ZERO
+		for child in figure.get_children():
+			if child is Camera2D and child.is_in_group("player_camera"):
+				child.reparent(level)
+				child.enabled = true
+				# reparent() = remove + add: exiting the tree drops the
+				# transient group, so the shared-camera group membership
+				# must be restored — Player.set_controlled and the
+				# game-over camera sweep both find cameras by this group.
+				child.add_to_group("player_camera")
+				break
+		var member_name := str(figure.get("display_name"))
+		_spawn_computer_figure(level, at, team, member_name)
+		figure.queue_free()
+
+
+## Issue #521 rework: build a COMPUTER-played figure (Npc.gd) fighting on
+## the PLAYER side (team = "player") — the mirror of
+## _spawn_human_figure. The AI parameters come from the team
+## configuration, exactly like an enemy-side figure.
+static func _spawn_computer_figure(level: Node, at: Vector2,
+		team: Dictionary, member_name: String) -> void:
+	var figure := CharacterBody2D.new()
+	figure.set_script(load("res://scripts/Npc.gd"))
+	figure.position = at
+	figure.set("team", "player")
+	figure.set("team_color", team["color"])
+	figure.set("team_shape", str(team["shape"]))
+	figure.set("display_name", member_name)
+	var skill := clampi(int(team["skill"]), 0, 10)
+	figure.set("difficulty", 0 if skill <= 3 else (1 if skill <= 7 else 2))
+	figure.set("ai_friendly_fire", clampi(int(team["friendly_fire"]), 0, 10))
+	level.add_child(figure)
 
 
 ## Issue #521: dress (or replace) one enemy FIGURE for configured team
