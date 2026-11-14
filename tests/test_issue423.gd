@@ -30,7 +30,7 @@ extends Node
 
 const ActionMask := preload("res://addons/godot_native_rl/controllers/action_mask.gd")
 const PolicyDebug := preload("res://addons/godot_native_rl/debug/policy_debug.gd")
-const Bot := preload("res://TrainingBot.gd")
+const Bot := preload("res://scripts/TrainingBot.gd")
 
 ## Attack-favoring raw policy output for TrainingBot's action space
 ## (move 6 | aim 3 | attack 8 | target 4, issue #422) — the same fixture

@@ -21,10 +21,10 @@ extends Node
 ## Run headless: godot --headless res://tests/test_issue293.tscn
 ## Exit code 0 = pass.
 
-const PlayerScript := preload("res://Player.gd")
-const NpcScript := preload("res://Npc.gd")
+const PlayerScript := preload("res://scripts/Player.gd")
+const NpcScript := preload("res://scripts/Npc.gd")
 const GroundScript := preload("res://scripts/IndestructibleGround.gd")
-const GrenadeScript := preload("res://ProjectileBody.gd")
+const GrenadeScript := preload("res://scripts/ProjectileBody.gd")
 const EPS := 0.001
 
 
@@ -42,8 +42,9 @@ func _check_no_authored_props() -> bool:
 				" center_line_y=", has_line, " gravity_dir=", has_dir)
 		ok = ok and not has_line and not has_dir
 	# No shipped level scene stages the old properties anymore.
-	for level in ["Level.tscn", "Level2.tscn", "Level3.tscn", "Level4.tscn",
-			"Level5.tscn", "LevelDuel.tscn"]:
+	for level in ["scenes/levels/Level.tscn", "scenes/levels/Level2.tscn",
+			"scenes/levels/Level3.tscn", "scenes/levels/Level4.tscn",
+			"scenes/levels/Level5.tscn", "scenes/levels/LevelDuel.tscn"]:
 		var text := FileAccess.get_file_as_string("res://" + level)
 		var clean := not text.contains("center_line_y") \
 				and not text.contains("gravity_dir")
@@ -148,7 +149,7 @@ func _check_level3_ships_clean() -> bool:
 	# Level3 used to author center_line_y = 540 on every figure. Now the
 	# base slab (y 480..928) is the only gravity source: a figure above
 	# the soil falls DOWN — no authored flip anywhere.
-	var level3: Node = load("res://Level3.tscn").instantiate()
+	var level3: Node = load("res://scenes/levels/Level3.tscn").instantiate()
 	add_child(level3)
 	for i in 10:
 		await get_tree().physics_frame

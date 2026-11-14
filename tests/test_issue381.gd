@@ -13,7 +13,7 @@ extends Node
 ## Run headless: godot --headless res://tests/test_issue381.tscn
 ## Exit code 0 = pass.
 
-const BotControllerScript := preload("res://BotController.gd")
+const BotControllerScript := preload("res://scripts/BotController.gd")
 
 # Layout mirrors BotController.gd (issue #381): 4 own + 4*5 enemies +
 # 4*5 allies + 2 cooldowns = 46, and the same normalization scales.

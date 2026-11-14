@@ -18,11 +18,11 @@ const DestructibleScript := preload("res://scripts/DestructibleGround.gd")
 const IndestructibleScript := preload("res://scripts/IndestructibleGround.gd")
 
 const LEVELS := [
-	"res://Level.tscn",
-	"res://Level2.tscn",
-	"res://Level3.tscn",
-	"res://Level4.tscn",
-	"res://LevelDuel.tscn",
+	"res://scenes/levels/Level.tscn",
+	"res://scenes/levels/Level2.tscn",
+	"res://scenes/levels/Level3.tscn",
+	"res://scenes/levels/Level4.tscn",
+	"res://scenes/levels/LevelDuel.tscn",
 ]
 
 

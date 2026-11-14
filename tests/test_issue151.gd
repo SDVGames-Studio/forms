@@ -20,9 +20,9 @@ func _ready() -> void:
 	tc._build_ui()  # ensure the win banner exists even without a level scene
 	var failures: Array[String] = []
 
-	var player: CharacterBody2D = load("res://Player.gd").new()
+	var player: CharacterBody2D = load("res://scripts/Player.gd").new()
 	add_child(player)
-	var enemy: CharacterBody2D = load("res://Npc.gd").new()
+	var enemy: CharacterBody2D = load("res://scripts/Npc.gd").new()
 	add_child(enemy)
 	await get_tree().process_frame
 

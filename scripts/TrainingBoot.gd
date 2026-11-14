@@ -29,6 +29,6 @@ func _ready() -> void:
 	# busy adding the autoloads / main scene (busy-parent error).
 	await get_tree().process_frame
 	if training_build:
-		get_tree().change_scene_to_file("res://training_scene.tscn")
+		get_tree().change_scene_to_file("res://scenes/testing/training_scene.tscn")
 	else:
-		get_tree().change_scene_to_file("res://eval_scene.tscn")
+		get_tree().change_scene_to_file("res://scenes/testing/eval_scene.tscn")

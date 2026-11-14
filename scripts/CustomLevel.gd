@@ -28,10 +28,10 @@ const BODY_HEIGHT := 57.6
 ## Fallback figure line when the JSON has fewer spawns than figures.
 const FALLBACK_Y := 120.0
 
-const PlayerScript := preload("res://Player.gd")
-const NpcScript := preload("res://Npc.gd")
-const WeaponScript := preload("res://Weapon.gd")
-const ZoomCameraScript := preload("res://ZoomCamera.gd")
+const PlayerScript := preload("res://scripts/Player.gd")
+const NpcScript := preload("res://scripts/Npc.gd")
+const WeaponScript := preload("res://scripts/Weapon.gd")
+const ZoomCameraScript := preload("res://scripts/ZoomCamera.gd")
 const IndestructibleScript := preload(
 	"res://scripts/IndestructibleGround.gd")
 const DestructibleScript := preload(
@@ -44,6 +44,11 @@ func _ready() -> void:
 	# Issue #367: the night regime applies to custom levels as well.
 	if GameConfig.night_regime:
 		NightRegime.apply(self)
+	# Issue #523: the spawn regime applies to custom levels as well —
+	# the designer regime is their default (the editor's JSON spawn
+	# points already staged the figures); the random regimes scatter
+	# them over the generated terrain like in any stock level.
+	SpawnRegime.apply(self)
 
 
 ## The figure plan, in GameConfig.apply order: the hero + teammates

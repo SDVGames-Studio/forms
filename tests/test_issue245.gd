@@ -11,7 +11,7 @@ extends Node
 ## Run headless: godot --headless res://tests/test_issue245.tscn
 ## Exit code 0 = pass.
 
-const RocketScript := preload("res://ProjectileBody.gd")
+const RocketScript := preload("res://scripts/ProjectileBody.gd")
 const GroundScript := preload("res://scripts/IndestructibleGround.gd")
 
 func _spawn_rocket(velocity: Vector2) -> RigidBody2D:

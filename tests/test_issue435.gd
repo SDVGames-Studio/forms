@@ -23,7 +23,7 @@ extends Node
 ## Run headless: godot --headless res://tests/test_issue435.tscn
 ## Exit code 0 = pass.
 
-const Bot := preload("res://BotController.gd")
+const Bot := preload("res://scripts/BotController.gd")
 
 ## Exact expectations, magnitudes straight from REWARD_SPEC.md §2:
 const SURVIVAL_FULL := 0.02    # §2.4 at hp 100/100
@@ -36,7 +36,7 @@ const IDLE_TURN_NET := SURVIVAL_FULL - 0.05 - 0.05
 ## Minimal figure stand-in with the real take_damage wiring (the #433
 ## attribution path: credit after damage, notify on death).
 class FakeFigure extends Node2D:
-	const BotController := preload("res://BotController.gd")
+	const BotController := preload("res://scripts/BotController.gd")
 
 	var health := 100
 	var shielded := false  # _own_features reads it (bool(null) would error)

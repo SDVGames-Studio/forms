@@ -30,9 +30,9 @@ class MusicDriver extends Node:
 	signal done(ok: bool)
 
 	const LEVELS: Array[String] = [
-		"res://Level.tscn", "res://Level2.tscn", "res://Level3.tscn",
-		"res://Level4.tscn", "res://Level5.tscn",
-		"res://LevelDuel.tscn", "res://LevelDuelBig.tscn",
+		"res://scenes/levels/Level.tscn", "res://scenes/levels/Level2.tscn", "res://scenes/levels/Level3.tscn",
+		"res://scenes/levels/Level4.tscn", "res://scenes/levels/Level5.tscn",
+		"res://scenes/levels/LevelDuel.tscn", "res://scenes/levels/LevelDuelBig.tscn",
 	]
 
 	func run() -> void:
@@ -79,29 +79,29 @@ class MusicDriver extends Node:
 		for conn in player.get_signal_connection_list("finished"):
 			restart_wired = restart_wired \
 				or conn.callable.get_object() == manager
-		manager.play_for_level("res://Level4.tscn")
+		manager.play_for_level("res://scenes/levels/Level4.tscn")
 		player.finished.emit()
 		var endless: bool = player.playing \
-			and manager.current_level() == "res://Level4.tscn"
+			and manager.current_level() == "res://scenes/levels/Level4.tscn"
 		print("ISSUE463 endless_ok=", restart_wired and endless)
 		ok = ok and restart_wired and endless
 
 		# --- play_for_level() starts the level's track... ---
-		manager.play_for_level("res://Level3.tscn")
+		manager.play_for_level("res://scenes/levels/Level3.tscn")
 		var plays: bool = player.playing \
-			and player.stream == MusicManager.TRACKS["res://Level3.tscn"] \
-			and manager.current_level() == "res://Level3.tscn"
+			and player.stream == MusicManager.TRACKS["res://scenes/levels/Level3.tscn"] \
+			and manager.current_level() == "res://scenes/levels/Level3.tscn"
 		# ...keeps it on a repeated call (no restart)...
-		manager.play_for_level("res://Level3.tscn")
+		manager.play_for_level("res://scenes/levels/Level3.tscn")
 		var keeps: bool = player.playing \
-			and manager.current_level() == "res://Level3.tscn"
+			and manager.current_level() == "res://scenes/levels/Level3.tscn"
 		# ...switches to another level's track...
-		manager.play_for_level("res://LevelDuel.tscn")
+		manager.play_for_level("res://scenes/levels/LevelDuel.tscn")
 		var switches: bool = player.playing \
-			and player.stream == MusicManager.TRACKS["res://LevelDuel.tscn"]
+			and player.stream == MusicManager.TRACKS["res://scenes/levels/LevelDuel.tscn"]
 		# ...and stops on trackless menu paths (the main menu itself now
 		# has a theme — issue #476 — so a submenu proves the stop path).
-		manager.play_for_level("res://SettingsMenu.tscn")
+		manager.play_for_level("res://scenes/menus/SettingsMenu.tscn")
 		var stops: bool = not player.playing and manager.current_level() == ""
 		# A finish after stop() must NOT resurrect the music.
 		player.finished.emit()
@@ -116,7 +116,7 @@ class MusicDriver extends Node:
 		var cover_ok := true
 		for path in LEVELS:
 			cover_ok = cover_ok and MusicManager.TRACKS.has(path)
-		cover_ok = cover_ok and MusicManager.TRACKS.has("res://Main.tscn")
+		cover_ok = cover_ok and MusicManager.TRACKS.has("res://scenes/Main.tscn")
 		cover_ok = cover_ok \
 			and MusicManager.TRACKS.size() == LEVELS.size() + 1
 		print("ISSUE463 covers_all_levels=", cover_ok)

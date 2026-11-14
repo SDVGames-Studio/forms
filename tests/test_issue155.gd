@@ -22,7 +22,7 @@ func _ready() -> void:
 
 
 func _check_gameplay() -> bool:
-	var level: Node = load("res://Level2.tscn").instantiate()
+	var level: Node = load("res://scenes/levels/Level2.tscn").instantiate()
 	add_child(level)
 	for i in 10:
 		await get_tree().physics_frame

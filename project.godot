@@ -12,18 +12,18 @@ config_version=5
 
 config/name="Forms"
 config/version="0.1.0"
-run/main_scene="res://Main.tscn"
+run/main_scene="res://scenes/Main.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 config/icon="res://icon.svg"
 
 [autoload]
 
-InGameMenu="*res://InGameMenu.gd"
-TeamController="*res://TeamController.gd"
-WeaponInventory="*res://WeaponInventory.gd"
-ToolInventory="*res://ToolInventory.gd"
-TouchControls="*res://TouchControls.gd"
-TurnController="*res://TurnController.gd"
+InGameMenu="*res://scripts/InGameMenu.gd"
+TeamController="*res://scripts/TeamController.gd"
+WeaponInventory="*res://scripts/WeaponInventory.gd"
+ToolInventory="*res://scripts/ToolInventory.gd"
+TouchControls="*res://scripts/TouchControls.gd"
+TurnController="*res://scripts/TurnController.gd"
 MusicManager="*res://scripts/MusicManager.gd"
 TrainingBoot="*res://scripts/TrainingBoot.gd"
 
@@ -115,6 +115,16 @@ weapon_6={
 weapon_7={
 "deadzone": 0.2,
 "events": [Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":0,"physical_keycode":82,"key_label":0,"unicode":82,"location":0,"echo":false,"script":null)
+]
+}
+weapon_8={
+"deadzone": 0.2,
+"events": [Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":0,"physical_keycode":80,"key_label":0,"unicode":80,"location":0,"echo":false,"script":null)
+]
+}
+weapon_9={
+"deadzone": 0.2,
+"events": [Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":0,"physical_keycode":66,"key_label":0,"unicode":66,"location":0,"echo":false,"script":null)
 ]
 }
 tool_1={

@@ -18,6 +18,12 @@ extends Object
 ## Every spoken line is also written to the action log (issue #335:
 ## "log has information of characters lines") and shown for three
 ## seconds near the figure (SpeechBubble.SHOW_TIME).
+##
+## Issue #524: every team speaks its own LANGUAGE — the team menu picks
+## it per team (English, Spanish, Russian, French, Arabic), and a
+## figure's language is resolved through its TEAM COLOR, exactly like
+## TurnController tells teams apart. Each language carries the same
+## five line sets; an unknown language or color falls back to English.
 
 const Bubble := preload("res://scripts/SpeechBubble.gd")
 
@@ -29,26 +35,127 @@ const IDLE_TIME := 6.0
 ## pellets each call take_damage, and nobody talks over themselves.
 const AGAIN := 1.2
 
-const LINES_DAMAGE := [
-	"Ouch!", "That hurts!", "Hey, watch it!", "Oof!",
-	"Right in the corners!", "I felt that one...",
-]
-const LINES_ALLY := [
-	"Traitor!", "Friendly fire!", "We're on the SAME team!",
-	"Are you blind?!", "Whose side are you on?!",
-]
-const LINES_BOAST := [
-	"Bullseye!", "Gotcha!", "Too easy!", "Right on target!",
-	"That's gonna leave a mark!", "Nailed it!",
-]
-const LINES_IDLE := [
-	"Boring...", "Any day now...", "What's the plan?",
-	"Zzz...", "I could wait forever.", "Nice weather today.",
-]
-const LINES_ALONE := [
-	"So it's just me now...", "For the team!",
-	"You picked the wrong figure!", "I'll carry this.",
-]
+const LINES := {
+	"English": {
+		"damage": [
+			"Ouch!", "That hurts!", "Hey, watch it!", "Oof!",
+			"Right in the corners!", "I felt that one...",
+		],
+		"ally": [
+			"Traitor!", "Friendly fire!", "We're on the SAME team!",
+			"Are you blind?!", "Whose side are you on?!",
+		],
+		"boast": [
+			"Bullseye!", "Gotcha!", "Too easy!", "Right on target!",
+			"That's gonna leave a mark!", "Nailed it!",
+		],
+		"idle": [
+			"Boring...", "Any day now...", "What's the plan?",
+			"Zzz...", "I could wait forever.", "Nice weather today.",
+		],
+		"alone": [
+			"So it's just me now...", "For the team!",
+			"You picked the wrong figure!", "I'll carry this.",
+		],
+	},
+	"Spanish": {
+		"damage": [
+			"¡Ay!", "¡Eso duele!", "¡Oye, cuidado!", "¡Uf!",
+			"¡Justo en las esquinas!", "¡Eso lo he sentido...",
+		],
+		"ally": [
+			"¡Traidor!", "¡Fuego amigo!", "¡Estamos en el MISMO equipo!",
+			"¿Estás ciego?!", "¡¿De qué lado estás?!",
+		],
+		"boast": [
+			"¡En el blanco!", "¡Te pillé!", "¡Demasiado fácil!",
+			"¡Justo en el objetivo!", "¡Eso va a dejar marca!", "¡Clavado!",
+		],
+		"idle": [
+			"Qué aburrimiento...", "¿Nos vamos ya?", "¿Cuál es el plan?",
+			"Zzz...", "Puedo esperar para siempre.", "Hace buen tiempo hoy.",
+		],
+		"alone": [
+			"Así que solo quedo yo...", "¡Por el equipo!",
+			"¡Elegiste a la figura equivocada!", "Yo cargo con esto.",
+		],
+	},
+	"Russian": {
+		"damage": [
+			"Ай!", "Больно!", "Эй, аккуратнее!", "Уф!",
+			"Прямо по углам!", "Это я почувствовал...",
+		],
+		"ally": [
+			"Предатель!", "По своим бьёшь!", "Мы в ОДНОЙ команде!",
+			"Ты слепой?!", "Ты вообще за кого?!",
+		],
+		"boast": [
+			"В яблочко!", "Попался!", "Слишком легко!",
+			"Точно в цель!", "Это ещё аукнется!", "В десятку!",
+		],
+		"idle": [
+			"Скучно...", "Ну и сколько ждать?", "Какой план?",
+			"Zzz...", "Могу ждать вечно.", "Погода сегодня хорошая.",
+		],
+		"alone": [
+			"Значит, остался только я...", "За команду!",
+			"Ты выбрал не ту фигуру!", "Я вытяну этот бой.",
+		],
+	},
+	"French": {
+		"damage": [
+			"Aïe !", "Ça fait mal !", "Hé, fais attention !", "Ouf !",
+			"En plein dans les coins !", "Celle-là, je l'ai sentie...",
+		],
+		"ally": [
+			"Traître !", "Tir allié !", "On est dans la MÊME équipe !",
+			"Tu es aveugle ?!", "Tu joues pour qui ?!",
+		],
+		"boast": [
+			"En plein dans le mille !", "Je t'ai eu !", "Trop facile !",
+			"Pile sur la cible !", "Ça va laisser une marque !", "Touché coulé !",
+		],
+		"idle": [
+			"Quelle barbe...", "On y va quand tu veux...", "C'est quoi le plan ?",
+			"Zzz...", "Je peux attendre éternellement.", "Beau temps aujourd'hui.",
+		],
+		"alone": [
+			"Donc il ne reste que moi...", "Pour l'équipe !",
+			"Tu as choisi la mauvaise figure !", "Je vais porter l'équipe.",
+		],
+	},
+	"Arabic": {
+		"damage": [
+			"آي!", "هذا مؤلم!", "مهلاً، انتبه!", "أوف!",
+			"في الزوايا تماماً!", "شعرت بهذه...",
+		],
+		"ally": [
+			"خائن!", "نيران صديقة!", "نحن في الفريق نفسه!",
+			"هل أنت أعمى؟!", "مع من أنت أصلاً؟!",
+		],
+		"boast": [
+			"في الهدف تماماً!", "أمسكت بك!", "سهلة جداً!",
+			"مباشرة في الهدف!", "هذه ستترك أثراً!", "إصابة قاتلة!",
+		],
+		"idle": [
+			"ممل...", "متى نبدأ؟", "ما الخطة؟",
+			"ززز...", "بإمكاني الانتظار للأبد.", "الجو جميل اليوم.",
+		],
+		"alone": [
+			"إذن بقيت أنا وحدي...", "من أجل الفريق!",
+			"اخترت الجندي الخطأ!", "سأحمل الفريق على كتفي.",
+		],
+	},
+}
+
+## The five line sets a language carries (see LINES): what a figure
+## says per event — hurt, betrayed by an ally, gloating over a big hit,
+## musing while idle, left alone in the team.
+const KIND_DAMAGE := "damage"
+const KIND_ALLY := "ally"
+const KIND_BOAST := "boast"
+const KIND_IDLE := "idle"
+const KIND_ALONE := "alone"
 
 ## figure -> engine seconds of its last line (AGAIN cooldown).
 static var _last_line_at := {}
@@ -82,12 +189,12 @@ static func on_damage_taken(victim: Node, amount: int, attacker: Node) -> void:
 	var alive: bool = (victim.get("health") is int) and victim.get("health") > 0
 	if alive:
 		if from_ally:
-			say(victim, LINES_ALLY.pick_random(), Bubble.Kind.SHOUT)
+			say(victim, _pick(victim, KIND_ALLY), Bubble.Kind.SHOUT)
 		else:
-			say(victim, LINES_DAMAGE.pick_random(), Bubble.Kind.SHOUT)
+			say(victim, _pick(victim, KIND_DAMAGE), Bubble.Kind.SHOUT)
 	if attacker != null and is_instance_valid(attacker) \
 			and attacker != victim and not from_ally and amount >= BIG_DAMAGE:
-		say(attacker, LINES_BOAST.pick_random(), Bubble.Kind.SPEECH)
+		say(attacker, _pick(attacker, KIND_BOAST), Bubble.Kind.SPEECH)
 
 
 ## A figure died — if it leaves exactly ONE teammate alive, that
@@ -104,7 +211,7 @@ static func on_member_death(dead: Node) -> void:
 			if hp is int and hp > 0 and _same_team(dead, node):
 				survivors.append(node)
 	if survivors.size() == 1:
-		say(survivors[0], LINES_ALONE.pick_random(), Bubble.Kind.SPEECH)
+		say(survivors[0], _pick(survivors[0], KIND_ALONE), Bubble.Kind.SPEECH)
 
 
 ## Called every frame from TurnController._process: the figure whose
@@ -129,7 +236,7 @@ static func tick_idle(delta: float) -> void:
 	_idle_seconds += delta
 	if _idle_seconds >= IDLE_TIME:
 		_idle_spoken = true
-		say(member, LINES_IDLE.pick_random(), Bubble.Kind.THOUGHT)
+		say(member, _pick(member, KIND_IDLE), Bubble.Kind.THOUGHT)
 
 
 ## The active figure moved, aimed or shot — its idle musings restart.
@@ -151,3 +258,26 @@ static func _same_team(a: Node, b: Node) -> bool:
 	var ca = a.get("team_color")
 	var cb = b.get("team_color")
 	return ca is Color and cb is Color and ca == cb
+
+
+## Issue #524: the language `figure` speaks — its team color's language
+## (GameConfig maps colors to the configured teams, the same map
+## TurnController uses). A figure without a team color speaks English.
+static func _language(figure: Node) -> String:
+	var color = figure.get("team_color")
+	if color is Color:
+		return GameConfig.team_language_for_color(color)
+	return GameConfig.DEFAULT_LANGUAGE
+
+
+## Issue #524: a random line of `kind` in `figure`'s team language.
+static func _pick(figure: Node, kind: String) -> String:
+	return _pick_in(_language(figure), kind)
+
+
+## Issue #524: a random line of `kind` in `language`; an unknown
+## language (or a language missing the kind) falls back to English.
+static func _pick_in(language: String, kind: String) -> String:
+	if not LINES.has(language) or not LINES[language].has(kind):
+		language = GameConfig.DEFAULT_LANGUAGE
+	return (LINES[language][kind] as Array).pick_random()

@@ -3,7 +3,7 @@ extends Node
 ## editor's "NCNN AI Controller" script template.
 ##
 ## Asserts:
-##   - res://BotController.gd extends NcnnAIController2D;
+##   - res://scripts/BotController.gd extends NcnnAIController2D;
 ##   - the scaffold overrides the four required contract methods
 ##     (get_obs, get_reward, get_action_space, set_action);
 ##   - a node with the controller attached is automatically registered in
@@ -15,7 +15,7 @@ extends Node
 func _ready() -> void:
 	await get_tree().process_frame
 	var failures: Array[String] = []
-	var controller: Script = load("res://BotController.gd")
+	var controller: Script = load("res://scripts/BotController.gd")
 
 	# Template contract: the scaffold inherits the 2D controller base.
 	var base := controller.get_base_script()

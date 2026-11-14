@@ -127,7 +127,7 @@ func _ready() -> void:
 
 	# 3) Level scene: wait for the player's turn (an enemy team may move
 	# first), like test_issue364.
-	var level: Node = load("res://Level3.tscn").instantiate()
+	var level: Node = load("res://scenes/levels/Level3.tscn").instantiate()
 	add_child(level)
 	var tc := get_node("/root/TurnController")
 	var player_turn := false

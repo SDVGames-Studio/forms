@@ -35,7 +35,7 @@ extends Node
 ## Run headless: godot --headless res://tests/test_issue311.tscn
 ## Exit code 0 = pass.
 
-const ZoomCameraScript := preload("res://ZoomCamera.gd")
+const ZoomCameraScript := preload("res://scripts/ZoomCamera.gd")
 
 const CENTER_LINE_Y := 540.0
 const SETTLE := Vector2(400.0, CENTER_LINE_Y + 300.0)
@@ -56,7 +56,7 @@ func _ready() -> void:
 	var ok := true
 	# Debug visuals (DebugHp label) must exist for the HUD set to be full.
 	GameConfig.debug_mode = true
-	var level: Node = load("res://Level3.tscn").instantiate()
+	var level: Node = load("res://scenes/levels/Level3.tscn").instantiate()
 	add_child(level)
 	for i in 30:
 		await get_tree().physics_frame

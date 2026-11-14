@@ -22,7 +22,7 @@ extends Node
 ## Run headless: godot --headless res://tests/test_issue508.tscn
 ## Exit code 0 = pass; the printed ISS508 ok= verdict is authoritative.
 
-const SCENE_PATH := "res://eval_scene.tscn"
+const SCENE_PATH := "res://scenes/testing/eval_scene.tscn"
 const RESULTS_PATH := "user://test_issue508_results.json"
 
 var _results: Dictionary = {}

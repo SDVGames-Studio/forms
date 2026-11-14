@@ -8,9 +8,9 @@ extends Node
 ## Run headless: godot --headless res://tests/test_issue430.tscn
 ## Exit code 0 = pass.
 
-const WeaponScript := preload("res://Weapon.gd")
-const ProjectileScript := preload("res://Projectile.gd")
-const NpcScript := preload("res://Npc.gd")
+const WeaponScript := preload("res://scripts/Weapon.gd")
+const ProjectileScript := preload("res://scripts/Projectile.gd")
+const NpcScript := preload("res://scripts/Npc.gd")
 
 
 func _ready() -> void:

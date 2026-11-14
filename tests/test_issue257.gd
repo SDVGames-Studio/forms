@@ -50,7 +50,7 @@ func _ready() -> void:
 	holder.set_script(aim_script)
 	add_child(holder)
 	var weapon := Node2D.new()
-	weapon.set_script(load("res://Weapon.gd"))
+	weapon.set_script(load("res://scripts/Weapon.gd"))
 	holder.add_child(weapon)
 	# Weapon._facing defaults to 1 (aim = +X); make sure it is set.
 	weapon.set("_facing", 1.0)

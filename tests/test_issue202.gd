@@ -18,7 +18,7 @@ func _ready() -> void:
 	var failures: Array[String] = []
 
 	# --- Source-level regression check: the sign must stay correct.
-	for path in ["res://Player.gd", "res://Npc.gd"]:
+	for path in ["res://scripts/Player.gd", "res://scripts/Npc.gd"]:
 		var text := FileAccess.get_file_as_string(path)
 		if not text.contains("velocity = grav * JUMP_VELOCITY"):
 			failures.append("%s must jump with `grav * JUMP_VELOCITY`" % path)
@@ -37,7 +37,7 @@ func _ready() -> void:
 	floor_body.position = Vector2(0, 100)
 	add_child(floor_body)
 
-	var player: CharacterBody2D = load("res://Player.gd").new()
+	var player: CharacterBody2D = load("res://scripts/Player.gd").new()
 	var body_shape := CollisionShape2D.new()
 	var body_rect := RectangleShape2D.new()
 	body_rect.size = Vector2(24, 24)

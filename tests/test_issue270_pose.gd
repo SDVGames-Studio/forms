@@ -17,8 +17,8 @@ const EPS := 0.05
 
 
 func _ready() -> void:
-	var ok := await _check_level(preload("res://Level5.tscn").instantiate())
-	ok = (await _check_level(preload("res://Level.tscn").instantiate())) and ok
+	var ok := await _check_level(preload("res://scenes/levels/Level5.tscn").instantiate())
+	ok = (await _check_level(preload("res://scenes/levels/Level.tscn").instantiate())) and ok
 	print("ISSUE270POSE ok=", ok)
 	get_tree().quit(0 if ok else 1)
 

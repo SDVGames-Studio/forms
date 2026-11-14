@@ -21,7 +21,7 @@ func _ready() -> void:
 
 ## Mechanism check: Player.take_damage must actually lower health.
 func _check_take_damage() -> bool:
-	var player: CharacterBody2D = load("res://Player.gd").new()
+	var player: CharacterBody2D = load("res://scripts/Player.gd").new()
 	add_child(player)
 	var received := [0]
 	player.health_changed.connect(func(h: int, _m: int) -> void: received[0] = h)
@@ -51,7 +51,7 @@ func _check_npc_kills_player() -> bool:
 	level.add_child(ground)
 
 	# Player figure: never acts, just stands there.
-	var player: CharacterBody2D = load("res://Player.gd").new()
+	var player: CharacterBody2D = load("res://scripts/Player.gd").new()
 	player.name = "Player"
 	player.display_name = "Player"
 	var pshape := CollisionShape2D.new()
@@ -64,7 +64,7 @@ func _check_npc_kills_player() -> bool:
 	level.add_child(player)
 
 	# Enemy NPC close enough to attack (ATTACK_RANGE = 500).
-	var npc: CharacterBody2D = load("res://Npc.gd").new()
+	var npc: CharacterBody2D = load("res://scripts/Npc.gd").new()
 	npc.name = "Enemy"
 	npc.display_name = "Enemy"
 	npc.difficulty = 2

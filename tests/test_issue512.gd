@@ -16,7 +16,7 @@ extends Node
 ## Run headless: godot --headless res://tests/test_issue512.tscn
 ## Exit code 0 = pass.
 
-const TouchControlsScript := preload("res://TouchControls.gd")
+const TouchControlsScript := preload("res://scripts/TouchControls.gd")
 
 var failures := 0
 

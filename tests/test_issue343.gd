@@ -25,15 +25,15 @@ func _ready() -> void:
 	add_child(level)
 
 	# Player team: two controllable figures + one AI ally (issue #121).
-	var p1: CharacterBody2D = load("res://Player.gd").new()
-	var p2: CharacterBody2D = load("res://Player.gd").new()
-	var ally: CharacterBody2D = load("res://Npc.gd").new()
+	var p1: CharacterBody2D = load("res://scripts/Player.gd").new()
+	var p2: CharacterBody2D = load("res://scripts/Player.gd").new()
+	var ally: CharacterBody2D = load("res://scripts/Npc.gd").new()
 	ally.team = "player"
 	# Enemy team: three Npcs of one color (single "enemy" id, issue #191).
 	var red := Color(0.85, 0.2, 0.2)
-	var e1: CharacterBody2D = load("res://Npc.gd").new()
-	var e2: CharacterBody2D = load("res://Npc.gd").new()
-	var e3: CharacterBody2D = load("res://Npc.gd").new()
+	var e1: CharacterBody2D = load("res://scripts/Npc.gd").new()
+	var e2: CharacterBody2D = load("res://scripts/Npc.gd").new()
+	var e3: CharacterBody2D = load("res://scripts/Npc.gd").new()
 	for e in [e1, e2, e3]:
 		e.team_color = red
 	add_child(p1)

@@ -11,7 +11,7 @@ extends Node
 ## Run headless: godot --headless res://tests/test_issue246.tscn
 ## Exit code 0 = pass.
 
-const MineScript := preload("res://ProjectileBody.gd")
+const MineScript := preload("res://scripts/ProjectileBody.gd")
 
 ## Stand-in figure: member of a team that records blast damage.
 class Victim:

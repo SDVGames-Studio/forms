@@ -77,7 +77,13 @@ static func speak(figure: Node, line: String, bubble_kind: int = Kind.SPEECH) ->
 		return
 	var key := figure.get_instance_id()
 	if _live.has(key):
-		var old: Node = _live[key]
+		# Issue #541: fetch the stored balloon UNTYPED. An expired
+		# balloon can leave a freed instance behind in _live (see the
+		# _speaker_id note below), and assigning a freed instance to a
+		# typed var is itself the "Trying to assign invalid previously
+		# freed instance" error — is_instance_valid() below then skips
+		# it safely and a fresh balloon is built instead.
+		var old = _live[key]
 		if old != null and is_instance_valid(old):
 			# Detach at once: a merely queue_free()d balloon still owns its
 			# name until the end of the frame, and a same-named sibling would
@@ -88,6 +94,12 @@ static func speak(figure: Node, line: String, bubble_kind: int = Kind.SPEECH) ->
 		_live.erase(key)
 	var bubble := SpeechBubble.new()
 	bubble.kind = bubble_kind
+	# Issue #541: register the speaker in BOTH modes. A day-mode balloon
+	# never had _speaker_id set, so when it expired (queue_free in
+	# _process) the _exit_tree cleanup skipped it and left a FREED
+	# instance in _live; the figure's next line then crashed in speak()
+	# when rapid hits re-triggered it.
+	bubble._speaker_id = key
 	bubble.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var night: NightRegime = null
 	var tree := figure.get_tree()
@@ -100,7 +112,6 @@ static func speak(figure: Node, line: String, bubble_kind: int = Kind.SPEECH) ->
 		# for unseen enemies (see _process).
 		night.lines_layer().add_child(bubble)
 		bubble.figure = figure
-		bubble._speaker_id = key
 		bubble._night = night
 	else:
 		figure.add_child(bubble)
@@ -131,6 +142,11 @@ func _setup(line: String) -> void:
 
 
 func _process(delta: float) -> void:
+	# Issue #541: the night regime may already be freed (level teardown
+	# during rapid training resets) — drop the stale reference instead
+	# of calling into a freed instance.
+	if _night != null and not is_instance_valid(_night):
+		_night = null
 	if _night != null:
 		# Issue #395: keep the balloon on the speaker and hide an enemy's
 		# line while its speaker is not seen through the mask.
@@ -168,8 +184,10 @@ func _update_seen() -> void:
 
 
 func _exit_tree() -> void:
-	# Issue #395: drop the balloon from the one-per-figure registry (the
-	# figure may speak again later and must not find a stale entry).
+	# Issue #541/395: drop the balloon from the one-per-figure registry
+	# (the figure may speak again later and must not find a stale entry).
+	# _speaker_id is now set in BOTH day and night modes, so every
+	# balloon cleans itself up when it expires or its parent is freed.
 	if _speaker_id != 0 and _live.get(_speaker_id, null) == self:
 		_live.erase(_speaker_id)
 

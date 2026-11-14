@@ -25,7 +25,7 @@ func _check(what: String, ok: bool) -> void:
 
 
 func _ready() -> void:
-	var level: Node = load("res://Level3.tscn").instantiate()
+	var level: Node = load("res://scenes/levels/Level3.tscn").instantiate()
 	add_child(level)
 	var tc := get_node("/root/TurnController")
 	var inv: Node = get_node("/root/WeaponInventory")

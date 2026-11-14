@@ -76,7 +76,7 @@ func _ready() -> void:
 	GameConfig.debug_mode = true  # restore the default for later runs
 
 	# --- 4. OSD gate: hidden with debug off, log_action is a safe no-op ---
-	var osd: CanvasLayer = load("res://OSD.gd").new()
+	var osd: CanvasLayer = load("res://scripts/OSD.gd").new()
 	add_child(osd)
 	await get_tree().process_frame  # let _ready run
 	var osd_shown: bool = osd.visible

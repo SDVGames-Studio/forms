@@ -27,7 +27,7 @@ extends Node
 ## Run headless: godot --headless res://tests/test_issue393.tscn
 ## Exit code 0 = pass.
 
-const DebugMenuScene := preload("res://DebugMenu.tscn")
+const DebugMenuScene := preload("res://scenes/menus/DebugMenu.tscn")
 
 const STATE_ITEMS := ["normal", "hover", "pressed", "hover_pressed", "disabled"]
 
@@ -36,7 +36,7 @@ func _ready() -> void:
 	var ok := true
 
 	# --- 1. Fresh load of the theme file -------------------------------
-	var theme: Theme = load("res://MenuTheme.tres")
+	var theme: Theme = load("res://scenes/menus/MenuTheme.tres")
 	for item in STATE_ITEMS:
 		var sb: StyleBoxFlat = theme.get_stylebox(item, "Button")
 		if sb == null or not (sb is StyleBoxFlat):

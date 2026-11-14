@@ -14,15 +14,15 @@ func _ready() -> void:
 	var tc := TurnController
 	var failures: Array[String] = []
 
-	var player: CharacterBody2D = load("res://Player.gd").new()
+	var player: CharacterBody2D = load("res://scripts/Player.gd").new()
 	add_child(player)
-	var red: CharacterBody2D = load("res://Npc.gd").new()
+	var red: CharacterBody2D = load("res://scripts/Npc.gd").new()
 	red.team_color = Color(0.85, 0.2, 0.2)
 	add_child(red)
-	var blue: CharacterBody2D = load("res://Npc.gd").new()
+	var blue: CharacterBody2D = load("res://scripts/Npc.gd").new()
 	blue.team_color = Color(0.2, 0.5, 0.95)
 	add_child(blue)
-	var green: CharacterBody2D = load("res://Npc.gd").new()
+	var green: CharacterBody2D = load("res://scripts/Npc.gd").new()
 	green.team_color = Color(0.22, 0.7, 0.3)
 	add_child(green)
 	await get_tree().process_frame

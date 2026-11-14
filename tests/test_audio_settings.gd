@@ -88,7 +88,7 @@ class AudioDriver extends Node:
 		# --- Settings category: AUDIO button exists, visible (also on
 		## touch devices — audio matters everywhere), opens the screen
 		## (standalone scene change). ---
-		var settings: Node = load("res://SettingsMenu.tscn").instantiate()
+		var settings: Node = load("res://scenes/menus/SettingsMenu.tscn").instantiate()
 		add_child(settings)
 		await get_tree().process_frame
 		var audio_button: Button = settings.get_node_or_null("%AudioButton")
@@ -102,13 +102,13 @@ class AudioDriver extends Node:
 			await get_tree().process_frame
 		var opened: bool = get_tree().current_scene != null \
 			and get_tree().current_scene.scene_file_path \
-			== "res://AudioMenu.tscn"
+			== "res://scenes/menus/AudioMenu.tscn"
 		print("AUDIO opens_screen=", opened)
 		ok = ok and opened
 
 		# --- The screen: sliders reflect the persisted state and every
 		## change updates + persists + applies it. ---
-		var menu: Node = load("res://AudioMenu.tscn").instantiate()
+		var menu: Node = load("res://scenes/menus/AudioMenu.tscn").instantiate()
 		add_child(menu)
 		await get_tree().process_frame
 		var master_slider: HSlider = menu.get_node("%MasterSlider")
@@ -146,7 +146,7 @@ class AudioDriver extends Node:
 
 		# --- Overlay mode (issue #304): AUDIO opens as a submenu on
 		## top of the settings screen, Back returns, shadow stays single. ---
-		var overlay: Node = load("res://SettingsMenu.tscn").instantiate()
+		var overlay: Node = load("res://scenes/menus/SettingsMenu.tscn").instantiate()
 		overlay.set("in_game", true)
 		add_child(overlay)
 		await get_tree().process_frame

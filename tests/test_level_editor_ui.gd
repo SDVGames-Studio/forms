@@ -35,7 +35,7 @@ class LevelEditorDriver extends Node:
 
 	func run() -> void:
 		var ok := true
-		var editor: Node = load("res://LevelEditor.tscn").instantiate()
+		var editor: Node = load("res://scenes/menus/LevelEditor.tscn").instantiate()
 		add_child(editor)
 		await get_tree().process_frame
 
@@ -136,7 +136,7 @@ class LevelEditorDriver extends Node:
 		DirAccess.remove_absolute(path)
 
 		# --- BACK -> main menu. ---
-		var editor2: Node = load("res://LevelEditor.tscn").instantiate()
+		var editor2: Node = load("res://scenes/menus/LevelEditor.tscn").instantiate()
 		add_child(editor2)
 		await get_tree().process_frame
 		(editor2.get_node("%BackButton") as Button).pressed.emit()
@@ -144,7 +144,7 @@ class LevelEditorDriver extends Node:
 			await get_tree().process_frame
 		var went: bool = get_tree().current_scene != null \
 			and get_tree().current_scene.scene_file_path \
-			== "res://Main.tscn"
+			== "res://scenes/Main.tscn"
 		print("LEVELEDITOR back_nav=", went)
 		ok = ok and went
 

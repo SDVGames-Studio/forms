@@ -30,7 +30,7 @@ func _ready() -> void:
 	var failures: Array[String] = []
 
 	DirAccess.remove_absolute("user://team.cfg")  # start from defaults
-	var menu: Control = load("res://TeamMenu.tscn").instantiate()
+	var menu: Control = load("res://scenes/menus/TeamMenu.tscn").instantiate()
 	add_child(menu)
 	await get_tree().process_frame
 

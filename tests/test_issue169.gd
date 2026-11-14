@@ -21,7 +21,7 @@ func _ready() -> void:
 	if GameConfig.member_names[1] != "Beta":
 		failures.append("names did not persist: " + str(GameConfig.member_names))
 	# Level applies team size + customisation.
-	var level: Node = load("res://Level.tscn").instantiate()
+	var level: Node = load("res://scenes/levels/Level.tscn").instantiate()
 	add_child(level)
 	await get_tree().process_frame
 	var members := get_tree().get_nodes_in_group("player_team")

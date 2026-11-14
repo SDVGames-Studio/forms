@@ -89,13 +89,13 @@ class MainMenuDriver extends Node:
 
 		# --- Navigation (spec §5): NEW GAME -> existing LevelsMenu. ---
 		ok = ok and await _nav_check("%NewGameButton",
-			"res://LevelsMenu.tscn", "new_game")
+			"res://scenes/menus/LevelsMenu.tscn", "new_game")
 		# --- LEVEL EDITOR -> level editor (issue #464). ---
 		ok = ok and await _nav_check("%LevelEditorButton",
-			"res://LevelEditor.tscn", "level_editor")
+			"res://scenes/menus/LevelEditor.tscn", "level_editor")
 		# --- SETTINGS -> existing SettingsMenu (spec §6.4). ---
 		ok = ok and await _nav_check("%SettingsButton",
-			"res://SettingsMenu.tscn", "settings")
+			"res://scenes/menus/SettingsMenu.tscn", "settings")
 
 		print("MAINMENU ok=", ok)
 
@@ -112,7 +112,7 @@ class MainMenuDriver extends Node:
 
 
 	func _fresh_main() -> Node:
-		return load("res://Main.tscn").instantiate()
+		return load("res://scenes/Main.tscn").instantiate()
 
 
 	func _nav_check(button_path: String, expected: String,

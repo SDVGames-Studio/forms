@@ -19,10 +19,10 @@ extends Node
 ## Exit code 0 = pass.
 
 const LEVEL_SCENES := [
-	preload("res://Level.tscn"),
-	preload("res://Level2.tscn"),
-	preload("res://Level3.tscn"),
-	preload("res://Level4.tscn"),
+	preload("res://scenes/levels/Level.tscn"),
+	preload("res://scenes/levels/Level2.tscn"),
+	preload("res://scenes/levels/Level3.tscn"),
+	preload("res://scenes/levels/Level4.tscn"),
 ]
 const CHAR := 64.0
 const MARGIN := 8.0
@@ -54,7 +54,7 @@ func _ready() -> void:
 	# 2) The fifth level stays as it was: its only destructible ground
 	# is the whole ring around the core (24 sector chunks, no polygons,
 	# no layer).
-	var fifth: Node = load("res://Level5.tscn").instantiate()
+	var fifth: Node = load("res://scenes/levels/Level5.tscn").instantiate()
 	add_child(fifth)
 	await get_tree().physics_frame
 	var stray := 0

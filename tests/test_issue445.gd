@@ -21,11 +21,11 @@ extends Node
 ## Exit code 0 = pass.
 
 const PolicyNames := preload("res://addons/godot_native_rl/policy_names.gd")
-const TrainingBotScript := preload("res://TrainingBot.gd")
+const TrainingBotScript := preload("res://scripts/TrainingBot.gd")
 
 ## A hypothetical second role (issue #445's "medic"): same obs contract, a
 ## DIFFERENT action space — legal only under its own distinct policy_name.
-class MedicBot extends "res://TrainingBot.gd":
+class MedicBot extends "res://scripts/TrainingBot.gd":
 	func get_action_space() -> Dictionary:
 		return {
 			"move": {"size": 6, "action_type": "discrete"},
@@ -38,7 +38,7 @@ func _ready() -> void:
 	var ok := true
 
 	# --- Scenario 1: the shipped scene — one role, one shared policy ------
-	var scene: Node = load("res://training_scene.tscn").instantiate()
+	var scene: Node = load("res://scenes/testing/training_scene.tscn").instantiate()
 	var agents := _collect_bot_agents(scene)
 	ok = _expect(agents.size() == 3,
 			"training_scene.tscn stages 3 bot agents, got %d" % agents.size()) and ok

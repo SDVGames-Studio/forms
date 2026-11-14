@@ -10,7 +10,7 @@ extends Node
 ## Run headless: godot --headless res://tests/test_issue446.tscn
 ## Exit code 0 = pass.
 
-const Npc := preload("res://Npc.gd")
+const Npc := preload("res://scripts/Npc.gd")
 
 
 ## Minimal figure stand-in: alive (health > 0), teamable, positionable.

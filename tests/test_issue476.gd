@@ -4,7 +4,7 @@ extends Node
 ## Checks: the generated menu track loads as AudioStreamWAV (16-bit,
 ## mono, 44.1 kHz) with data, is distinct from every level track
 ## (#463), and is mapped to the main-menu scene in MusicManager.TRACKS;
-## play_for_level("res://Main.tscn") starts it and keeps it on repeated
+## play_for_level("res://scenes/Main.tscn") starts it and keeps it on repeated
 ## calls; the finished-restart wiring makes it endless; a level track
 ## takes over cleanly and the theme restores afterwards; a freshly
 ## instantiated Main.tscn starts the theme from its _ready(). Headless
@@ -34,7 +34,7 @@ class MenuMusicDriver extends Node:
 
 		# --- Menu stream: AudioStreamWAV 16-bit mono 44.1 kHz, non-empty,
 		# and mapped to the main-menu scene. ---
-		var menu_stream: AudioStream = MusicManager.TRACKS.get("res://Main.tscn")
+		var menu_stream: AudioStream = MusicManager.TRACKS.get("res://scenes/Main.tscn")
 		var wav := menu_stream as AudioStreamWAV
 		var fmt_ok: bool = wav != null \
 			and wav.format == AudioStreamWAV.FORMAT_16_BITS \
@@ -65,11 +65,11 @@ class MenuMusicDriver extends Node:
 
 		# --- The main menu starts its theme; a repeated call keeps it
 		# playing with the same stream (no restart). ---
-		manager.play_for_level("res://Main.tscn")
+		manager.play_for_level("res://scenes/Main.tscn")
 		var plays: bool = player.playing \
 			and player.stream == menu_stream \
-			and manager.current_level() == "res://Main.tscn"
-		manager.play_for_level("res://Main.tscn")
+			and manager.current_level() == "res://scenes/Main.tscn"
+		manager.play_for_level("res://scenes/Main.tscn")
 		var keeps: bool = player.playing and player.stream == menu_stream
 		print("ISSUE476 plays=", plays, " keeps=", keeps)
 		ok = ok and plays and keeps
@@ -78,16 +78,16 @@ class MenuMusicDriver extends Node:
 		player.finished.emit()
 		var endless: bool = player.playing \
 			and player.stream == menu_stream \
-			and manager.current_level() == "res://Main.tscn"
+			and manager.current_level() == "res://scenes/Main.tscn"
 		print("ISSUE476 endless=", endless)
 		ok = ok and endless
 
 		# --- Handover: a level track replaces the theme... ---
-		manager.play_for_level("res://Level2.tscn")
+		manager.play_for_level("res://scenes/levels/Level2.tscn")
 		var level_plays: bool = player.playing \
-			and player.stream == MusicManager.TRACKS["res://Level2.tscn"]
+			and player.stream == MusicManager.TRACKS["res://scenes/levels/Level2.tscn"]
 		# ...and returning to the main menu restores it.
-		manager.play_for_level("res://Main.tscn")
+		manager.play_for_level("res://scenes/Main.tscn")
 		var restores: bool = player.playing and player.stream == menu_stream
 		print("ISSUE476 level_handover=", level_plays,
 			" restores=", restores)
@@ -96,7 +96,7 @@ class MenuMusicDriver extends Node:
 		# --- Main.tscn wiring: a fresh main menu starts the theme from
 		# its _ready() (the autoload player is shared, so stop first). ---
 		manager.stop()
-		var main := (load("res://Main.tscn") as PackedScene).instantiate()
+		var main := (load("res://scenes/Main.tscn") as PackedScene).instantiate()
 		add_child(main)
 		await get_tree().process_frame
 		var scene_starts: bool = player.playing \

@@ -6,8 +6,8 @@ extends Node
 ## Run headless: godot --headless res://tests/test_issue226.tscn
 ## Exit code 0 = pass.
 
-const LEVELS := ["res://Level.tscn", "res://LevelDuel.tscn", "res://Level2.tscn",
-	"res://Level3.tscn", "res://Level4.tscn"]
+const LEVELS := ["res://scenes/levels/Level.tscn", "res://scenes/levels/LevelDuel.tscn", "res://scenes/levels/Level2.tscn",
+	"res://scenes/levels/Level3.tscn", "res://scenes/levels/Level4.tscn"]
 
 
 func _ready() -> void:
@@ -24,7 +24,7 @@ func _ready() -> void:
 
 	# An NPC renders a non-square team shape: the ColorRect body hides
 	# and a same-sized ShapeVisual body takes its place.
-	var npc: CharacterBody2D = load("res://Npc.gd").new()
+	var npc: CharacterBody2D = load("res://scripts/Npc.gd").new()
 	add_child(npc)
 	for i in 5:
 		await get_tree().physics_frame
@@ -45,7 +45,7 @@ func _ready() -> void:
 	# "NpcVisual") must not survive beside the team's circle — the NPC
 	# adopts it as its ONLY body, so no second (square) shape stays
 	# visible on the figure.
-	var staged: CharacterBody2D = load("res://Npc.gd").new()
+	var staged: CharacterBody2D = load("res://scripts/Npc.gd").new()
 	var authored := ColorRect.new()
 	authored.name = "NpcVisual"
 	authored.offset_left = -32.0

@@ -17,7 +17,9 @@ extends Node
 ## (railgun starts at ONE use, issue #359; everything else at five,
 ## spear infinite). Kept in sync by hand for issue #364's run: the
 ## railgun PR left this local copy at six weapons and check 1 red.
-const WEAPONS := ["Shotgun", "Rocket", "Grenade", "Spear", "Mine", "Jackhammer", "Railgun"]
+## Issue #526 added the PISTOL as the eighth weapon (standard 5 uses);
+## issue #527 added the BASEBALL BAT as the ninth (standard 5 uses).
+const WEAPONS := ["Shotgun", "Rocket", "Grenade", "Spear", "Mine", "Jackhammer", "Railgun", "Pistol", "Baseball Bat"]
 const SPEAR := 3
 const RAILGUN := 6
 const RAILGUN_START := 1
@@ -32,7 +34,7 @@ func _check(what: String, ok: bool) -> void:
 
 
 func _ready() -> void:
-	var level: Node = load("res://Level3.tscn").instantiate()
+	var level: Node = load("res://scenes/levels/Level3.tscn").instantiate()
 	add_child(level)
 	var tc := get_node("/root/TurnController")
 	var inv: Node = get_node("/root/WeaponInventory")

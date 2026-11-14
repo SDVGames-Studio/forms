@@ -21,7 +21,7 @@ extends Node
 ## Run headless: godot --headless res://tests/test_issue480.tscn
 ## Exit code 0 = pass.
 
-const ProjectileBodyScript := preload("res://ProjectileBody.gd")
+const ProjectileBodyScript := preload("res://scripts/ProjectileBody.gd")
 
 ## Issue #324 contract, unchanged: no strip corner overshoots the disk.
 const PRECISION := 5.0

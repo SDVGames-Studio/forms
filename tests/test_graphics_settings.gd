@@ -73,7 +73,7 @@ class GraphicsDriver extends Node:
 
 		# --- Settings category: GRAPHICS button exists, visible on
 		## desktop, opens the screen (standalone scene change). ---
-		var settings: Node = load("res://SettingsMenu.tscn").instantiate()
+		var settings: Node = load("res://scenes/menus/SettingsMenu.tscn").instantiate()
 		add_child(settings)
 		await get_tree().process_frame
 		var graphics_button: Button = \
@@ -88,13 +88,13 @@ class GraphicsDriver extends Node:
 			await get_tree().process_frame
 		var opened: bool = get_tree().current_scene != null \
 			and get_tree().current_scene.scene_file_path \
-			== "res://GraphicsMenu.tscn"
+			== "res://scenes/menus/GraphicsMenu.tscn"
 		print("GRAPHICS opens_screen=", opened)
 		ok = ok and opened
 
 		# --- The screen: controls reflect the persisted state and every
 		## change updates + persists it. ---
-		var menu: Node = load("res://GraphicsMenu.tscn").instantiate()
+		var menu: Node = load("res://scenes/menus/GraphicsMenu.tscn").instantiate()
 		add_child(menu)
 		await get_tree().process_frame
 		var mode_option: OptionButton = menu.get_node("%DisplayModeOption")
@@ -128,7 +128,7 @@ class GraphicsDriver extends Node:
 
 		# --- Overlay mode (issue #304): GRAPHICS opens as a submenu on
 		## top of the settings screen, Back returns, shadow stays single. ---
-		var overlay: Node = load("res://SettingsMenu.tscn").instantiate()
+		var overlay: Node = load("res://scenes/menus/SettingsMenu.tscn").instantiate()
 		overlay.set("in_game", true)
 		add_child(overlay)
 		await get_tree().process_frame

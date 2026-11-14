@@ -32,7 +32,7 @@ extends Node
 func _ready() -> void:
 	var ok := true
 	GameConfig.debug_gravity_field = false
-	var level: Node = load("res://Level2.tscn").instantiate()
+	var level: Node = load("res://scenes/levels/Level2.tscn").instantiate()
 	add_child(level)
 	for i in 30:
 		await get_tree().physics_frame
@@ -87,7 +87,7 @@ func _ready() -> void:
 ## resolve to something visible through the CheckButton theme fallback.
 func _hover_pressed_style_visible() -> bool:
 	var root := Control.new()
-	root.theme = load("res://MenuTheme.tres")
+	root.theme = load("res://scenes/menus/MenuTheme.tres")
 	add_child(root)
 	var check := CheckButton.new()
 	check.toggle_mode = true

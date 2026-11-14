@@ -19,7 +19,7 @@ func _ready() -> void:
 	for npc_name: String in ["Npc", "Npc2", "Npc3"]:
 		var body := CharacterBody2D.new()
 		body.name = npc_name
-		body.set_script(load("res://Npc.gd"))
+		body.set_script(load("res://scripts/Npc.gd"))
 		level.add_child(body)
 
 	GameConfig.enemy_count = 3

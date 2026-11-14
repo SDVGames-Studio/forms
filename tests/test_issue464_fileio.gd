@@ -93,7 +93,7 @@ class Driver extends Node:
 	## Editor: save → re-save in place → save under a new name → load
 	## an external file → export a copy (download).
 	func _test_editor_file_io() -> void:
-		var editor: Node = load("res://LevelEditor.tscn").instantiate()
+		var editor: Node = load("res://scenes/menus/LevelEditor.tscn").instantiate()
 		add_child(editor)
 		await get_tree().process_frame
 		var path := "%s/%s.json" % [LEVELS_DIR, TEST_STEM]
@@ -155,7 +155,7 @@ class Driver extends Node:
 	func _test_levels_menu() -> void:
 		GameConfig.custom_level_name = ""
 		GameConfig.level_path = ""
-		var menu: Node = load("res://LevelsMenu.tscn").instantiate()
+		var menu: Node = load("res://scenes/menus/LevelsMenu.tscn").instantiate()
 		add_child(menu)
 		await get_tree().process_frame
 		var box: Node = menu.get_node("%CustomLevels")
@@ -175,7 +175,7 @@ class Driver extends Node:
 		await get_tree().process_frame
 		_check("custom level click routes to level config",
 			GameConfig.custom_level_name == TEST_STEM
-			and GameConfig.level_path == "res://CustomLevel.tscn"
+			and GameConfig.level_path == "res://scenes/levels/CustomLevel.tscn"
 			and get_tree().current_scene != null
 			and get_tree().current_scene.name == "LevelConfigMenu")
 		if get_tree().current_scene != null:
@@ -189,7 +189,7 @@ class Driver extends Node:
 		GameConfig.team_size = 3
 		GameConfig.enemy_count = 2
 		GameConfig.custom_level_name = TEST_STEM
-		var level: Node = load("res://CustomLevel.tscn").instantiate()
+		var level: Node = load("res://scenes/levels/CustomLevel.tscn").instantiate()
 		add_child(level)
 		# Position snapshot BEFORE any physics frame — gravity starts
 		# pulling the figure down the moment the tree starts stepping.

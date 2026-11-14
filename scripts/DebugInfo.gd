@@ -11,7 +11,7 @@ class_name DebugInfo
 ## The ACTION LOG lines themselves render in the OSD's top-right corner
 ## (OSD.log_action) — this class is the one door figures log through.
 
-const OSDScript := preload("res://OSD.gd")
+const OSDScript := preload("res://scripts/OSD.gd")
 const ArrowScript := preload("res://scripts/DebugArrow.gd")
 const HitboxScript := preload("res://scripts/DebugHitbox.gd")
 

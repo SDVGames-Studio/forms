@@ -21,7 +21,7 @@ extends Node
 ## Run headless: godot --headless res://tests/test_issue367.tscn
 ## Exit code 0 = pass.
 
-const MenuScene := preload("res://LevelConfigMenu.tscn")
+const MenuScene := preload("res://scenes/menus/LevelConfigMenu.tscn")
 
 var _fails: Array = []
 

@@ -24,7 +24,7 @@ extends Node
 ## Run headless: godot --headless res://tests/test_issue392.tscn
 ## Exit code 0 = pass.
 
-const ControllerScript := preload("res://TurnController.gd")
+const ControllerScript := preload("res://scripts/TurnController.gd")
 
 var _fails: Array = []
 

@@ -10,7 +10,7 @@ extends Node
 
 func _ready() -> void:
 	add_to_group("level")  # Issue #211: the menu only works in levels.
-	var menu: CanvasLayer = load("res://InGameMenu.gd").new()
+	var menu: CanvasLayer = load("res://scripts/InGameMenu.gd").new()
 	add_child(menu)
 	# Let the menu build its panel.
 	await get_tree().physics_frame

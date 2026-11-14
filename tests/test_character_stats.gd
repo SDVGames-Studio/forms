@@ -12,8 +12,8 @@ const Stats := preload("res://scripts/CharacterStats.gd")
 func _ready() -> void:
 	var ok := true
 	ok = _check_constants() and ok
-	ok = _same_as_stats("Player.gd", load("res://Player.gd")) and ok
-	ok = _same_as_stats("Npc.gd", load("res://Npc.gd")) and ok
+	ok = _same_as_stats("Player.gd", load("res://scripts/Player.gd")) and ok
+	ok = _same_as_stats("Npc.gd", load("res://scripts/Npc.gd")) and ok
 	ok = await _check_player() and ok
 	ok = await _check_npc() and ok
 	print("ISSUE111 ALL_OK=", ok)
@@ -58,7 +58,7 @@ func _same_as_stats(name: String, scr: Script) -> bool:
 
 func _check_player() -> bool:
 	var player := CharacterBody2D.new()
-	player.set_script(load("res://Player.gd"))
+	player.set_script(load("res://scripts/Player.gd"))
 	add_child(player)
 	await get_tree().process_frame
 	var ok: bool = int(player.health) == Stats.MAX_HEALTH
@@ -71,7 +71,7 @@ func _check_player() -> bool:
 
 func _check_npc() -> bool:
 	var npc := CharacterBody2D.new()
-	npc.set_script(load("res://Npc.gd"))
+	npc.set_script(load("res://scripts/Npc.gd"))
 	add_child(npc)
 	await get_tree().process_frame
 	var ok: bool = int(npc.health) == Stats.MAX_HEALTH

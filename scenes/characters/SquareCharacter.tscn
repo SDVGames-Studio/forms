@@ -1,0 +1,12 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/ModularCharacterVisual.gd" id="1_mchar"]
+
+[node name="SquareCharacter" type="Control"]
+offset_left = -32.0
+offset_top = -32.0
+offset_right = 32.0
+offset_bottom = 32.0
+script = ExtResource("1_mchar")
+body_shape = "square"
+body_color = Color(1, 0.84, 0.2, 1)

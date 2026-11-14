@@ -11,8 +11,8 @@ func _ready() -> void:
 	var ok := true
 
 	# --- Static check: every character shape in every level is a capsule. ---
-	for level_path in ["res://Level.tscn", "res://Level2.tscn",
-			"res://Level3.tscn", "res://LevelDuel.tscn"]:
+	for level_path in ["res://scenes/levels/Level.tscn", "res://scenes/levels/Level2.tscn",
+			"res://scenes/levels/Level3.tscn", "res://scenes/levels/LevelDuel.tscn"]:
 		var scene: PackedScene = load(level_path)
 		var root := scene.instantiate()
 		add_child(root)

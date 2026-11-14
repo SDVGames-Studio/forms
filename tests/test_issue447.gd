@@ -10,7 +10,7 @@ extends Node
 ## Run headless: godot --headless res://tests/test_issue447.tscn
 ## Exit code 0 = pass.
 
-const BotControllerScript := preload("res://BotController.gd")
+const BotControllerScript := preload("res://scripts/BotController.gd")
 
 # OBSERVATION_SPEC.md constants, copied from the spec table — NOT from
 # BotController.gd — so the test fails if either side drifts.

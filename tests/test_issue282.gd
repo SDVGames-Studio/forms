@@ -10,12 +10,12 @@ extends Node
 ## Exit code 0 = pass.
 
 const LEVELS := [
-	preload("res://Level.tscn"),
-	preload("res://Level2.tscn"),
-	preload("res://Level3.tscn"),
-	preload("res://Level4.tscn"),
-	preload("res://Level5.tscn"),
-	preload("res://LevelDuel.tscn"),
+	preload("res://scenes/levels/Level.tscn"),
+	preload("res://scenes/levels/Level2.tscn"),
+	preload("res://scenes/levels/Level3.tscn"),
+	preload("res://scenes/levels/Level4.tscn"),
+	preload("res://scenes/levels/Level5.tscn"),
+	preload("res://scenes/levels/LevelDuel.tscn"),
 ]
 
 ## A shape that forces the ShapeVisual body path in both Player and Npc.

@@ -31,7 +31,7 @@ class SettingsCategoriesDriver extends Node:
 
 	func run() -> void:
 		var ok := true
-		var settings: Node = load("res://SettingsMenu.tscn").instantiate()
+		var settings: Node = load("res://scenes/menus/SettingsMenu.tscn").instantiate()
 		add_child(settings)
 		await get_tree().process_frame
 
@@ -52,14 +52,14 @@ class SettingsCategoriesDriver extends Node:
 
 		# --- Categories open their screens (standalone scene change). ---
 		ok = ok and await _nav_check(settings, "_on_team_pressed",
-			"res://TeamMenu.tscn", "teams")
+			"res://scenes/menus/TeamMenu.tscn", "teams")
 		ok = ok and await _nav_check(settings, "_on_hotkeys_pressed",
-			"res://HotkeysMenu.tscn", "controls")
+			"res://scenes/menus/HotkeysMenu.tscn", "controls")
 		ok = ok and await _nav_check(settings, "_on_debug_pressed",
-			"res://DebugMenu.tscn", "debug")
+			"res://scenes/menus/DebugMenu.tscn", "debug")
 
 		# --- DebugMenu: switches carry the persisted state, flips save. ---
-		var debug_menu: Node = load("res://DebugMenu.tscn").instantiate()
+		var debug_menu: Node = load("res://scenes/menus/DebugMenu.tscn").instantiate()
 		add_child(debug_menu)
 		await get_tree().process_frame
 		var debug_check: CheckButton = debug_menu.get_node("%DebugCheck")
@@ -97,7 +97,7 @@ class SettingsCategoriesDriver extends Node:
 
 		# --- Overlay mode (issue #304): Debug opens as a submenu on top,
 		# Back returns to the settings screen without a scene change. ---
-		var overlay: Node = load("res://SettingsMenu.tscn").instantiate()
+		var overlay: Node = load("res://scenes/menus/SettingsMenu.tscn").instantiate()
 		overlay.set("in_game", true)
 		add_child(overlay)
 		await get_tree().process_frame

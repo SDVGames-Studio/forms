@@ -22,7 +22,7 @@ extends Node
 
 const ObsNormalize := preload("res://addons/godot_native_rl/controllers/obs_normalize.gd")
 
-const SCENE_PATH := "res://inference_scene.tscn"
+const SCENE_PATH := "res://scenes/testing/inference_scene.tscn"
 const STATS_PATH := "res://models/vecnormalize_stats.json"
 const EXPECT_HEAD_ORDER := ["aim", "attack", "move", "target"]  # SB3 MultiDiscrete([3,8,6,4])
 const EXPECT_HEAD_SIZES := [3, 8, 6, 4]

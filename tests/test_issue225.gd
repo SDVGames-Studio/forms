@@ -6,14 +6,14 @@ extends Node
 ## Run headless: godot --headless res://tests/test_issue225.tscn
 ## Exit code 0 = pass.
 
-const ProjectileBodyScript := preload("res://ProjectileBody.gd")
+const ProjectileBodyScript := preload("res://scripts/ProjectileBody.gd")
 
 const LEVELS := {
-	"res://Level.tscn": 2,
-	"res://Level2.tscn": 2,
-	"res://Level3.tscn": 1,
-	"res://Level4.tscn": 2,
-	"res://LevelDuel.tscn": 1,
+	"res://scenes/levels/Level.tscn": 2,
+	"res://scenes/levels/Level2.tscn": 2,
+	"res://scenes/levels/Level3.tscn": 1,
+	"res://scenes/levels/Level4.tscn": 2,
+	"res://scenes/levels/LevelDuel.tscn": 1,
 }
 
 
