@@ -9,6 +9,13 @@ extends CharacterBody2D
 ##  - AIM: a view angle like the player (aim_dir) instead of flat shots;
 ##  - WEAPONS: switched by distance — spear up close, shotgun at medium
 ##    range, rocket farther, grenade lobbed at the farthest targets.
+##    Issue #546: the WHOLE arsenal is in play — each distance band
+##    rotates through every weapon that fits it (melee: spear/bat/
+##    jackhammer; flat: shotgun/pistol; open lane: rocket/railgun;
+##    ballistic: grenade/mine, railgun on a clear line), and the tools
+##    too: a badly hurt AI can hand its turn to the healthiest teammate
+##    (Switch) and the ballistic band sometimes lobs the Rock tool
+##    instead of a weapon (it crumbles into fresh ground — cover).
 ## The main goal stays: eliminate all other teams.
 
 const WeaponScript := preload("res://scripts/Weapon.gd")
@@ -135,6 +142,15 @@ const KITE_HEALTH_FRACTION := 0.35
 ## 0) fights as before.
 const TOOL_THREAT_RANGE := 360.0
 const TELEPORT_THREAT_RANGE := 170.0
+## Issue #546: the ROCK tool's rotation slot — every ROCK_ROTATION-th
+## acting window the ballistic band plays the rock instead of the
+## picked weapon: the rock crumbles into destructible ground where it
+## lands, building cover in the enemy's lane. Like every tool it
+## consumes this character's turn action (tool OR weapon, issue #207),
+## so one rock = this figure's whole turn. Deterministic on purpose:
+## the band picks and the rock slot all key off _pick_rotation, so a
+## fresh figure's first fight is always the classic weapon pick.
+const ROCK_ROTATION := 4
 ## Issue #221: seconds of "nothing useful left" (not really moving, not
 ## firing, weapon idle) before the AI ends its own turn early instead of
 ## standing around until the turn timer runs out.
@@ -153,6 +169,14 @@ var _weapon: Node2D
 ## re-pick must never swap guns after a shot has left, so an AI can no
 ## longer thrust the spear and finish the same turn with the shotgun.
 var _weapon_locked := false
+
+## Issue #546: which candidate of the current distance band this figure
+## fights with — advanced by one at every CLOSED acting window (the
+## deactivation edge in _physics_process), so each of the figure's turns
+## takes the NEXT weapon of whatever band it fights in. Deterministic:
+## a fresh figure starts at rotation 0 (the classic first pick of each
+## band), and over a round the whole arsenal cycles through its hands.
+var _pick_rotation := 0
 
 
 ## Issue #277: the gravity unit vector the last physics frame used — the
@@ -526,11 +550,22 @@ func _physics_process(delta: float) -> void:
 			and not TurnController.is_input_frozen()
 	if active and not _active_last:
 		_begin_my_turn()
+	if _active_last and not active:
+		# Issue #546: this figure's acting window just closed — its next
+		# one rotates to the next weapon of the distance band (see
+		# _pick_rotation), so consecutive turns cycle the whole arsenal.
+		_pick_rotation += 1
 	_active_last = active
 	if not active:
-		# Issue #250 rework: zero the walk along the surface (the tangent
-		# frame), keep the fall/jump component along gravity.
-		velocity = grav * velocity.dot(grav)
+		# Issue #546: a running jackhammer drill keeps pushing this NPC —
+		# the weapon re-sets the drill velocity every tick
+		# (Weapon._tick_jackhammer, the same ride Player.gd grants since
+		# #316), so the idle branch must not zero the tangential component
+		# while the drill runs.
+		if _weapon == null or not _weapon.is_drilling():
+			# Issue #250 rework: zero the walk along the surface (the tangent
+			# frame), keep the fall/jump component along gravity.
+			velocity = grav * velocity.dot(grav)
 		move_and_slide()
 		return
 
@@ -622,7 +657,10 @@ func _physics_process(delta: float) -> void:
 	# grenade is the far band — so the gate is aim + cooldown only.
 	if _cooldown_left == 0.0 and _aim_ready() and not _tool_used:
 		_pick_weapon(distance, absf(_target.global_position.y - global_position.y))
-		_shoot()
+		# Issue #546: sometimes the ballistic band plays the ROCK tool
+		# instead of the picked weapon — cover-building terrain play.
+		if not _try_throw_rock():
+			_shoot()
 		_cooldown_left = FIRE_PAUSE[difficulty]
 
 	# Issue #221: stall watchdog — ended turns instead of idle standing.
@@ -657,6 +695,11 @@ func _begin_my_turn() -> void:
 	if distance <= TOOL_THREAT_RANGE:
 		set_shielded(true)
 		_tool_used = true
+		return
+	# Issue #546: hurt but not under an immediate threat — the SWITCH
+	# tool: hand this member's turn to the team's healthiest teammate
+	# (the classic switch-out) instead of fighting on at low health.
+	_try_switch_to_healthiest()
 
 
 ## Issue #221: TELEPORT tool — hop away from the threatening enemy to
@@ -828,6 +871,12 @@ func _same_side(other: Node2D) -> bool:
 
 
 ## Issue #66: choose the weapon that fits the distance to the target.
+## Issue #546: every band rotates through ALL the weapons that fit it
+## (the band's candidate at this figure's rotation, filtered by the
+## team budget), so the computer exercises the whole arsenal — mine,
+## jackhammer, railgun, pistol and baseball bat included — instead of
+## the four classic guns. The spear (infinite uses) always ends up
+## affordable, so a pick never fails.
 func _pick_weapon(distance: float, height_diff: float = 0.0) -> void:
 	if _weapon == null:
 		return
@@ -838,32 +887,63 @@ func _pick_weapon(distance: float, height_diff: float = 0.0) -> void:
 	# in one turn on LevelDuelBig). While locked, the re-pick is a no-op.
 	if _weapon_locked:
 		return
+	var candidates: Array
 	if distance <= SPEAR_RANGE_NPC:
-		_weapon.selected_weapon = 3  # spear (melee)
+		# Issue #546: the melee band — spear thrust, baseball bat swing
+		# (BAT_RANGE) or a jackhammer grind down the adjacent enemy.
+		candidates = [3, 8, 5]
 	elif distance <= SHOTGUN_CLOSE_NPC:
-		# Issue #221: at close range only melee or the flat shotgun — a
-		# lobbed grenade or a rocket detonating that near self-harms, even
-		# when the target sits above us.
-		_weapon.selected_weapon = 0  # shotgun
+		# Issue #221 keeps applying: at close range only flat/projectile
+		# weapons — never a blast that would self-harm. Issue #546 adds
+		# the pistol (straight bullet, no spread) beside the shotgun.
+		candidates = [0, 7]
 	elif distance <= SHOTGUN_RANGE_NPC and height_diff <= 60.0:
-		_weapon.selected_weapon = 0  # shotgun (flat line of sight only)
+		candidates = [0, 7]  # shotgun / pistol (flat line of sight only)
 	elif distance <= ROCKET_RANGE_NPC and height_diff <= 40.0 \
 			and not _teammate_blocks_shot():
 		# Issue #221: the flat rocket finally gets used — it reaches farther
 		# than the pellets on an open lane with no teammate in the corridor.
-		_weapon.selected_weapon = 1  # rocket
+		# Issue #546: the railgun alternates on the same open lane (the
+		# hitscan beam shares the rocket's flat, unobstructed corridor).
+		candidates = [1, 6]
 	else:
 		# Issue #99: prefer the ballistic grenade for long range or any
 		# height difference — its arc reaches targets over terrain, while a
 		# straight rocket just hits the platform underside (or the blast
 		# catches the shooter's own team below instead of the target).
-		_weapon.selected_weapon = 2  # grenade
-	# Issue #305: the team's budget for the picked weapon may be spent —
-	# fall back to the spear, whose uses are infinite (there is always
-	# something left to fight with).
-	if not WeaponInventory.can_spend_weapon(
-			TurnController.team_id_of(self), _weapon.selected_weapon):
-		_weapon.selected_weapon = 3
+		# Issue #546: the mine joins the ballistic band (same lob, area
+		# denial where it lands) and the railgun fits too when the straight
+		# line to the target is clear of world geometry.
+		candidates = [2, 4]
+		if _line_clear(_target):
+			candidates.append(6)
+	_weapon.selected_weapon = _pick_affordable(candidates)
+
+
+## Issue #546: the band's candidate at this figure's rotation — the
+## team's weapon budget must still have a use of it (the spear is always
+## affordable, infinite uses), so rotation never picks a gun that cannot
+## fire. Rotation 0 is the classic first pick of the band.
+func _pick_affordable(candidates: Array) -> int:
+	var team := TurnController.team_id_of(self)
+	var affordable: Array = candidates.filter(
+			func(w): return WeaponInventory.can_spend_weapon(team, w))
+	if affordable.is_empty():
+		return 3  # spear — infinite uses, always something to fight with
+	return int(affordable[_pick_rotation % affordable.size()])
+
+
+## Issue #546: is the straight segment to `fig` clear of world geometry
+## (layer 1 ground, destructible and indestructible alike)? The railgun
+## beam stops at the first terrain it meets, so the far band only gets
+## the railgun candidate while a clear line exists.
+func _line_clear(fig: Node2D) -> bool:
+	if fig == null or not is_instance_valid(fig) or not is_inside_tree():
+		return false
+	var query := PhysicsRayQueryParameters2D.create(
+			global_position, fig.global_position, 1)
+	return get_world_2d().direct_space_state \
+			.intersect_ray(query).is_empty()
 
 
 ## Issue #66: fire through the carried Weapon (it owns the cooldown,
@@ -896,10 +976,13 @@ func _shoot() -> bool:
 				return false
 		else:
 			return false
-	# Issue #120: never lob a grenade that would land inside our own blast
-	# radius — hold fire at point-blank range instead (and switch to the
-	# spear so the next in-range tick closes the gap rather than re-throwing).
-	if cares and _weapon.selected_weapon == 2 and _grenade_unsafe():
+	# Issue #120: never lob a grenade (or, issue #546, throw a MINE — the
+	# same lob and a grenade-sized blast) that would land inside our own
+	# blast radius — hold fire at point-blank range instead (and switch to
+	# the spear so the next in-range tick closes the gap rather than
+	# re-throwing).
+	if cares and (_weapon.selected_weapon == 2 or _weapon.selected_weapon == 4) \
+				and _grenade_unsafe():
 		# Issue #481: the swap is refused while locked — a locked AI holds
 		# fire at point-blank (the stall watchdog ends its turn) instead of
 		# trading the locked grenade for the spear.
@@ -932,6 +1015,80 @@ func _switch_weapon(id: int) -> bool:
 	if _weapon_locked:
 		return false
 	_weapon.selected_weapon = id
+	return true
+
+
+## Issue #546: the ROCK tool. Decided in the fire gate: on its rotation
+## slot (see ROCK_ROTATION) when the picked weapon sits in the ballistic
+## band (grenade/mine), the AI lobs the rock at the target instead of
+## firing — the rock crumbles into destructible ground where it lands
+## (Weapon.throw_rock / ProjectileBody), building cover in the enemy's
+## lane. Returns true when the rock left the hand.
+func _try_throw_rock() -> bool:
+	if difficulty < 1 or _weapon == null:
+		return false
+	if not (_weapon.selected_weapon == 2 or _weapon.selected_weapon == 4):
+		return false
+	if _pick_rotation % ROCK_ROTATION != ROCK_ROTATION - 1:
+		return false
+	return _throw_rock_tool()
+
+
+## Issue #546: the actual rock throw — budget check + launch + the
+## turn-action spend. Split from the rotation gate above so the throw
+## itself stays deterministically testable.
+func _throw_rock_tool() -> bool:
+	if not WeaponInventory.can_spend_tool(
+			TurnController.team_id_of(self), ToolInventory.TOOL_ROCK):
+		return false
+	_weapon.throw_rock(1.0)
+	# The rock IS this character's action for the turn (tool OR weapon,
+	# issue #207): no weapon may follow it, and the weapon choice freezes
+	# so the distance re-pick never swaps away from the spent turn.
+	_tool_used = true
+	_weapon_locked = true
+	DebugInfo.log("%s throws a rock" % display_name)
+	return true
+
+
+## Issue #546: the SWITCH tool — a badly hurt AI (the caller's kite
+## branch) hands the REST of its turn to the team's healthiest living
+## teammate, exactly what a player uses the Switch tool for: the hurt
+## figure sits the action out and the healthy one fights. Spends one use
+## of the team's switch budget; the receiving teammate may still act
+## (the tool-OR-weapon rule is per character). Returns true when the
+## hand-over happened.
+func _try_switch_to_healthiest() -> bool:
+	if not WeaponInventory.can_spend_tool(
+			TurnController.team_id_of(self), ToolInventory.TOOL_SWITCH):
+		return false
+	var best: Node2D = null
+	var best_hp := 0.0
+	for mate in get_tree().get_nodes_in_group(
+				"player_team" if is_in_group("player_team") else "enemy_team"):
+		if mate == self or not (mate is Node2D) or not is_instance_valid(mate):
+			continue
+		if not _same_side(mate):
+			continue
+		var hp = mate.get("health")
+		if hp == null or float(hp) <= 0.0:
+			continue
+		if float(hp) > best_hp:
+			best_hp = float(hp)
+			best = mate
+	# Only switch to someone MEANINGFULLY healthier — above the kite
+	# threshold the receiver takes no hurt-branch itself, so two hurt
+	# figures can never ping-pong the turn between each other.
+	if best == null or best_hp <= float(MAX_HEALTH) * KITE_HEALTH_FRACTION:
+		return false
+	WeaponInventory.spend_tool(
+			TurnController.team_id_of(self), ToolInventory.TOOL_SWITCH)
+	# This figure's turn action is spent (tool OR weapon) — also the
+	# one-frame fuse while the active-member change propagates.
+	_tool_used = true
+	TurnController.active_member = best
+	DebugInfo.log("%s switches out to %s" % [display_name,
+			str(best.get("display_name"))])
 	return true
 
 
