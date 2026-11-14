@@ -60,7 +60,7 @@ func _ready() -> void:
 	chooser._pick_weapon(150.0, 300.0)
 	_check(int(chooser._weapon.selected_weapon) == 0,
 			"close range keeps the shotgun even over a height difference")
-	chooser._pick_weapon(450.0, 10.0)
+	chooser._pick_weapon(550.0, 10.0)
 	_check(int(chooser._weapon.selected_weapon) == 1,
 			"flat mid/long lane must pick the rocket")
 	chooser._pick_weapon(450.0, 300.0)
