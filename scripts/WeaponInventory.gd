@@ -560,7 +560,13 @@ func refresh_tools() -> void:
 	# Issue #207: the WEAPON slots gray out while the active member already
 	# used a tool this turn (it can no longer fire) — the mirror of the
 	# tool graying below for a character that already fired.
-	var weapons_blocked: bool = tools.has_used_tool(TurnController.active_member)
+	# Issue #553: active_member may be a member that DIED and was freed
+	# (e.g. refresh_tools runs from the next turn's reset_turn before the
+	# controller picks a new member) — passing a freed object into the
+	# typed has_used_tool parameter errors out, so guard it.
+	var active: Node = TurnController.active_member
+	var weapons_blocked: bool = is_instance_valid(active) \
+			and tools.has_used_tool(active)
 	for i in _slots.size():
 		# Issue #305: a spent weapon grays out too — its budget is gone.
 		var spent: bool = i != WEAPON_SPEAR \

@@ -629,6 +629,13 @@ func _begin_turn(team: String) -> void:
 		if team_id_of(figure) != team:
 			board_enemies.append(figure)
 	TeamBlackboard.update_team(team, members, board_enemies)
+	# Issue #187: drop the previous turn's active member BEFORE the turn
+	# bookkeeping below — the member may have DIED and been freed last
+	# turn (issue #553), so any handler still reading active_member
+	# (ToolInventory.reset_turn -> WeaponInventory.refresh_tools ->
+	# has_used_tool) would pass a freed object into a typed parameter
+	# and error out.
+	active_member = null
 	# Issue #131 rework, per-character since #143: the lock must survive
 	# the enemy turn — only the start of a fresh PLAYER turn re-enables
 	# weapon selection (for every character).
@@ -643,12 +650,6 @@ func _begin_turn(team: String) -> void:
 		if member.has_method("set_shielded"):
 			member.set_shielded(false)
 	_turn_left = _turn_duration()
-	# Issue #187: drop the previous turn's active member before picking.
-	# Without this, an enemy NPC left in active_member from the enemy turn
-	# makes the "no member is controlled" fallback below never fire, so a
-	# player turn can start with NOBODY controlled (e.g. right after the
-	# controlled character died) — the player can neither act nor switch.
-	active_member = null
 	if members.is_empty():
 		_check_win()
 		return
