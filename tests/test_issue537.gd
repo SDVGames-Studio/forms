@@ -189,13 +189,19 @@ func _ready() -> void:
 		if row is HBoxContainer:
 			first_row = row
 			break
+	# Issue #537 rework v4: the square is a plain ColorRect filled
+	# with the team's color (the ColorPickerButton wore the theme's
+	# flat gray Button style and hid the color) — see test_issue537_v5.
 	_check("color square between name and grid",
 		first_row != null and first_row.get_child(0) is Label
-		and first_row.get_child(1) is ColorPickerButton
+		and first_row.get_child(1) is ColorRect
 		and first_row.get_child(2) is GridContainer)
-	if first_row != null and first_row.get_child(1) is ColorPickerButton:
+	if first_row != null and first_row.get_child(1) is ColorRect:
+		var square := first_row.get_child(1) as ColorRect
+		_check("the square wears the team's actual color",
+			square.color == GameConfig.teams[0]["color"])
 		var picked := Color(0.5, 0.25, 0.75)
-		(first_row.get_child(1) as ColorPickerButton).color_changed.emit(picked)
+		menu._apply_team_color(0, picked)
 		_check("the picker recolors the team",
 			GameConfig.teams[0]["color"] == picked)
 
