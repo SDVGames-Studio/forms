@@ -62,6 +62,20 @@ enum MouthStyle { NONE, NEUTRAL, SMILE, FROWN, OPEN }
 		pupil_color = value
 		queue_redraw()
 
+## Issue #558: animation hooks, driven by CharacterAnimator (harmless
+## on their own). eye_open < 1 draws a lid closing over the eye
+## (0 = fully closed — the blink); pupil_shift moves both pupils by a
+## fraction of the eye radius (small idle glances).
+@export_range(0.0, 1.0, 0.01) var eye_open := 1.0:
+	set(value):
+		eye_open = clampf(value, 0.0, 1.0)
+		queue_redraw()
+
+@export var pupil_shift := Vector2.ZERO:
+	set(value):
+		pupil_shift = value
+		queue_redraw()
+
 @export var eyebrow_style: EyebrowStyle = EyebrowStyle.RAISED:
 	set(value):
 		eyebrow_style = value
@@ -172,8 +186,18 @@ func _draw_eyes(s: Vector2, off: float, u: float) -> void:
 		return
 	for side in [-1.0, 1.0]:
 		var center := Vector2(s.x * 0.5 + side * s.x * 0.15, eye_y)
-		draw_circle(center, radius, eye_white)
-		draw_circle(center + Vector2(0.0, radius * 0.25), radius * 0.45, pupil_color)
+		# Issue #558: the animated pupil glance offset (fraction of the
+		# eye radius, zero when the face is not animated).
+		var shift := pupil_shift * radius
+		draw_circle(center + shift, radius, eye_white)
+		draw_circle(center + Vector2(0.0, radius * 0.25) + shift,
+				radius * 0.45, pupil_color)
+		# Issue #558: the animated blink — a body-colored lid slides over
+		# the eye from the top (eye_open = 1 draws no lid at all).
+		if eye_open < 0.999:
+			var lid_h := radius * 2.0 * (1.0 - eye_open)
+			draw_rect(Rect2(center.x - radius * 1.15, center.y - radius,
+					radius * 2.3, lid_h), body_color)
 		if eye_style == EyeStyle.SLEEPY:
 			# Half-closed lid: body-colored cover over the eye's top plus
 			# a dark edge line where the lid ends.

@@ -79,6 +79,12 @@ var _visual: ColorRect
 ## Issue #226: ShapeVisual body drawn instead of the ColorRect body when
 ## the team shape is not a square.
 var _shape_visual: Control
+
+## Issue #558: procedural idle/walk/jump animation driver — a purely
+## visual Node that bends the body visual from this figure's movement
+## state (see CharacterAnimator.gd). Never touches physics or AI.
+var _animator: CharacterAnimator = null
+
 var _dead := false
 var _target: Node2D
 var _cooldown_left := 0.0
@@ -245,6 +251,25 @@ func _apply_team_color() -> void:
 func set_team_shape(value: String) -> void:
 	team_shape = value
 	_apply_team_shape()
+	_attach_animator()
+
+
+## Issue #558: point the procedural animator at whichever body visual is
+## active — the ShapeVisual silhouette or the ColorRect square (mirrors
+## Player.gd; created once, re-targeted after every shape change).
+func _attach_animator() -> void:
+	var visual: Control = null
+	if _shape_visual != null and _shape_visual.visible:
+		visual = _shape_visual
+	elif _visual != null and _visual.visible:
+		visual = _visual
+	if visual == null:
+		return
+	if _animator == null:
+		_animator = CharacterAnimator.new()
+		_animator.name = "CharacterAnimator"
+		add_child(_animator)
+	_animator.setup(self, visual)
 
 
 ## Issue #226: non-square team shapes replace the plain ColorRect body
@@ -335,6 +360,7 @@ func _ready() -> void:
 		add_child(_visual)
 	_visual.color = team_color
 	_apply_team_shape()
+	_attach_animator()
 
 	_build_health_bar()
 	# Issue #252: debug-mode visuals — HP number, damage popup, arrow.
@@ -644,6 +670,9 @@ func _physics_process(delta: float) -> void:
 		# Issue #202: jump must point AWAY from the floor (see Player.gd).
 		velocity = grav * JUMP_VELOCITY
 		_jump_left = JUMP_COOLDOWN
+		# Issue #558: squash-before-takeoff impulse — purely visual.
+		if _animator != null:
+			_animator.notify_jump()
 
 	# Issue #66: pick the weapon by distance and take a shot when in range.
 	# Issue #147: hold fire until we actually face the target and the view
