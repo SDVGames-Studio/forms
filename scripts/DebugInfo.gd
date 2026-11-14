@@ -15,6 +15,12 @@ const OSDScript := preload("res://scripts/OSD.gd")
 const ArrowScript := preload("res://scripts/DebugArrow.gd")
 const HitboxScript := preload("res://scripts/DebugHitbox.gd")
 
+## Issue #554: group of every live debug-visual node (figure texts, the
+## arrow, the hitbox overlays). attach() registers them all here so a
+## settings flip can retarget their VISIBILITY at once — the switch
+## applies to the RUNNING level without the level restart.
+const DEBUG_VISUALS_GROUP := "debug_visuals"
+
 ## Issue #402: hitbox overlay palette. The FIRST hitbox of a figure is
 ## transparent purple (the issue's main request); a figure with several
 ## different collision hitboxes gets a DIFFERENT color per shape so they
@@ -31,12 +37,11 @@ const HITBOX_COLORS: Array[Color] = [
 const DAMAGE_POPUP_TIME := 1.0
 
 
-## Issue #252: attach the debug visuals to a figure (no-op with the debug
-## mode off — nothing is built, so normal play looks exactly as before).
+## Issue #554: the visuals are ALWAYS built and registered in the
+## DEBUG_VISUALS_GROUP — only their VISIBILITY follows the live flag, so
+## flipping the switch mid-level shows/hides them immediately (the old
+## "nothing is built while off" contract needed a level restart).
 static func attach(character: Node) -> void:
-	if not GameConfig.debug_mode:
-		return
-	# HP number under the health bar (the bar itself ends at y = -40).
 	var hp_label := Label.new()
 	hp_label.name = "DebugHp"
 	hp_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -45,10 +50,12 @@ static func attach(character: Node) -> void:
 	hp_label.offset_right = 70.0
 	hp_label.offset_bottom = -22.0
 	hp_label.add_theme_font_size_override("font_size", 12)
+	_register(hp_label)
 	character.add_child(hp_label)
 	# Tiny centre-to-top arrow.
 	var arrow := ArrowScript.new()
 	arrow.name = "DebugArrow"
+	_register(arrow)
 	character.add_child(arrow)
 	# Damage number, hidden until the figure actually takes damage.
 	var popup := Label.new()
@@ -61,6 +68,7 @@ static func attach(character: Node) -> void:
 	popup.add_theme_color_override("font_color", Color(1.0, 0.35, 0.3, 1.0))
 	popup.add_theme_color_override("font_outline_color", Color(0.1, 0.05, 0.1, 1.0))
 	popup.add_theme_constant_override("outline_size", 6)
+	popup.add_to_group(DEBUG_VISUALS_GROUP)
 	popup.visible = false
 	character.add_child(popup)
 	# Issue #402: a transparent hitbox overlay per collision shape — purple
@@ -73,8 +81,29 @@ static func attach(character: Node) -> void:
 			var hitbox: Node2D = HitboxScript.new()
 			hitbox.name = "DebugHitbox%d" % hitbox_index
 			hitbox.set("overlay_color", hitbox_color(hitbox_index))
+			_register(hitbox)
 			child.add_child(hitbox)
 			hitbox_index += 1
+
+
+## Issue #554: register a freshly built debug visual in the live group and
+## give it the CURRENT switch state (the damage popup overrides this back
+## to hidden right after — it waits for an actual damage event).
+static func _register(visual: Node) -> void:
+	visual.add_to_group(DEBUG_VISUALS_GROUP)
+	if visual is CanvasItem:
+		(visual as CanvasItem).visible = GameConfig.debug_mode
+
+
+## Issue #554: apply the CURRENT debug mode to every live debug visual —
+## figures built under either switch state keep their nodes; only the
+## visibility flips, so the settings toggle hits the RUNNING level at
+## once instead of from the next level on. Call after changing
+## GameConfig.debug_mode (DebugMenu._on_debug_toggled).
+static func sync_debug_visuals(tree: SceneTree) -> void:
+	for node in tree.get_nodes_in_group(DEBUG_VISUALS_GROUP):
+		if node is CanvasItem:
+			(node as CanvasItem).visible = GameConfig.debug_mode
 
 
 ## Issue #402: the palette color for hitbox number `index` (wraps).
@@ -89,8 +118,12 @@ static func update_hp(character: Node, hp: int, max_hp: int) -> void:
 		label.text = "HP %d/%d" % [hp, max_hp]
 
 
-## Issue #252: pop the damage number up for a second near the figure.
+## Issue #252: pop the damage number up for a second near the figure
+## (issue #554: the popup now always exists — skip while the debug mode
+## is off so it never pops on top of a hidden overlay set).
 static func show_damage(character: Node, amount: int) -> void:
+	if not GameConfig.debug_mode:
+		return
 	var popup := character.get_node_or_null(NodePath("DebugDamage")) as Label
 	if popup == null:
 		return
