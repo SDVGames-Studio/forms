@@ -41,6 +41,12 @@ extends Node2D
 ##                    reaches, it LAUNCHES them — an acceleration along
 ##                    the shot direction scaled by the charge that keeps
 ##                    pushing for a moment after the contact (issue #527)
+## 10 Circular saw (key C) — issue #570: thrown like a mine (hold F to
+##                    charge the lob). On landing the blade SPINS for a
+##                    few seconds, SUCKING IN every nearby figure (a
+##                    steady pull toward the blade, either team) and
+##                    grinding the ones it reaches for damage per
+##                    second — then it stops and disappears.
 ## Visuals are plain rectangles built in code — no extra assets.
 
 const ProjectileScript := preload("res://scripts/Projectile.gd")
@@ -67,7 +73,7 @@ const COOLDOWN := 0.3
 ## shotgun 2, rocket 1, grenade 1, spear 2, mine 1, jackhammer 1, railgun 1,
 ## pistol 3, baseball bat 1 — issues #526, #527) and the 3-second delay
 ## after every shot during which the character cannot shoot.
-const SHOTS_PER_TURN: Array = [2, 1, 1, 2, 1, 1, 1, 3, 1]
+const SHOTS_PER_TURN: Array = [2, 1, 1, 2, 1, 1, 1, 3, 1, 1]
 const SHOT_DELAY := 3.0
 
 const PELLET_SPEED := 900.0
@@ -189,13 +195,21 @@ const BAT_DAMAGE := 30
 const BAT_LATERAL := 24.0
 const BAT_KNOCKBACK_SPEED := 700.0
 const BAT_KNOCKBACK_TIME := 0.25
+## Issue #570: the circular saw — thrown with the mine's lobbed arc and
+## aiming. It never explodes: on landing the blade spins (all spin
+## behaviour constants live in ProjectileBody next to the mine's, see
+## Kind.SAW), sucking in nearby figures and grinding the contact ones
+## for damage per second, then it stops and disappears. One saw per turn,
+## the standard 5 uses per team per round (WeaponInventory).
+const SAW_SPEED := 480.0
+const SAW_MASS := 0.8
 
 var _facing := 1.0
 var _cooldown_left := 0.0
 ## Issue #101: shots already made this turn by this member, per weapon
 ## (issue #116: the quota is per weapon so switching after a shot keeps
 ## the newly selected weapon's own quota).
-var _shots_used := [0, 0, 0, 0, 0, 0, 0, 0, 0]
+var _shots_used := [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 
 ## Issue #101: seconds left before the character may shoot again.
 var _shot_delay_left := 0.0
@@ -337,6 +351,8 @@ func _held_style_index() -> int:
 		return 8  # pistol (#526)
 	if selected_weapon == 8:
 		return 9  # baseball bat (#527)
+	if selected_weapon == 9:
+		return 10  # circular saw (#570)
 	return selected_weapon
 
 ## Issue #68: size and color of the held weapon per selected weapon index.
@@ -353,6 +369,7 @@ const HELD_STYLES: Array = [
 	{"size": Vector2(46, 4), "color": Color(0.55, 0.85, 1.0, 1)},   # railgun (#359)
 	{"size": Vector2(18, 6), "color": Color(0.5, 0.55, 0.6, 1)},   # pistol (#526)
 	{"size": Vector2(30, 8), "color": Color(0.85, 0.6, 0.3, 1)},  # baseball bat (#527)
+	{"size": Vector2(16, 16), "color": Color(0.75, 0.78, 0.85, 1)},  # circular saw (#570)
 ]
 
 ## Currently selected weapon index (0..5), shared through the inventory HUD.
@@ -706,6 +723,7 @@ func _fire(power := 1.0) -> void:
 		6: _fire_railgun(power)
 		7: _fire_pistol()
 		8: _swing_bat(power)
+		9: _throw_saw(power)
 	# Issue #101+#65: only the LAST shot of the turn hands the turn over;
 	# with quota remaining the character keeps acting after the pause.
 	if _shots_used[clampi(selected_weapon, 0, _shots_used.size() - 1)] >= _shot_limit():
@@ -912,6 +930,31 @@ func _throw_mine(power := 1.0) -> void:
 			MINE_SPEED * strength, strength)
 	_spawn_body(ProjectileBody.Kind.MINE, mine_velocity, MINE_DAMAGE, 0.0,
 		Vector2(14, 14), Color(0.22, 0.24, 0.3, 1), MINE_BLAST, MINE_MASS)
+
+
+## Issue #570: the CIRCULAR SAW throw — the mine's lobbed arc and aiming,
+## but the saw has no fuse and no blast: once it lands it spins in place,
+## sucking in nearby figures and grinding the contact ones (all of that
+## lives in ProjectileBody, Kind.SAW), then it disappears. Issue #99
+## mirror: an NPC lobs the saw ballistically at its target like the
+## grenade, so the blade lands ON the target and the suction does the rest.
+func _throw_saw(power := 1.0) -> void:
+	if npc_target != null and is_instance_valid(npc_target):
+		var to := npc_target.global_position - global_position
+		var t := clampf(to.length() / SAW_SPEED, 0.5, 1.5)
+		var velocity := to / t
+		velocity.y -= 0.5 * 1200.0 * t
+		_spawn_body(ProjectileBody.Kind.SAW, velocity, 0, 0.0,
+			Vector2(16, 16), Color(0.75, 0.78, 0.85, 1), 0.0, SAW_MASS)
+		npc_target = null
+		return
+	var saw_aim := _aim()
+	var strength := lerpf(MIN_SHOT_POWER, 1.0, power)
+	# Issue #277 rework: the indicated aim + frame lob (see lobbed_velocity).
+	var saw_velocity := lobbed_velocity(saw_aim, _frame_up(),
+			SAW_SPEED * strength, strength)
+	_spawn_body(ProjectileBody.Kind.SAW, saw_velocity, 0, 0.0,
+		Vector2(16, 16), Color(0.75, 0.78, 0.85, 1), 0.0, SAW_MASS)
 
 
 ## Issue #227: the Rock TOOL throw. Same launch arc as a player grenade
