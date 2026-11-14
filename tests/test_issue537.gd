@@ -156,7 +156,7 @@ func _ready() -> void:
 		GameConfig.teams[1]["names"].size() == 64)
 
 	# Item 5: "+ Add team" pulls the next definition from the GAME's
-	# team set — with the default three-team set (issue #572) the fourth
+	# team set — with the default four-team set (issue #571) the fifth
 	# level team wraps to the FIRST team in a fresh, unused color.
 	GameConfig.teams = GameConfig.default_teams()
 	menu._game_team_set = GameConfig.teams.duplicate(true)
@@ -166,9 +166,9 @@ func _ready() -> void:
 	for team in GameConfig.teams:
 		used.append(team["color"])
 	menu._on_add_team_pressed()
-	var added_ok := GameConfig.teams.size() == 4
+	var added_ok := GameConfig.teams.size() == 5
 	if added_ok:
-		var added: Dictionary = GameConfig.teams[3]
+		var added: Dictionary = GameConfig.teams[4]
 		_check("added team comes from the game's set",
 			str(added["label"]) == str(menu._game_team_set[0]["label"])
 			and str(added["shape"]) == str(menu._game_team_set[0]["shape"]))
