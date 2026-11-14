@@ -518,18 +518,28 @@ static func save_hotkeys() -> void:
 static func apply(level: Node) -> void:
 	_dealt = 0
 	_dealt_counts = {}
+	_dealt_figures = {}
 	# Issue #226: make sure the team set is loaded (fresh defaults give
 	# every team its own shape) even if the player never opened the team
 	# menu.
 	if teams.is_empty():
 		load_teams()
 	# Trim the player team: keep the hero plus team_size - 1 teammates.
+	# Issue #537 rework v3 (owner item 2): when the level menu drove the
+	# team set, the count comes straight from the menu's grid —
+	# teams[0]["names"] — and figures beyond the staged three SPAWN
+	# beside the hero, so the level fields exactly the chosen count.
+	var hero_count: int = team_size
+	if menu_team_sizes and not teams.is_empty():
+		hero_count = (teams[0]["names"] as Array).size()
 	var teammates: Array[String] = ["Teammate1", "Teammate2"]
 	for i in teammates.size():
-		if i + 1 >= team_size:
+		if i + 1 >= hero_count:
 			var member := level.get_node_or_null(NodePath(teammates[i]))
 			if member != null:
 				member.queue_free()
+	if hero_count > 3:
+		_spawn_missing_player_figures(level, hero_count)
 	# Trim the enemy team: the scenes place at most Npc..Npc3.
 	var npcs: Array[String] = ["Npc", "Npc2", "Npc3"]
 	# Issue #180: AI behavior parameters come from the team configuration:
@@ -549,7 +559,7 @@ static func apply(level: Node) -> void:
 		var npc := level.get_node_or_null(NodePath(npcs[i]))
 		if npc == null:
 			continue
-		if i >= enemy_count:
+		if i >= enemy_count and not menu_team_sizes:
 			npc.queue_free()
 			continue
 		if str(npc.get("team")) == "player":
@@ -560,7 +570,8 @@ static func apply(level: Node) -> void:
 			if npc.has_method("set_team_shape"):
 				npc.call("set_team_shape", team_shape)
 			continue
-		_apply_extra_team(level, npc, 1 + (_dealt % extra))
+		var dealt_team := 1 + (_dealt % extra)
+		_record_dealt_figure(dealt_team, _apply_extra_team(level, npc, dealt_team))
 		_dealt += 1
 	# Issue #226 rework: shape EVERY enemy figure, not only Npc..Npc3 —
 	# Level4 stages Npc4..Npc9, which the name list above never reached.
@@ -579,14 +590,23 @@ static func apply(level: Node) -> void:
 			if npc_node.has_method("set_team_shape"):
 				npc_node.call("set_team_shape", team_shape)
 			continue
-		_apply_extra_team(level, npc_node, 1 + (_dealt % extra))
-		_dealt += 1
+		_apply_extra_team_staged(level, npc_node)
 	# Issue #169: apply the customised team color, shape and names.
-	var members := level.get_tree().get_nodes_in_group("player_team")
-	for member in members:
+	# Issue #537 rework v3: figures trimmed moments ago still sit in the
+	# group until the frame ends — name by the LIVE index, and with
+	# menu-driven sizes read the first team's names straight from the
+	# menu set (the grids go to 64, the classic fields cap at three).
+	var live_members: Array = []
+	for staged in level.get_tree().get_nodes_in_group("player_team"):
+		if not staged.is_queued_for_deletion():
+			live_members.append(staged)
+	var hero_names: Array = (teams[0]["names"] as Array) \
+			if menu_team_sizes else member_names
+	for member in live_members:
 		if member.get("display_name") != null:
-			var idx := members.find(member)
-			member.set("display_name", member_names[mini(idx, member_names.size() - 1)])
+			var idx := live_members.find(member)
+			member.set("display_name",
+					str(hero_names[mini(idx, hero_names.size() - 1)]))
 		if member.has_method("apply_team_setup"):
 			member.call("apply_team_setup")
 	# Issue #521 rework (owner: "the level totally depends on the level
@@ -597,6 +617,175 @@ static func apply(level: Node) -> void:
 	# own setup, so the side plays itself exactly like an enemy team.
 	if team_controller(0) == "computer":
 		_swap_hero_team_for_computer(level)
+	# Issue #537 rework v3 (owner item 2): the level fields EXACTLY the
+	# configured count per team — surplus dealt figures go, missing ones
+	# spawn beside the team's first figure.
+	if menu_team_sizes:
+		_reconcile_menu_team_sizes(level)
+
+
+## Issue #537 rework v3: record one dealt (possibly swapped) figure for
+## its configured team — the reconciliation map the size pass reads.
+static func _record_dealt_figure(team_index: int, figure: Node) -> void:
+	if figure == null:
+		return
+	if not _dealt_figures.has(team_index):
+		_dealt_figures[team_index] = []
+	(_dealt_figures[team_index] as Array).append(figure)
+
+
+## Issue #537 rework v3: the second staged-enemy pass (Level4's
+## Npc4..Npc9 and the duel levels' figures) — same deal as Npc..Npc3.
+static func _apply_extra_team_staged(level: Node, npc_node: Node) -> void:
+	var extra := maxi(1, teams.size() - 1)
+	var dealt_team := 1 + (_dealt % extra)
+	_record_dealt_figure(dealt_team, _apply_extra_team(level, npc_node, dealt_team))
+	_dealt += 1
+
+
+## Issue #537 rework v3 (owner item 2): trim or grow every configured
+## team beyond the first to the menu's member count. Figures already
+## dealt are matched through _dealt_figures (never by color — a
+## per-game recolor may duplicate one); missing figures spawn beside
+## the team's first live figure (any teammate when the team got none).
+static func _reconcile_menu_team_sizes(level: Node) -> void:
+	# The FIRST team's live set is the player-side group itself (the
+	# authored hero + teammates, the spawned extras, the computer
+	# figures a swap may have replaced them with); every other team's
+	# set is its dealt figures.
+	_reconcile_team(level, 0, _live_player_figures(level))
+	for team_index in range(1, teams.size()):
+		_reconcile_team(level, team_index, _tracked_figures(team_index))
+
+
+## The live figures dealt to one configured team (beyond the first).
+static func _tracked_figures(team_index: int) -> Array:
+	var live: Array = []
+	for figure in _dealt_figures.get(team_index, []):
+		if figure != null and is_instance_valid(figure) \
+				and not (figure as Node).is_queued_for_deletion():
+			live.append(figure)
+	return live
+
+
+## The player side's live figures — the first team's set.
+static func _live_player_figures(level: Node) -> Array:
+	var live: Array = []
+	for figure in level.get_tree().get_nodes_in_group("player_team"):
+		if figure is Node2D and not figure.is_queued_for_deletion():
+			live.append(figure)
+	return live
+
+
+## Trim or grow ONE team to its configured count: surplus figures go
+## (the last dealt first), missing ones spawn beside the team's first
+## live figure (any figure when the team got none at all).
+static func _reconcile_team(level: Node, team_index: int, live: Array) -> void:
+	var team: Dictionary = teams[team_index]
+	var wanted: int = (team["names"] as Array).size()
+	while live.size() > wanted:
+		(live.pop_back() as Node).queue_free()
+	if live.size() >= wanted:
+		return
+	var anchor := Vector2(240.0, 0.0)
+	if not live.is_empty() and live[0] is Node2D:
+		anchor = (live[0] as Node2D).position
+	else:
+		var any_figure := _first_live_figure(level)
+		if any_figure != null:
+			anchor = any_figure.position
+	var spawn_offset := 1
+	while live.size() < wanted:
+		var member_name := str(team["names"][live.size()])
+		var at := anchor + Vector2(56.0 * spawn_offset, 0.0)
+		spawn_offset += 1
+		if team_index == 0:
+			if team_controller(0) == "player":
+				live.append(_spawn_player_figure(level, at, team, member_name))
+			else:
+				_spawn_computer_figure(level, at, team, member_name)
+				live.append(_live_player_figures(level).back())
+		elif team_controller(team_index) == "player":
+			live.append(_spawn_human_figure(level, at, team, member_name))
+		else:
+			live.append(_spawn_enemy_figure(level, at, team, member_name))
+
+
+## Any live figure of the level (player side first) — the spawn anchor
+## fallback for a team the staged cast could not host at all.
+static func _first_live_figure(level: Node) -> Node2D:
+	for group in ["player_team", "enemy_team"]:
+		for figure in level.get_tree().get_nodes_in_group(group):
+			if figure is Node2D and not figure.is_queued_for_deletion():
+				return figure
+	return null
+
+
+## Issue #537 rework v3 (owner item 2): the menu grids go to 64
+## teammates while the staged levels host three player figures — the
+## rest spawn beside the hero in a spaced row (the random spawn
+## regimes scatter them afterwards; the designer regime keeps the row).
+static func _spawn_missing_player_figures(level: Node, hero_count: int) -> void:
+	var team: Dictionary = teams[0]
+	var names: Array = team["names"]
+	var hero := level.get_node_or_null(NodePath("Player"))
+	var anchor: Vector2 = hero.position if hero is Node2D else Vector2(200.0, 0.0)
+	# From the LIVE staged count (re-applying to a dressed level must not
+	# duplicate the extras — the reconciliation owns the surplus).
+	var staged := _live_player_figures(level).size()
+	for i in range(maxi(3, staged), hero_count):
+		_spawn_player_figure(level, anchor + Vector2(56.0 * (i - 2), 0.0),
+				team, str(names[i]))
+
+
+## Issue #537 rework v3: build a human-controlled figure fighting on
+## the PLAYER side — the same staged body _spawn_human_figure builds,
+## keeping the classic player side (team_side "player").
+static func _spawn_player_figure(level: Node, at: Vector2,
+		team: Dictionary, member_name: String) -> Node:
+	var figure := CharacterBody2D.new()
+	figure.set_script(load("res://scripts/Player.gd"))
+	figure.position = at
+	figure.set("team_color", team["color"])
+	figure.set("team_shape", str(team["shape"]))
+	figure.set("display_name", member_name)
+	var capsule := CollisionShape2D.new()
+	var shape := CapsuleShape2D.new()
+	shape.radius = 24.0
+	shape.height = 57.6
+	capsule.shape = shape
+	capsule.name = "BodyShape"
+	figure.add_child(capsule)
+	var visual := ColorRect.new()
+	visual.name = "BodyVisual"
+	visual.offset_left = -32.0
+	visual.offset_top = -32.0
+	visual.offset_right = 32.0
+	visual.offset_bottom = 32.0
+	figure.add_child(visual)
+	var weapon := Node2D.new()
+	weapon.name = "Weapon"
+	weapon.set_script(load("res://scripts/Weapon.gd"))
+	figure.add_child(weapon)
+	level.add_child(figure)
+	return figure
+
+
+## Issue #537 rework v3: build a COMPUTER-played enemy figure (Npc.gd,
+## team "enemy" by default) — the mirror of _spawn_computer_figure.
+static func _spawn_enemy_figure(level: Node, at: Vector2,
+		team: Dictionary, member_name: String) -> Node:
+	var figure := CharacterBody2D.new()
+	figure.set_script(load("res://scripts/Npc.gd"))
+	figure.position = at
+	figure.set("team_color", team["color"])
+	figure.set("team_shape", str(team["shape"]))
+	figure.set("display_name", member_name)
+	var skill := clampi(int(team["skill"]), 0, 10)
+	figure.set("difficulty", 0 if skill <= 3 else (1 if skill <= 7 else 2))
+	figure.set("ai_friendly_fire", clampi(int(team["friendly_fire"]), 0, 10))
+	level.add_child(figure)
+	return figure
 
 
 ## Issue #521 rework: the level must follow the team settings TOTALLY —
@@ -660,9 +849,22 @@ static var _dealt := 0
 ## count) — name assignment uses the DEAL ORDER, never the colors on the
 ## field (a not-yet-recolorized figure still wears its default pink).
 static var _dealt_counts := {}
+## Issue #537 rework v3 (owner item 2): the live figures dealt to each
+## configured team (index -> Array of nodes) — the size reconciliation
+## trims or grows each team to the menu's count through this map, never
+## through colors (two teams may share a color after a per-game recolor).
+static var _dealt_figures := {}
+
+## Issue #537 rework v3 (owner item 2): the level menu's per-team member
+## grids drive the level — true from the moment the menu starts one.
+## apply() then takes every team's SIZE from `teams` (the grids go to
+## 64), spawns figures beyond the staged cast and frees the surplus;
+## the classic capped fields (team_size/enemy_count) stay the source
+## when the level was NOT started from the menu (tests, direct runs).
+static var menu_team_sizes := false
 
 
-static func _apply_extra_team(level: Node, npc: Node, team_index: int) -> void:
+static func _apply_extra_team(level: Node, npc: Node, team_index: int) -> Node:
 	var team: Dictionary = teams[team_index]
 	var member_names: Array = team["names"]
 	var member_index := int(_dealt_counts.get(team_index, 0))
@@ -670,12 +872,14 @@ static func _apply_extra_team(level: Node, npc: Node, team_index: int) -> void:
 	if team_controller(team_index) == "player" and npc.has_method("_shoot"):
 		# Human team: replace the computer figure with a Player figure at
 		# the same spot. The freed Npc leaves the tree at the end of the
-		# frame, so the swap cannot wedge anything mid-apply.
+		# frame, so the swap cannot wedge anything mid-apply. Issue #537
+		# rework v3: the swap RETURNS the live figure so the size
+		# reconciliation can track it.
 		var at: Vector2 = npc.get("position") if npc is Node2D else Vector2.ZERO
-		_spawn_human_figure(level, at, team,
+		var swapped := _spawn_human_figure(level, at, team,
 			str(member_names[mini(member_index, member_names.size() - 1)]))
 		npc.queue_free()
-		return
+		return swapped
 	if npc.get("difficulty") != null:
 		var skill := clampi(int(team["skill"]), 0, 10)
 		npc.set("difficulty", 0 if skill <= 3 else (1 if skill <= 7 else 2))
@@ -693,6 +897,7 @@ static func _apply_extra_team(level: Node, npc: Node, team_index: int) -> void:
 			str(member_names[mini(member_index, member_names.size() - 1)]))
 	if npc.has_method("set_team_shape"):
 		npc.call("set_team_shape", str(team["shape"]))
+	return npc
 
 
 ## Issue #521: build a human-controlled figure (Player.gd) fighting on
@@ -700,7 +905,7 @@ static func _apply_extra_team(level: Node, npc: Node, team_index: int) -> void:
 ## the level scenes author by hand, created in code so apply() can
 ## stage it where the computer figure stood.
 static func _spawn_human_figure(level: Node, at: Vector2,
-		team: Dictionary, member_name: String) -> void:
+		team: Dictionary, member_name: String) -> Node:
 	var figure := CharacterBody2D.new()
 	figure.set_script(load("res://scripts/Player.gd"))
 	figure.position = at
@@ -727,3 +932,4 @@ static func _spawn_human_figure(level: Node, at: Vector2,
 	weapon.set_script(load("res://scripts/Weapon.gd"))
 	figure.add_child(weapon)
 	level.add_child(figure)
+	return figure

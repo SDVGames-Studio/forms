@@ -37,7 +37,7 @@ const REGIME_DESIGNER := 2
 
 ## Labels of the menu rows, index = regime constant.
 const REGIME_LABELS: Array[String] = [
-	"Grouped teams", "All random", "Designer points",
+	"Random grouped teams", "All random", "Designer spawn points",
 ]
 
 ## Grid step of the candidate sampler, in world pixels.
