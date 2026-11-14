@@ -5,6 +5,13 @@ extends Node
 ## configuration: they persist with the team, map onto the NPC difficulty
 ## bands and reach every computer figure; friendly fire passes through.
 ##
+## Since the #521/#537 team-set rework (and the #572 third team) the
+## configured set is loaded ONCE per process — apply() deals the
+## figures from the PER-TEAM snapshots, not the legacy statics. The
+## test therefore refreshes the set from the current statics
+## (default_teams(), exactly what a fresh boot does) before each
+## apply, and the dealt figures must follow.
+##
 ## Run headless: godot --headless res://tests/test_issue180.tscn
 ## Exit code 0 = pass.
 
@@ -25,6 +32,7 @@ func _ready() -> void:
 	GameConfig.enemy_count = 3
 	GameConfig.ai_skill = 0
 	GameConfig.ai_friendly_fire = 7
+	GameConfig.teams = GameConfig.default_teams()
 	GameConfig.apply(level)
 	await get_tree().process_frame
 	await get_tree().process_frame
@@ -38,6 +46,7 @@ func _ready() -> void:
 			push_error("FAIL: friendly-fire 7 must reach %s" % npc_name)
 
 	GameConfig.ai_skill = 5
+	GameConfig.teams = GameConfig.default_teams()
 	GameConfig.apply(level)
 	await get_tree().process_frame
 	await get_tree().process_frame
@@ -45,6 +54,7 @@ func _ready() -> void:
 		failures += 1
 		push_error("FAIL: skill 5 must map to normal difficulty")
 	GameConfig.ai_skill = 10
+	GameConfig.teams = GameConfig.default_teams()
 	GameConfig.apply(level)
 	await get_tree().process_frame
 	await get_tree().process_frame
@@ -66,6 +76,7 @@ func _ready() -> void:
 	# Restore defaults so other tests / runs start clean.
 	GameConfig.ai_skill = 5
 	GameConfig.ai_friendly_fire = 0
+	GameConfig.teams = GameConfig.default_teams()
 	GameConfig.save_team()
 
 	if failures == 0:
