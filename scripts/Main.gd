@@ -16,6 +16,10 @@ extends Control
 
 
 func _ready() -> void:
+	# Main-menu spec §9 (M4 hardening): adapt the composition to the
+	# viewport (small/mobile widths tighten margins, shrink the title,
+	# hide the subtitle — the brand and all options stay reachable).
+	MenuAdapt.apply(self)
 	# Issue #252: the debug-mode switch (and any future setting) loads
 	# before any level can build its figures.
 	GameConfig.load_settings()
