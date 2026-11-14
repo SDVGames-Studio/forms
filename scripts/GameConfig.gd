@@ -200,6 +200,17 @@ static var teams: Array = []
 const MAX_TEAM_MEMBERS := 3
 const MAX_TEAMS := 8
 
+## Issue #537 rework: the level-config menu's member grid may grow a
+## team across the 1x4 / 2x8 / 4x16 tiers up to 64 teammates. The cap
+## the TEAM MENU and the staged levels use stays MAX_TEAM_MEMBERS
+## above; this one bounds the grid and the persisted names the level
+## menu may edit.
+const MAX_LEVEL_TEAM_MEMBERS := 64
+
+## Issue #537: the default squad size of a fresh team — 3 characters
+## fill the default 1x4 grid leaving one free "+" spot.
+const DEFAULT_TEAM_MEMBERS := 3
+
 ## Issue #524: the languages a team may speak — picked per team in the
 ## team menu; that team's teammates' spoken lines (CharacterLines)
 ## follow it.
@@ -217,7 +228,7 @@ static func default_teams() -> Array:
 	for member_name in member_names:
 		first_names.append(member_name)
 	var second_names: Array[String] = []
-	for i in range(1, MAX_TEAM_MEMBERS + 1):
+	for i in range(1, DEFAULT_TEAM_MEMBERS + 1):
 		second_names.append("Member %d" % i)
 	return [
 		{
@@ -344,7 +355,9 @@ static func _sanitize_teams(raw: Array) -> Array:
 		var team: Dictionary = entry
 		var names: Array[String] = []
 		if team.get("names") is Array:
-			for member_name in team["names"].slice(0, MAX_TEAM_MEMBERS):
+			# Issue #537: the level-config grid may persist up to the
+			# 4x16 tier of names per team.
+			for member_name in team["names"].slice(0, MAX_LEVEL_TEAM_MEMBERS):
 				var text := str(member_name).strip_edges()
 				names.append(text if not text.is_empty() else "Member %d" % (names.size() + 1))
 		if names.is_empty():

@@ -19,6 +19,16 @@ extends Control
 ## size is shown right in the team row as a little grid of member
 ## squares (one square per member, wearing the team's shape and color)
 ## next to the team name on the left.
+##
+## Issue #537 rework v2 (owner follow-up): the grid is now CLICK-TO-
+## EDIT and tiered — clicking a filled square removes that teammate,
+## clicking a free square ("+" sign) appends one. The grid grows
+## 1x4 → 2x8 (from the fourth member) → 4x16 (from the sixteenth) with
+## shrinking cells so the grid's FOOTPRINT stays the same; 64
+## teammates per team is the hard maximum, one the minimum. Adding a
+## team PULLS the next definition from the game's team set (the team
+## menu is where new teams are made) — past the end of the set the
+## deal wraps to the first team wearing a FRESH color.
 
 ## Palette for teams added here (mirrors TeamMenu's).
 const TEAM_PALETTE: Array[Color] = [
@@ -26,12 +36,30 @@ const TEAM_PALETTE: Array[Color] = [
 	Color(0.3, 0.8, 0.4), Color(0.9, 0.3, 0.3), Color(0.2, 0.8, 0.85),
 	Color(0.95, 0.6, 0.2), Color(0.65, 0.4, 0.95),
 ]
-const SHAPES: Array[String] = ["square", "circle", "triangle", "star", "ellipse"]
 
 ## Issue #537: recessed background of one member square (matches the
 ## theme's darker panel tone so the shape pops on it).
 const MEMBER_CELL_BG := Color(0.122, 0.137, 0.169)
-const MEMBER_CELL_SIZE := 30.0
+
+## Issue #537 rework v2: the member-grid tiers — [rows, columns]. Up
+## to three members the grid is 1x4, from the fourth member 2x8, from
+## the sixteenth 4x16 (64 teammates is the maximum, so the top tier's
+## grid runs full with no free spot left).
+const GRID_TIERS: Array[Array] = [[1, 4], [2, 8], [4, 16]]
+
+## Fixed footprint of the member grid — every tier's cells shrink to
+## keep this width (and, with square cells, this height).
+const GRID_WIDTH := 132.0
+const GRID_SEPARATION := 2.0
+
+## The "+" sign on a free spot (the theme's muted text tone).
+const PLUS_COLOR := Color(0.467, 0.49, 0.545)
+
+## Issue #537 v2 (item 5): the game's team set as it was when the menu
+## opened — the source every "+ Add team" pulls from, so the level can
+## only field teams that exist in the game (the team menu makes new
+## ones).
+var _game_team_set: Array = []
 
 @onready var _title: Label = %Title
 @onready var _turn_time: SpinBox = %TurnTimeSpinBox
@@ -58,6 +86,7 @@ func _ready() -> void:
 	# Issue #521: the team set for the level — loaded here (once) and
 	# edited directly in GameConfig.teams; Start persists it.
 	GameConfig.load_teams()
+	_game_team_set = GameConfig.teams.duplicate(true)
 	_add_team_button.pressed.connect(_on_add_team_pressed)
 	_rebuild_team_rows()
 	_start_button.pressed.connect(_on_start_pressed)
@@ -96,8 +125,6 @@ func _rebuild_team_rows() -> void:
 		child.queue_free()
 	for i in GameConfig.teams.size():
 		var team: Dictionary = GameConfig.teams[i]
-		var color: Color = team["color"] if team.get("color") is Color else Color(1, 1, 1)
-		var shape := str(team["shape"])
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation", 10)
 		var label := Label.new()
@@ -107,7 +134,7 @@ func _rebuild_team_rows() -> void:
 		label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		label.clip_text = true
 		row.add_child(label)
-		row.add_child(_build_member_grid(team, shape, color))
+		row.add_child(_build_member_grid(team, i))
 		var controller := OptionButton.new()
 		controller.add_item("Computer")
 		controller.add_item("Player")
@@ -128,54 +155,158 @@ func _rebuild_team_rows() -> void:
 	_add_team_button.disabled = GameConfig.teams.size() >= GameConfig.MAX_TEAMS
 
 
-## Issue #537: the team's little grid table — one square per member
-## (names drives the count), each square a recessed cell with the team's
-## shape drawn in the team's color, so a triangle team shows triangles.
-## Fixed three columns (MAX_TEAM_MEMBERS) keep the squares of different
-## team sizes aligned into a grid; hovering a square names its member.
-func _build_member_grid(team: Dictionary, shape: String, color: Color) -> GridContainer:
-	var grid := GridContainer.new()
-	grid.columns = GameConfig.MAX_TEAM_MEMBERS
-	grid.add_theme_constant_override("h_separation", 4)
-	grid.add_theme_constant_override("v_separation", 4)
+## Issue #537 rework v2: the team's little grid table — tiered by the
+## member count (see GRID_TIERS), every cell a recessed gray square.
+## FILLED squares carry the team's shape centered in the team's color
+## (a triangle team shows triangles); clicking one removes that
+## teammate. FREE squares carry a "+" sign; clicking one appends a
+## teammate. Cells shrink per tier so the grid keeps one footprint.
+func _build_member_grid(team: Dictionary, team_index: int) -> GridContainer:
 	var members: Array = team["names"]
-	for member_index in members.size():
+	var shape := str(team["shape"])
+	var color: Color = team["color"] if team.get("color") is Color else Color(1, 1, 1)
+	var tier := _tier_for(members.size())
+	var rows: int = tier[0]
+	var columns: int = tier[1]
+	var cell_size := (GRID_WIDTH - (columns - 1) * GRID_SEPARATION) / columns
+	var grid := GridContainer.new()
+	grid.columns = columns
+	grid.add_theme_constant_override("h_separation", int(GRID_SEPARATION))
+	grid.add_theme_constant_override("v_separation", int(GRID_SEPARATION))
+	for slot in rows * columns:
+		var filled := slot < members.size()
 		var cell := Control.new()
-		cell.custom_minimum_size = Vector2(MEMBER_CELL_SIZE, MEMBER_CELL_SIZE)
-		cell.tooltip_text = str(members[member_index])
+		cell.custom_minimum_size = Vector2(cell_size, cell_size)
+		cell.mouse_filter = Control.MOUSE_FILTER_STOP
 		var bg := ColorRect.new()
 		bg.color = MEMBER_CELL_BG
 		bg.set_anchors_preset(Control.PRESET_FULL_RECT)
+		bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		cell.add_child(bg)
-		var visual: Control = load("res://scripts/ShapeVisual.gd").new()
-		visual.custom_minimum_size = Vector2(20, 20)
-		visual.set_anchors_and_offsets_preset(Control.PRESET_CENTER,
-				Control.PRESET_MODE_MINSIZE)
-		visual.set_shape(shape)
-		visual.set_shape_color(color)
-		cell.add_child(visual)
+		if filled:
+			cell.tooltip_text = "Remove %s" % str(members[slot])
+			# Owner item 1: the shape sits CENTERED in the gray square —
+			# a full-rect anchor with a small inset does exactly that at
+			# every tier's cell size.
+			var visual: Control = load("res://scripts/ShapeVisual.gd").new()
+			visual.set_anchors_preset(Control.PRESET_FULL_RECT)
+			var inset := cell_size * 0.14
+			visual.offset_left = inset
+			visual.offset_top = inset
+			visual.offset_right = -inset
+			visual.offset_bottom = -inset
+			visual.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			visual.set_shape(shape)
+			visual.set_shape_color(color)
+			cell.add_child(visual)
+			# Owner item 2: clicking a filled square removes the teammate.
+			cell.gui_input.connect(func(event: InputEvent) -> void:
+				if _is_left_click(event):
+					_remove_member(team_index, slot))
+		else:
+			# Owner item 3: every free spot shows a "+" and appends a
+			# teammate when clicked.
+			cell.tooltip_text = "Add a teammate"
+			var plus := Label.new()
+			plus.text = "+"
+			plus.set_anchors_preset(Control.PRESET_FULL_RECT)
+			plus.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			plus.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+			plus.add_theme_font_size_override("font_size", maxi(9, int(cell_size * 0.8)))
+			plus.add_theme_color_override("font_color", PLUS_COLOR)
+			plus.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			cell.add_child(plus)
+			cell.gui_input.connect(func(event: InputEvent) -> void:
+				if _is_left_click(event):
+					_add_member(team_index))
 		grid.add_child(cell)
 	return grid
+
+
+## The tier a member count plays in: the smallest grid with a FREE
+## spot left (so the "+" is always available), or the top tier at the
+## 64-teammate maximum where the grid simply runs full.
+static func _tier_for(member_count: int) -> Array:
+	for tier in GRID_TIERS:
+		if member_count < tier[0] * tier[1]:
+			return tier
+	return GRID_TIERS[GRID_TIERS.size() - 1]
+
+
+func _is_left_click(event: InputEvent) -> bool:
+	return event is InputEventMouseButton and event.pressed \
+			and (event as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT
+
+
+## Owner item 2: a filled square's click drops that teammate; one is
+## the floor — a team always fields at least one figure.
+func _remove_member(team_index: int, member_index: int) -> void:
+	if team_index < 0 or team_index >= GameConfig.teams.size():
+		return
+	var names: Array = GameConfig.teams[team_index]["names"]
+	if member_index < 0 or member_index >= names.size() or names.size() <= 1:
+		return
+	names.remove_at(member_index)
+	_rebuild_team_rows()
+
+
+## Owner item 3: a free square's click appends a teammate, up to the
+## 4x16 tier's 64.
+func _add_member(team_index: int) -> void:
+	if team_index < 0 or team_index >= GameConfig.teams.size():
+		return
+	var names: Array = GameConfig.teams[team_index]["names"]
+	if names.size() >= GameConfig.MAX_LEVEL_TEAM_MEMBERS:
+		return
+	names.append("Member %d" % (names.size() + 1))
+	_rebuild_team_rows()
 
 
 func _on_add_team_pressed() -> void:
 	if GameConfig.teams.size() >= GameConfig.MAX_TEAMS:
 		return
-	var count := GameConfig.teams.size() + 1
-	var names: Array[String] = []
-	for i in range(1, GameConfig.MAX_TEAM_MEMBERS + 1):
-		names.append("Member %d" % i)
+	# Owner item 5: the level can only field teams that EXIST in the
+	# game — "+ Add team" pulls the next definition from the game's set
+	# (the team menu is where new ones are made). Past the end of the
+	# set the deal wraps to the first team wearing a fresh color.
+	var source: Dictionary = _game_team_set[
+		GameConfig.teams.size() % _game_team_set.size()].duplicate(true)
 	GameConfig.teams.append({
-		"label": "Team %d" % count,
-		"color": TEAM_PALETTE[(count - 1) % TEAM_PALETTE.size()],
-		"shape": SHAPES[count % SHAPES.size()],
-		"names": names,
-		"skill": 5,
-		"friendly_fire": 0,
+		"label": str(source["label"]),
+		"color": _fresh_color(source),
+		"shape": str(source["shape"]),
+		"names": _default_member_names(),
+		"skill": clampi(int(source.get("skill", 5)), 0, 10),
+		"friendly_fire": clampi(int(source.get("friendly_fire", 0)), 0, 10),
 		"controller": "computer",
-		"language": GameConfig.DEFAULT_LANGUAGE,
+		"language": str(source.get("language", GameConfig.DEFAULT_LANGUAGE)),
 	})
 	_rebuild_team_rows()
+
+
+## The added team's color: the source team's own if the level does not
+## wear it yet, else the first palette color free in the level.
+func _fresh_color(source: Dictionary) -> Color:
+	if source.get("color") is Color and not _color_in_use(source["color"]):
+		return source["color"]
+	for color in TEAM_PALETTE:
+		if not _color_in_use(color):
+			return color
+	return source["color"] if source.get("color") is Color else TEAM_PALETTE[0]
+
+
+func _color_in_use(color: Color) -> bool:
+	for team in GameConfig.teams:
+		if team.get("color") is Color and team["color"] == color:
+			return true
+	return false
+
+
+func _default_member_names() -> Array[String]:
+	var names: Array[String] = []
+	for i in range(1, GameConfig.DEFAULT_TEAM_MEMBERS + 1):
+		names.append("Member %d" % i)
+	return names
 
 
 func _on_remove_team_pressed(index: int) -> void:
