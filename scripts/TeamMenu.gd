@@ -191,7 +191,7 @@ func _on_color_changed(color: Color) -> void:
 # ----------------------------------------------------------------- shapes --
 
 ## Graphical shape picker: one button per shape, each showing the little
-## figure drawn exactly like in the game (ShapeVisual).
+## figure drawn exactly like in the game (the modular character).
 func _build_shape_picker() -> void:
 	for shape in SHAPES:
 		var button := Button.new()
@@ -200,11 +200,11 @@ func _build_shape_picker() -> void:
 		button.tooltip_text = shape.capitalize()
 		var picked := shape
 		button.pressed.connect(func() -> void: _on_shape_picked(picked))
-		var visual: Control = load("res://scripts/ShapeVisual.gd").new()
+		var visual: Control = load("res://scripts/ModularCharacterVisual.gd").new()
 		visual.size = Vector2(56, 56)
 		visual.set_anchors_preset(Control.PRESET_CENTER)
-		visual.set_shape(shape)
-		visual.set_shape_color(Color(0.9, 0.9, 0.95))
+		visual.set_team_look(Color(0.9, 0.9, 0.95), shape)
+		visual.set_expression("neutral")
 		button.add_child(visual)
 		_shape_buttons.append(button)
 		_shape_picker.add_child(button)
@@ -234,11 +234,13 @@ func _rebuild_members() -> void:
 		figure.custom_minimum_size = Vector2(100, 100)
 		figure.tooltip_text = "Click to remove this member" \
 				if names.size() > 1 else "A team keeps at least one member"
-		var visual: Control = load("res://scripts/ShapeVisual.gd").new()
+		var visual: Control = load("res://scripts/ModularCharacterVisual.gd").new()
 		visual.size = Vector2(72, 72)
 		visual.set_anchors_preset(Control.PRESET_CENTER)
-		visual.set_shape(str(team["shape"]))
-		visual.set_shape_color(team["color"])
+		# Issue #560: the card shows the REAL in-game figure — team color,
+		# team silhouette and this member's resting personality (the same
+		# member index the gameplay figures pass to apply_team_look).
+		visual.apply_team_look(team["color"], str(team["shape"]), i)
 		figure.add_child(visual)
 		var index := i
 		figure.pressed.connect(func() -> void: _on_member_clicked(index))
