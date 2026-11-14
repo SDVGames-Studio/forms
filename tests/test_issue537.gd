@@ -12,8 +12,8 @@ extends Node
 ##  - FREE squares carry a "+"; _add_member appends, _remove_member
 ##    drops (click wiring is exercised via the same handlers).
 ##  - "+ Add team" PULLS from the game's team set: with the default
-##    two-team set the third level team is the FIRST team again, but
-##    with a fresh, level-unused color (item 5).
+##    three-team set (issue #572) the fourth level team wraps to the
+##    FIRST team again, but with a fresh, level-unused color (item 5).
 ##
 ## Run headless: godot --headless res://tests/test_issue537.tscn
 ## Exit code 0 = pass.
@@ -156,8 +156,8 @@ func _ready() -> void:
 		GameConfig.teams[1]["names"].size() == 64)
 
 	# Item 5: "+ Add team" pulls the next definition from the GAME's
-	# team set — with the default two-team set the third level team is
-	# the FIRST team again, but with a fresh, level-unused color.
+	# team set — with the default three-team set (issue #572) the fourth
+	# level team wraps to the FIRST team in a fresh, unused color.
 	GameConfig.teams = GameConfig.default_teams()
 	menu._game_team_set = GameConfig.teams.duplicate(true)
 	menu._rebuild_team_rows()
@@ -166,9 +166,9 @@ func _ready() -> void:
 	for team in GameConfig.teams:
 		used.append(team["color"])
 	menu._on_add_team_pressed()
-	var added_ok := GameConfig.teams.size() == 3
+	var added_ok := GameConfig.teams.size() == 4
 	if added_ok:
-		var added: Dictionary = GameConfig.teams[2]
+		var added: Dictionary = GameConfig.teams[3]
 		_check("added team comes from the game's set",
 			str(added["label"]) == str(menu._game_team_set[0]["label"])
 			and str(added["shape"]) == str(menu._game_team_set[0]["shape"]))
