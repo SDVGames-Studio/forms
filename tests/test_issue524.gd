@@ -4,7 +4,8 @@ extends Node
 ##
 ## - GameConfig.LANGUAGES is exactly the ordered set from the issue
 ##   (English, Spanish, Russian, French, Arabic) with English default;
-##   default and freshly added teams speak English.
+##   default teams 1-2 and freshly added teams speak English, while
+##   the #572 default team 3 (red stars) speaks Russian.
 ## - team_language_for_color maps a figure's team color to its team's
 ##   language; unknown colors speak English (same fallback as the
 ##   controller map).
@@ -45,11 +46,17 @@ func _ready() -> void:
 	if GameConfig.DEFAULT_LANGUAGE != "English":
 		failures.append("default language must be English")
 
-	# --- Default teams and every newly added one speak English. ------
+	# --- Default teams: the classic two speak English; the #572
+	# red-star team speaks Russian. Freshly added ones speak English.
 	GameConfig.teams = GameConfig.default_teams()
-	for i in GameConfig.teams.size():
-		if str(GameConfig.teams[i].get("language", "")) != "English":
-			failures.append("default team %d must speak English" % i)
+	if GameConfig.teams.size() < 3:
+		failures.append("default set must hold 3 teams (issue #572), got %d" % GameConfig.teams.size())
+	else:
+		for i in 2:
+			if str(GameConfig.teams[i].get("language", "")) != "English":
+				failures.append("default team %d must speak English" % i)
+		if str(GameConfig.teams[2].get("language", "")) != "Russian":
+			failures.append("default team 3 must speak Russian (issue #572)")
 	var fresh: Dictionary = GameConfig._sanitize_teams([
 		{"label": "T", "color": Color(0.3, 0.8, 0.4), "shape": "circle",
 				"names": ["A"], "skill": 5, "friendly_fire": 0}])[0]

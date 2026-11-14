@@ -35,17 +35,19 @@ func _ready() -> void:
 	await get_tree().process_frame
 
 	# --- Default set of teams = the teams that are in the levels, NEUTRAL.
-	if GameConfig.teams.size() != 2:
-		failures.append("default set must list the 2 level teams, got %d" % GameConfig.teams.size())
+	if GameConfig.teams.size() != 3:
+		failures.append("default set must list the 3 default teams, got %d" % GameConfig.teams.size())
 	else:
 		if GameConfig.teams[0]["label"] != "Team 1":
 			failures.append("teams[0] must have a neutral label, got %s" % GameConfig.teams[0]["label"])
 		if GameConfig.teams[1]["label"] != "Team 2":
 			failures.append("teams[1] must have a neutral label, got %s" % GameConfig.teams[1]["label"])
+		if GameConfig.teams[2]["label"] != "Team 3":
+			failures.append("teams[2] must have a neutral label, got %s" % GameConfig.teams[2]["label"])
 
 	# --- Teams sit in a drop-down below the header; the editor is scrollable.
 	var team_select: OptionButton = menu.get_node("%TeamSelect")
-	if team_select == null or team_select.item_count != 2:
+	if team_select == null or team_select.item_count != 3:
 		failures.append("team drop-down must list one item per team")
 	elif team_select.selected != 0:
 		failures.append("drop-down must start on the first team, got %d" % team_select.selected)
@@ -127,11 +129,11 @@ func _ready() -> void:
 	# --- "+ Add team" appends a team to the set and selects it.
 	(menu.get_node("%AddTeamButton") as Button).pressed.emit()
 	await get_tree().process_frame
-	if GameConfig.teams.size() != 3:
+	if GameConfig.teams.size() != 4:
 		failures.append("+ Add team must append a team, got %d" % GameConfig.teams.size())
-	if team_select.item_count != 3 or team_select.selected != 2:
+	if team_select.item_count != 4 or team_select.selected != 3:
 		failures.append("drop-down must show and select the new team")
-	if menu.get_node("%EditingLabel").text != "Editing: Team 3":
+	if menu.get_node("%EditingLabel").text != "Editing: Team 4":
 		failures.append("new team must be selected for editing, got %s" % menu.get_node("%EditingLabel").text)
 
 	# --- Save persists the set and syncs the fields levels apply.
@@ -144,7 +146,7 @@ func _ready() -> void:
 		failures.append("Save must write team.cfg")
 	else:
 		var saved: Array = cfg.get_value("teams", "set", [])
-		if saved.size() != 3:
+		if saved.size() != 4:
 			failures.append("Save must persist the whole set, got %d teams" % saved.size())
 		if GameConfig.team_shape != "triangle" or GameConfig.team_color != Color(0, 1, 1):
 			failures.append("Save must sync the player team fields levels apply")
@@ -153,7 +155,7 @@ func _ready() -> void:
 		# Reload round-trip: the set comes back exactly as saved.
 		GameConfig.teams = []
 		GameConfig.load_teams()
-		if GameConfig.teams.size() != 3 or GameConfig.teams[0]["shape"] != "triangle" \
+		if GameConfig.teams.size() != 4 or GameConfig.teams[0]["shape"] != "triangle" \
 				or str(GameConfig.teams[0]["names"][0]) != "Hero":
 			failures.append("saved set must round-trip through load_teams: %s" % str(GameConfig.teams))
 

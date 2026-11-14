@@ -226,6 +226,8 @@ const DEFAULT_LANGUAGE := "English"
 ## Issue #226: the default set of teams = the teams that are in the
 ## levels, with NEUTRAL names (owner rework: no player/enemies concept
 ## in the team configuration) and DISTINCT body shapes per team.
+## Issue #572: a third default team joins the set — RED STARS speaking
+## Russian (the TeamMenu palette's red, so a hand-made red matches).
 static func default_teams() -> Array:
 	var first_names: Array[String] = []
 	for member_name in member_names:
@@ -233,6 +235,9 @@ static func default_teams() -> Array:
 	var second_names: Array[String] = []
 	for i in range(1, DEFAULT_TEAM_MEMBERS + 1):
 		second_names.append("Member %d" % i)
+	var third_names: Array[String] = []
+	for i in range(1, DEFAULT_TEAM_MEMBERS + 1):
+		third_names.append("Member %d" % i)
 	return [
 		{
 			"label": "Team 1", "color": team_color,
@@ -247,6 +252,14 @@ static func default_teams() -> Array:
 			"names": second_names,
 			"skill": ai_skill, "friendly_fire": ai_friendly_fire,
 			"language": DEFAULT_LANGUAGE,
+			"controller": "computer",
+		},
+		{
+			"label": "Team 3", "color": Color(0.9, 0.3, 0.3, 1),
+			"shape": "star",
+			"names": third_names,
+			"skill": ai_skill, "friendly_fire": ai_friendly_fire,
+			"language": "Russian",
 			"controller": "computer",
 		},
 	]
