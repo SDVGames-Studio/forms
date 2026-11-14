@@ -20,8 +20,8 @@ extends CanvasLayer
 ## inventory grid: weapons on keys 1-4 plus the mine on key 9 (issue
 ## #246), the jackhammer on key 0 (issue #307), the railgun on key R
 ## (issue #359), the pistol on key P (issue #526) and the baseball bat
-## on key B (issue #527), tools on keys 5-8 (issue #227 added the fourth
-## tool, Rock).
+## on key B (issue #527), the circular saw on key C (issue #570), tools
+## on keys 5-8 (issue #227 added the fourth tool, Rock).
 ## The tool LOGIC stays in the ToolInventory autoload; this script only
 ## renders the shared slots.
 
@@ -97,7 +97,7 @@ var _toggle_button: Button
 var _mobile_open := false
 var _mobile_layout_applied := false
 
-const WEAPONS := ["Shotgun", "Rocket", "Grenade", "Spear", "Mine", "Jackhammer", "Railgun", "Pistol", "Baseball Bat"]
+const WEAPONS := ["Shotgun", "Rocket", "Grenade", "Spear", "Mine", "Jackhammer", "Railgun", "Pistol", "Baseball Bat", "Circular Saw"]
 
 ## Issue #305: per-team use budgets. Every team starts a round with 5
 ## uses of each weapon and 5 uses of each tool; the SPEAR is the only
@@ -135,6 +135,7 @@ const ICONS: Array = [
 	{"shape": "rect", "size": Vector2(44, 5), "color": Color(0.55, 0.85, 1.0, 1)},
 	{"shape": "rect", "size": Vector2(18, 6), "color": Color(0.5, 0.55, 0.6, 1)},
 	{"shape": "rect", "size": Vector2(30, 8), "color": Color(0.85, 0.6, 0.3, 1)},
+	{"shape": "circle", "radius": 9.0, "color": Color(0.75, 0.78, 0.85, 1)},
 ]
 
 ## Issue #271: hover hints. The scripts are preloaded (not the autoload
@@ -143,6 +144,10 @@ const ICONS: Array = [
 ## the live constants and can never drift stale after a balance tweak.
 const WeaponFire := preload("res://scripts/Weapon.gd")
 const ToolState := preload("res://scripts/ToolInventory.gd")
+## Issue #570: the saw's grind rate lives with the saw's spin behaviour
+## in ProjectileBody (next to the mine's constants), so the hint reads
+## it straight from there.
+const SawBody := preload("res://scripts/ProjectileBody.gd")
 
 
 func _ready() -> void:
@@ -463,6 +468,8 @@ func _weapon_hint(i: int) -> String:
 				int(WeaponFire.SHOTS_PER_TURN[i])]
 		"Baseball Bat":
 			damage = "%d + knockback" % WeaponFire.BAT_DAMAGE
+		"Circular Saw":
+			damage = "%d/s while sucking in" % int(SawBody.SAW_CUT_DPS)
 	return "%s\nDamage: %s" % [WEAPONS[i], damage]
 
 

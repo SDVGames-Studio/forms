@@ -18,12 +18,13 @@ extends "res://scripts/TrainingBot.gd"
 ## training — so the ncnn path interprets the network's output correctly
 ## (issue #506).
 ## Issue #526 caveat: the pistol grew the TRAINING scaffold's attack head
-## to 9 (1 hold + 8 weapon slots), and issue #527's baseball bat grew it
-## to 10 — but the DEPLOYED net was trained on the pre-pistol 7-weapon
+## to 9 (1 hold + 8 weapon slots), issue #527's baseball bat grew it to
+## 10 and issue #570's circular saw to 11 — but the DEPLOYED net was
+## trained on the pre-pistol 7-weapon
 ## space and its layout is FROZEN at attack(8) — this override
 ## deliberately keeps the deployed sizes (pinned by tests/test_issue506.gd)
 ## until the policy is retrained; the deployed bot simply never selects
-## the pistol or the baseball bat.
+## the pistol, the baseball bat or the circular saw.
 
 func _init() -> void:
 	# Deploy defaults (issue #506): the res://models/ artifacts from
@@ -40,7 +41,7 @@ func get_action_space() -> Dictionary:
 	# ActionDecode slices the network's logits onto the right heads.
 	# Issue #526: the sizes stay at the DEPLOYED net's frozen layout
 	# (attack 8 = the pre-pistol 7 weapon slots) even though the training
-	# scaffold grew to attack 10 (pistol #526, baseball bat #527) — the net
+	# scaffold grew to attack 11 (pistol #526, bat #527, saw #570) — the net
 	# itself must be retrained before its output layout can grow (see the
 	# class comment).
 	# get_action_mask() (inherited) iterates these keys by name, so the

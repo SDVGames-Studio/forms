@@ -12,7 +12,7 @@ extends CharacterBody2D
 ##    Issue #546: the WHOLE arsenal is in play — each distance band
 ##    rotates through every weapon that fits it (melee: spear/bat/
 ##    jackhammer; flat: shotgun/pistol; open lane: rocket/railgun;
-##    ballistic: grenade/mine, railgun on a clear line), and the tools
+##    ballistic: grenade/mine/saw, railgun on a clear line), and the tools
 ##    too: a badly hurt AI can hand its turn to the healthiest teammate
 ##    (Switch) and the ballistic band sometimes lobs the Rock tool
 ##    instead of a weapon (it crumbles into fresh ground — cover).
@@ -955,8 +955,10 @@ func _pick_weapon(distance: float, height_diff: float = 0.0) -> void:
 		# catches the shooter's own team below instead of the target).
 		# Issue #546: the mine joins the ballistic band (same lob, area
 		# denial where it lands) and the railgun fits too when the straight
-		# line to the target is clear of world geometry.
-		candidates = [2, 4]
+		# line to the target is clear of world geometry. Issue #570: the
+		# circular saw lobs the same way — it lands on the target and the
+		# suction drags it into the blade.
+		candidates = [2, 4, 9]
 		if _line_clear(_target):
 			candidates.append(6)
 	_weapon.selected_weapon = _pick_affordable(candidates)

@@ -26,6 +26,12 @@
 //             impact train (sharp noise click + 105 Hz thump + rattle per
 //             hit, per-hit jitter seeded by impact index so the loop
 //             stays identical every cycle). Imported loop_mode=Forward.
+//   sawSpin  (issue #570) seamless 0.8 s spinning blade loop — a buzzy
+//             140 Hz + 280 Hz tooth-train whine (integer cycles per loop
+//             so the period is seamless) over a light metallic hiss,
+//             with a 5 Hz amplitude wobble; the last 30 ms crossfades
+//             into the loop head so the noise bed never clicks at the
+//             seam. Imported loop_mode=Forward.
 //
 // Output: 16-bit PCM mono 44.1 kHz WAV files under assets/audio/.
 
@@ -43,6 +49,7 @@ const OUT = {
 	rocket: 'assets/audio/explosions/rocket.wav',
 	mineTimer: 'assets/audio/explosions/mine_timer.wav',
 	jackhammer: 'assets/audio/weapons/jackhammer.wav',
+	sawSpin: 'assets/audio/weapons/saw_spin.wav',
 };
 
 // mulberry32 — tiny deterministic PRNG (fixed seeds per sound).
@@ -364,6 +371,48 @@ function makeJackhammer() {
 	return normalize(out, 0.9);
 }
 
+// Issue #570: the circular saw's spinning blade. Every periodic layer
+// completes an INTEGER number of cycles inside the 0.8 s loop (140 Hz
+// -> 112, 280 Hz -> 224, 5 Hz wobble -> 4), so the tone part is
+// seamless by construction; the filtered-noise hiss bed is made
+// seamless by crossfading the loop's final CROSSFADE samples into its
+// head (equal-gain slope, no click at the wrap).
+function makeSawSpin() {
+	const n = Math.floor(SR * 0.8);
+	const CROSSFADE = Math.floor(SR * 0.03); // 30 ms
+	const raw = new Float64Array(n);
+	const rnd = prng(0x1f2e3d);
+	let hissLp = 0.0;
+	for (let i = 0; i < n; i++) {
+		const t = i / SR;
+		// Buzzy tooth train: sawtooth at the tooth-pass rate plus an
+		// octave-up layer, softly clipped (tanh) for a metallic edge.
+		const ph1 = (t * 140) % 1;
+		const ph2 = (t * 280) % 1;
+		const buzz = Math.tanh(2.4 * (2 * ph1 - 1) + 0.8 * (2 * ph2 - 1));
+		// Metallic hiss: bright filtered noise, kept under the buzz.
+		hissLp += (rnd() * 2 - 1 - hissLp) * lpCoef(3500);
+		const hiss = hissLp * 0.22;
+		// Slow 5 Hz loudness wobble (integer 4 cycles per loop).
+		const wobble = 0.9 + 0.1 * Math.sin(2 * Math.PI * 5 * t);
+		raw[i] = (buzz * 0.6 + hiss) * wobble;
+	}
+	// Blend the tail into the head so the noise bed wraps without a
+	// seam: the loop's last CROSSFADE samples slide over into the
+	// loop's first samples.
+	const out = new Float64Array(n);
+	for (let i = 0; i < n; i++) {
+		if (i < n - CROSSFADE) {
+			out[i] = raw[i];
+		} else {
+			const j = i - (n - CROSSFADE);
+			const w = j / CROSSFADE;
+			out[i] = raw[i] * (1 - w) + raw[j] * w;
+		}
+	}
+	return normalize(out, 0.85);
+}
+
 writeWav(OUT.shot, makeShot());
 writeWav(OUT.explosion, makeExplosion());
 writeWav(OUT.grenade, makeGrenade());
@@ -373,3 +422,4 @@ writeWav(OUT.rock, makeRockCrumble());
 writeWav(OUT.rocket, makeRocket());
 writeWav(OUT.mineTimer, makeMineTimer());
 writeWav(OUT.jackhammer, makeJackhammer());
+writeWav(OUT.sawSpin, makeSawSpin());
