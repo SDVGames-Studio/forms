@@ -14,12 +14,15 @@ static var level_path := ""
 ## CustomLevel.gd to build the playable scene from the JSON.
 static var custom_level_name := ""
 
-## Members of the player's team including the hero (1..3; the scenes
-## pre-place the hero plus Teammate1/Teammate2).
-static var team_size := 3
+## Members of the player team including the hero. 0 = NOT CHOSEN:
+## the configured team set drives the count then (Issue #537 rework
+## v4 — classic fields mirror the set, they no longer fight it).
+static var team_size := 0
 
-## Number of computer opponents (1..3; the scenes pre-place Npc..Npc3).
-static var enemy_count := 2
+## Number of computer opponents staged by the levels (Npc..Npc3 plus
+## the extra casts). 0 = NOT CHOSEN: the set's SECOND team count drives
+## it (Issue #537 rework v4).
+static var enemy_count := 0
 
 ## Issue #180: AI behavior parameters belong to the TEAM configuration
 ## (edited in the team menu), not to the level configuration.
@@ -332,14 +335,23 @@ static func _sync_from_teams() -> void:
 	var player: Dictionary = teams[0]
 	team_color = player["color"]
 	team_shape = player["shape"]
+	# Issue #537 rework v4 (owner: menu counts ignored in the level):
+	# the classic fields MIRROR the configured set exactly. The old sync
+	# capped member_names at its PREVIOUS size (a 4th teammate never
+	# registered — the level kept fielding 3) and NEVER touched
+	# enemy_count (stale default 2 — the level kept fielding two foes),
+	# so any start outside the config menu ignored the menu's counts.
 	var names: Array[String] = []
-	for member_name in player["names"]:
+	for member_name in (player["names"] as Array).slice(
+				0, MAX_LEVEL_TEAM_MEMBERS):
 		names.append(str(member_name))
-	while names.size() < member_names.size():
-		names.append("Player %d" % (names.size() + 1))
-	names.resize(mini(member_names.size(), MAX_TEAM_MEMBERS))
+	if names.is_empty():
+		names.append("Player 1")
 	member_names = names
-	team_size = maxi(1, mini(member_names.size(), MAX_TEAM_MEMBERS))
+	team_size = maxi(1, member_names.size())
+	if teams.size() > 1:
+		enemy_count = maxi(1, mini((teams[1]["names"] as Array).size(),
+				MAX_LEVEL_TEAM_MEMBERS))
 	var ai_team: Dictionary = teams[1] if teams.size() > 1 else player
 	ai_skill = clampi(int(ai_team["skill"]), 0, 10)
 	ai_friendly_fire = clampi(int(ai_team["friendly_fire"]), 0, 10)
@@ -521,16 +533,31 @@ static func apply(level: Node) -> void:
 	_dealt_figures = {}
 	# Issue #226: make sure the team set is loaded (fresh defaults give
 	# every team its own shape) even if the player never opened the team
-	# menu.
+	# menu. Issue #537 rework v4: an EXPLICIT classic choice (tests,
+	# tools) must survive the implicit load — the load's sync would
+	# otherwise stomp team_size/enemy_count back to the set's counts
+	# (the fresh-boot default is 0 = "follow the set").
+	var chosen_heroes := team_size
+	var chosen_foes := enemy_count
 	if teams.is_empty():
 		load_teams()
+	if chosen_heroes > 0:
+		team_size = chosen_heroes
+	if chosen_foes > 0:
+		enemy_count = chosen_foes
 	# Trim the player team: keep the hero plus team_size - 1 teammates.
 	# Issue #537 rework v3 (owner item 2): when the level menu drove the
 	# team set, the count comes straight from the menu's grid —
 	# teams[0]["names"] — and figures beyond the staged three SPAWN
 	# beside the hero, so the level fields exactly the chosen count.
+	# Issue #537 rework v4: an UNSET team_size (0 — the boot default)
+	# also follows the set, so levels started OUTSIDE the config menu
+	# (duel buttons, editor preview, direct runs) field the configured
+	# counts instead of stale 3/2 defaults.
 	var hero_count: int = team_size
 	if menu_team_sizes and not teams.is_empty():
+		hero_count = (teams[0]["names"] as Array).size()
+	elif team_size <= 0 and not teams.is_empty():
 		hero_count = (teams[0]["names"] as Array).size()
 	var teammates: Array[String] = ["Teammate1", "Teammate2"]
 	for i in teammates.size():
@@ -538,6 +565,9 @@ static func apply(level: Node) -> void:
 			var member := level.get_node_or_null(NodePath(teammates[i]))
 			if member != null:
 				member.queue_free()
+	# Issue #537 rework v4: the gate stays > 3 — beyond the classic trio
+	# the configured count spawns extras; a team of at most three fields
+	# only the staged cast (the #521 swap stays 1:1 with the staging).
 	if hero_count > 3:
 		_spawn_missing_player_figures(level, hero_count)
 	# Trim the enemy team: the scenes place at most Npc..Npc3.
@@ -559,7 +589,7 @@ static func apply(level: Node) -> void:
 		var npc := level.get_node_or_null(NodePath(npcs[i]))
 		if npc == null:
 			continue
-		if i >= enemy_count and not menu_team_sizes:
+		if enemy_count > 0 and i >= enemy_count and not menu_team_sizes:
 			npc.queue_free()
 			continue
 		if str(npc.get("team")) == "player":
@@ -733,8 +763,14 @@ static func _spawn_missing_player_figures(level: Node, hero_count: int) -> void:
 	# From the LIVE staged count (re-applying to a dressed level must not
 	# duplicate the extras — the reconciliation owns the surplus).
 	var staged := _live_player_figures(level).size()
-	for i in range(maxi(3, staged), hero_count):
-		_spawn_player_figure(level, anchor + Vector2(56.0 * (i - 2), 0.0),
+	# Issue #537 rework v4: from the ACTUAL staged count — the old
+	# maxi(3, staged) skipped members on levels staging fewer than
+	# three player figures (the duel casts), fielding one short. A
+	# classic team_size beyond the configured name list can only field
+	# as many figures as the set names.
+	var target := mini(hero_count, names.size())
+	for i in range(staged, target):
+		_spawn_player_figure(level, anchor + Vector2(56.0 * (i - staged + 1), 0.0),
 				team, str(names[i]))
 
 
