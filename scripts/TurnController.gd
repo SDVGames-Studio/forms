@@ -491,7 +491,13 @@ func _next_member(team: String, members: Array) -> Node:
 				controllable.append(member)
 		if not controllable.is_empty():
 			members = controllable
-	var last: Node = _last_active.get(team)
+	# Issue #597: a remembered member that has since DIED and been freed
+	# aborts this whole turn-start path when the dangling reference is
+	# assigned into the typed `Node` variable — "Trying to assign invalid
+	# previously freed instance" — leaving the turn started but broken
+	# (the crash-class wedges of the #597 report). Keep the read untyped
+	# and validity-check before it is used.
+	var last = _last_active.get(team)
 	var index := -1
 	if last != null and is_instance_valid(last):
 		index = members.find(last)
