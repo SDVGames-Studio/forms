@@ -16,6 +16,14 @@ extends RefCounted
 ##   name order by the figure plan (hero, teammates, then enemies).
 ##   Levels without markers keep the figures' authored positions —
 ##   the hand-placed staging IS the designer's spawn set.
+## - REGIME_CHOOSE   — "choose after the start" (issue #547): the
+##   level starts, the game pauses, and the player clicks every
+##   HERO-team figure onto a surface spot of their choosing (the
+##   spot is validated exactly like the sampler's — floor under
+##   local gravity + clearance), then the game runs. Computer and
+##   hot-seat teams keep their authored positions; with a
+##   computer-played hero team there is no human to click, so the
+##   designer regime runs instead.
 ##
 ## The random regimes find spots in ANY level with an algorithm that
 ## never assumes flat ground: candidate points are sampled on a grid
@@ -34,10 +42,15 @@ const REGIME_GROUPED := 0
 const REGIME_RANDOM := 1
 ## Spawn points defined in the level by the level designer.
 const REGIME_DESIGNER := 2
+## Issue #547 "choose after the start" — the player picks each
+## hero-team figure's spot interactively once the level runs
+## (see scripts/SpawnChooser.gd).
+const REGIME_CHOOSE := 3
 
 ## Labels of the menu rows, index = regime constant.
 const REGIME_LABELS: Array[String] = [
 	"Random grouped teams", "All random", "Designer spawn points",
+	"Choose after the start",
 ]
 
 ## Grid step of the candidate sampler, in world pixels.
@@ -63,6 +76,11 @@ const MIN_TEAM_GAP := 280.0
 ## figures' bodies are layer 8), so only ground is probed.
 const GROUND_MASK := 1
 
+## Issue #547: the interactive placement phase (REGIME_CHOOSE).
+## Preloaded, not a class_name reference — SpawnChooser mirrors this
+## script's constants instead of referencing it back (no cycle).
+const SpawnChooserScript := preload("res://scripts/SpawnChooser.gd")
+
 
 ## Apply the configured regime to `level` (GameConfig.spawn_regime).
 ## Call AFTER GameConfig.apply so the trimmed/dressed live figures move.
@@ -81,8 +99,35 @@ static func apply(level: Node) -> void:
 				await tree.physics_frame
 				_scatter(level, grouped)
 			tree.physics_frame.connect(place, CONNECT_ONE_SHOT)
+		REGIME_CHOOSE:
+			_apply_choose(level)
 		_:
 			_apply_designer(level)
+
+
+## Issue #547 regime 4: hand-place the HERO team after the start. A
+## SpawnChooser child of the level pauses the tree and lets the
+## player click each player-team figure onto a validated surface
+## spot (hero first, see scripts/SpawnChooser.gd). Without a
+## human-played hero team — AI vs AI spectating, issue #121 — or with
+## an empty player team there is nobody to click: the designer
+## regime runs instead, exactly like the classic default.
+static func _apply_choose(level: Node) -> void:
+	if GameConfig.team_controller(0) != "player":
+		_apply_designer(level)
+		return
+	var figures: Array = []
+	for figure in level.get_tree().get_nodes_in_group("player_team"):
+		if _is_placeable(figure, level):
+			figures.append(figure)
+	if figures.is_empty():
+		_apply_designer(level)
+		return
+	var chooser := SpawnChooserScript.new()
+	chooser.name = "SpawnChooser"
+	chooser.process_mode = Node.PROCESS_MODE_ALWAYS
+	chooser.figures = figures
+	level.add_child(chooser)
 
 
 ## Issue #523 regime 3: fill the level's "spawn_points" markers (name
