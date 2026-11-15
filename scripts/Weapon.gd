@@ -456,6 +456,23 @@ func _ready() -> void:
 	add_child(_drill_player)
 
 
+## Issue #597: the turn-effect gate nodes (the bat knockback and the
+## jackhammer drill) are re-parented to the LEVEL, not kept under this
+## weapon — but their ticking lives in THIS node's _physics_process.
+## When the wielder DIES mid-flight/mid-drill, the corpse is freed with
+## this weapon attached: the ticking stops while the gate node stays in
+## the turn_effects group FOREVER. Every later handover then stalls on
+## "waiting for the projectiles" until the 30 s safety timer forces the
+## turn — on the owner's web run (Level 4, the shooter died to a mine
+## right after his bat swing) the game looked crashed from that shot on.
+## Free the gates as the weapon leaves the tree so the handover the gate
+## was holding open can complete. Safe at a level change too: the gates
+## belong to the level that is going away with this weapon.
+func _exit_tree() -> void:
+	_end_bat_push()
+	_end_jackhammer()
+
+
 func _physics_process(delta: float) -> void:
 	_cooldown_left = maxf(0.0, _cooldown_left - delta)
 	# Issue #101: tick the between-shots delay.
@@ -906,7 +923,19 @@ func _tick_bat_push(delta: float) -> void:
 	_bat_push_left -= delta
 	var flying: Array = []
 	for entry in _bat_push:
-		var body := entry["body"] as Node2D
+		# Issue #597: a victim can DIE from the bat hit — its corpse is
+		# freed mid-flight, and `as` on a freed object is a script error
+		# that ABORTS this tick (and every later one: the abort repeats
+		# each physics frame while the loop restarts on the same freed
+		# record). That error storm is the web-build "crash" of #597 —
+		# and the aborted tick never reached its end, so the flight's
+		# turn-effect gate stayed live and every handover after it
+		# stalled on pending effects. Drop a dead record BEFORE any cast
+		# touches it: validity first, cast second.
+		var raw = entry["body"]
+		if raw == null or not is_instance_valid(raw):
+			continue
+		var body := raw as Node2D
 		if body == null or not is_instance_valid(body):
 			continue
 		var vel: Vector2 = entry["vel"] \

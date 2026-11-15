@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://c597soak001"]
+
+[ext_resource type="Script" path="res://tests/test_issue597_soak.gd" id="1"]
+
+[node name="Test597Soak" type="Node"]
+script = ExtResource("1")
