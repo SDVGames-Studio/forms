@@ -53,7 +53,10 @@ static var night_regime := false
 ## random team anchor, 1 = every figure spawns on its own random spot,
 ## 2 = spawn points defined in the level by the designer (Marker2D
 ## nodes in the "spawn_points" group; levels without markers keep the
-## authored figure positions — today's behavior, and the default).
+## authored figure positions — today's behavior, and the default),
+## 3 = issue #547 "choose after the start": the level runs, the game
+## pauses, and the player clicks every hero-team figure onto a spot
+## of their choosing (see scripts/SpawnChooser.gd).
 ## See scripts/SpawnRegime.gd.
 static var spawn_regime := SpawnRegime.REGIME_DESIGNER
 
