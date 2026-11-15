@@ -1,34 +1,33 @@
-[gd_scene load_steps=4 format=3]
+[gd_scene format=3 uid="uid://crddm142nc5yy"]
 
-[ext_resource type="Script" path="res://addons/godot_native_rl/sync.gd" id="1_sync"]
+[ext_resource type="Script" uid="uid://cd4kewawb6pga" path="res://addons/godot_native_rl/sync.gd" id="1_sync"]
 [ext_resource type="PackedScene" uid="uid://ceagfc4lub4ch" path="res://scenes/levels/Level.tscn" id="2_level"]
-[ext_resource type="Script" path="res://scripts/TrainingBot.gd" id="3_bot"]
+[ext_resource type="Script" uid="uid://bffd7t285h3kd" path="res://scripts/BotController.gd" id="3_afqrt"]
 
-[node name="TrainingScene" type="Node2D"]
+[node name="TrainingScene" type="Node2D" unique_id=1719645885]
 
-[node name="NcnnSync" type="Node" parent="."]
+[node name="NcnnSync" type="Node" parent="." unique_id=1492417567]
 script = ExtResource("1_sync")
-control_mode = 1
 
-[node name="Environment_01" parent="NcnnSync" instance=ExtResource("2_level")]
+[node name="Environment_01" parent="NcnnSync" unique_id=981749638 instance=ExtResource("2_level")]
 
-[node name="Bot" type="Node2D" parent="NcnnSync/Environment_01"]
+[node name="Bot" type="Node2D" parent="NcnnSync/Environment_01" unique_id=1653770012]
 position = Vector2(576, 400)
-script = ExtResource("3_bot")
+script = ExtResource("3_afqrt")
 policy_name = "soldier"
 
-[node name="Environment_02" parent="NcnnSync" instance=ExtResource("2_level")]
+[node name="Environment_02" parent="NcnnSync" unique_id=1476785305 instance=ExtResource("2_level")]
 position = Vector2(3200, 0)
 
-[node name="Bot" type="Node2D" parent="NcnnSync/Environment_02"]
+[node name="Bot" type="Node2D" parent="NcnnSync/Environment_02" unique_id=1299093362]
 position = Vector2(576, 400)
-script = ExtResource("3_bot")
+script = ExtResource("3_afqrt")
 policy_name = "soldier"
 
-[node name="Environment_03" parent="NcnnSync" instance=ExtResource("2_level")]
+[node name="Environment_03" parent="NcnnSync" unique_id=1622869748 instance=ExtResource("2_level")]
 position = Vector2(6400, 0)
 
-[node name="Bot" type="Node2D" parent="NcnnSync/Environment_03"]
+[node name="Bot" type="Node2D" parent="NcnnSync/Environment_03" unique_id=2075799690]
 position = Vector2(576, 400)
-script = ExtResource("3_bot")
+script = ExtResource("3_afqrt")
 policy_name = "soldier"
