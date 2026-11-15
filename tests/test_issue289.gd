@@ -4,6 +4,9 @@ extends Node
 ## CHARACTER camera aligned with the character's local coordinate system
 ## (the figure's gravity frame — the same frame FigurePose rotates the
 ## body to), switched with the bottom-left button (CameraSwitch).
+## Issue #552 renamed both (STATIC → "CAM: CHARACTER GLOBAL", CHARACTER →
+## "CAM: CHARACTER LOCAL"), added the third GLOBAL type and made the
+## button a 3-way cycle — this test follows the new names/cycle.
 ##
 ## Uses Level3, which authors a central gravity line at y = 540: a figure
 ## BELOW the line is pulled UP, so its local frame is rotated 180° — a
@@ -61,7 +64,7 @@ func _ready() -> void:
 					if grand is Button:
 						switch_button = grand
 	var button_ok: bool = switch_button != null \
-			and switch_button.text == "CAM: STATIC" \
+			and switch_button.text == "CAM: CHARACTER GLOBAL" \
 			and ZoomCameraScript.camera_mode == ZoomCameraScript.MODE_STATIC
 	print("ISSUE289 button=", switch_button != null,
 			" label=", switch_button.text if switch_button != null else "—",
@@ -97,7 +100,7 @@ func _ready() -> void:
 	var rotated: bool = member_ok \
 			and absf(wrapf(cam.rotation - target, -PI, PI)) < EPS
 	var label_ok: bool = switch_button != null \
-			and switch_button.text == "CAM: CHARACTER"
+			and switch_button.text == "CAM: CHARACTER LOCAL"
 	var canvas_rotated := false
 	if member_ok:
 		# The canvas transform is the VIEW transform: it must carry the
@@ -120,10 +123,20 @@ func _ready() -> void:
 	print("ISSUE289 pan_rotation_aware=", pan_ok)
 	ok = ok and pan_ok
 
-	# --- 5. Back to static: the view untilts to world-aligned. ---
+	# --- 5. Back to the default type — the #552 cycle needs TWO presses
+	# from character local: GLOBAL first (view world-aligned again), then
+	# the default character-global follow type. ---
 	if switch_button != null:
 		switch_button.pressed.emit()
 	for i in 240:
+		await get_tree().physics_frame
+	var global_ok: bool = member_ok and absf(cam.rotation) < EPS \
+			and ZoomCameraScript.camera_mode == ZoomCameraScript.MODE_GLOBAL
+	print("ISSUE289 global_untilts=", global_ok)
+	ok = ok and global_ok
+	if switch_button != null:
+		switch_button.pressed.emit()
+	for i in 60:
 		await get_tree().physics_frame
 	var back_ok: bool = member_ok and absf(cam.rotation) < EPS \
 			and ZoomCameraScript.camera_mode == ZoomCameraScript.MODE_STATIC

@@ -13,8 +13,8 @@ extends Node
 ##  1. The "camera_switch" action exists and its default binding is C.
 ##  2. The CameraSwitch button cannot take keyboard focus (Space must
 ##     stay the jump key, not a second camera switch).
-##  3. A C key event through CameraSwitch._unhandled_input flips the
-##     camera mode; a Space event does not.
+##  3. A C key event through CameraSwitch._unhandled_input cycles the
+##     camera mode (three types since #552); a Space event does not.
 ##  4. GameConfig.set_hotkey rebinds an action in the InputMap (exactly
 ##     ONE event with the new physical key) and persists it to
 ##     user://settings.cfg (a fresh load applies it again).
@@ -64,12 +64,14 @@ func _ready() -> void:
 	switch._unhandled_input(_key_event(KEY_C))
 	var c_flips: bool = ZoomCameraScript.camera_mode == ZoomCameraScript.MODE_CHARACTER
 	switch._unhandled_input(_key_event(KEY_C))
+	var c_global: bool = ZoomCameraScript.camera_mode == ZoomCameraScript.MODE_GLOBAL
+	switch._unhandled_input(_key_event(KEY_C))
 	var c_toggles_back: bool = ZoomCameraScript.camera_mode == ZoomCameraScript.MODE_STATIC
 	switch._unhandled_input(_key_event(KEY_SPACE))
 	var space_idle: bool = ZoomCameraScript.camera_mode == ZoomCameraScript.MODE_STATIC
-	print("ISSUE294 c_flips=", c_flips, " c_back=", c_toggles_back,
-			" space_idle=", space_idle)
-	ok = ok and c_flips and c_toggles_back and space_idle
+	print("ISSUE294 c_flips=", c_flips, " c_global=", c_global,
+			" c_back=", c_toggles_back, " space_idle=", space_idle)
+	ok = ok and c_flips and c_global and c_toggles_back and space_idle
 
 	# --- 4. Rebind one action: InputMap + persistence. ---
 	GameConfigScript.set_hotkey("camera_switch", KEY_X)
