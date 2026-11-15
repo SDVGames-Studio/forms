@@ -53,7 +53,11 @@ func setup_rng(seed_value: int) -> void:
 
 func step(reset_after: int) -> void:
 	n_steps += 1
-	if n_steps > reset_after:
+	# Issue #437 (restored, #596): a task-terminal `done` set earlier in the
+	# same frame (game_over()) outranks a coincident horizon end — the episode
+	# stays a TERMINATION, never flips to truncation, so the trainer's
+	# terminated/truncated split is exact.
+	if n_steps > reset_after and not done:
 		truncated = true  # horizon end, not a task-terminal state (#12)
 		# Signal episode termination (godot_rl convention): the trainer reads `done`,
 		# which gives proper episode boundaries and reward statistics.

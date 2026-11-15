@@ -322,3 +322,14 @@ func accumulate_reward() -> void:
 
 func _physics_process(_delta) -> void:
 	_core.step(reset_after)
+	# Issue #437 (restored after the v0.4.0 addon refresh, #596): needs_reset —
+	# set by the horizon in step(), by game_over(), or by the framework's reset
+	# command via NcnnSync._reset_agents — restarts the environment on the next
+	# loop iteration (subclasses' reset() also restores their world share).
+	# reset() deliberately keeps done/truncated (#379), so the Sync still reads
+	# the flags on this frame's terminal step; only needs_reset and the step
+	# counter clear. Without this the counter never clears after the first
+	# horizon and every later step reports done (ep_len_mean collapses to 1 —
+	# the training_guide.md pitfall).
+	if _core.needs_reset:
+		reset()
