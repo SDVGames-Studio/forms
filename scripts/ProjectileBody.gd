@@ -27,15 +27,25 @@ extends RigidBody2D
 ##             live turn effect again — it re-joins the "projectiles"
 ##             group, so the turn handover waits until it has exploded
 ##             before the next turn begins.
+##  SAW     — issue #570: the circular saw. Thrown like a mine, but on
+##             coming to rest it does not go dormant — the blade SPINS
+##             in place for SAW_SPIN_TIME seconds, SUCKING IN every
+##             figure within SAW_SUCK_RADIUS (a steady pull toward the
+##             blade, either team, thrower included) and grinding the
+##             ones it touches for SAW_CUT_DPS per second. Then it stops
+##             and disappears. A settling watchdog forces the spin even
+##             if the saw never rests (endless slide), so a turn can
+##             never hang waiting for it.
 ## Visuals are plain rectangles built in code — no assets.
 
-enum Kind { ROCKET, GRENADE, ROCK, MINE }
+enum Kind { ROCKET, GRENADE, ROCK, MINE, SAW }
 
-const BOUNCE := {Kind.ROCKET: 0.0, Kind.GRENADE: 0.45, Kind.ROCK: 0.45, Kind.MINE: 0.2}
+const BOUNCE := {Kind.ROCKET: 0.0, Kind.GRENADE: 0.45, Kind.ROCK: 0.45,
+	Kind.MINE: 0.2, Kind.SAW: 0.2}
 
 ## Issue #246: mine parameters. The proximity trigger is 1.2 of a
-## character's width (the figure visual is 64 px, like ShapeVisual and
-## ROCK_CHAR_CLEAR above) — doubled from the original 0.6 in issue #262;
+## character's width (the figure visual is 64 px, like the character
+## bodies and ROCK_CHAR_CLEAR above) — doubled from the original 0.6 in issue #262;
 ## once triggered the mine counts MINE_FUSE
 ## seconds before it explodes. A mine is only "a projectile" while it
 ## flies: once it slows below MINE_REST_SPEED it is settled — a dormant
@@ -52,10 +62,39 @@ const MINE_SETTLE_WATCHDOG := 4.0
 ## fuse entirely and detonates the instant it is hit.
 const MINE_HP := 1
 
+## Issue #570: circular saw parameters. The suction reach is 2.5 figure
+## widths (the 64 px figure visual); the pull is a steady velocity write
+## toward the blade (the bat push recipe of issue #527 — an idle
+## figure's physics clamp eats a one-shot tangential write, so the pull
+## ticks every physics frame). Contact grinding sits at double the
+## jackhammer's PUSH_DPS (#363): a full 3 s spin on the blade costs 60
+## health, but the suction itself is the point — it drags nearby
+## figures INTO the blade, so the danger zone is the whole suction
+## radius, not just the touch. Figures are cut only while the blade
+## spins, and accrued fractional damage is applied whole (the drill's
+## streamed-tick pattern).
+const SAW_SPIN_TIME := 3.0
+const SAW_SUCK_RADIUS := 160.0
+const SAW_SUCK_SPEED := 120.0
+const SAW_CUT_RADIUS := 40.0
+const SAW_CUT_DPS := 20.0
+## The blade's visual spin rate (rad/s) — cosmetic only.
+const SAW_SPIN_VISUAL := 14.0
+## Safety net: a saw that never comes to rest still starts spinning
+## after this many seconds (and the spin itself always ends after
+## SAW_SPIN_TIME), so the turn handover can never get stuck on it.
+const SAW_SETTLE_WATCHDOG := 4.0
+
+## Issue #475 (godot-sound-work skill): the spinning blade's loop —
+## preloaded once, never loaded per throw at runtime. The stream is a
+## per-instance DUPLICATE with the loop set in code (the #495 recipe —
+## headless wav import does not honor edit/loop_mode pins).
+const SAW_SPIN_SOUND := preload("res://assets/audio/weapons/saw_spin.wav")
+
 ## Issue #227: rock crumble parameters. The created soil disk is a little
 ## larger than a grenade blast (GRENADE_BLAST = 100 in Weapon.gd); it
-## clears every character by 1.3 x the figure shape size (ShapeVisual =
-## 64 px) and never overlaps solid terrain — the fill hugs indestructible
+## clears every character by 1.3 x the figure shape size (the 64 px
+## figure visual) and never overlaps solid terrain — the fill hugs indestructible
 ## ground with a common border instead of covering it.
 const ROCK_GROUND_RADIUS := 110.0
 ## Issue #324: precision of the crumble disk. The disk is filled with
@@ -118,6 +157,14 @@ var _hp := 0
 var _visual: ColorRect = null
 ## Issue #368: the armed mine's red warning light (null while dormant).
 var _mine_light: ShotLight = null
+## Issue #570: saw state — spinning flag, seconds left, the per-figure
+## accrued grind damage of THIS spin, the rotating blade visual and its
+## sound player.
+var _saw_spinning := false
+var _saw_spin_left := 0.0
+var _saw_cut_acc: Dictionary = {}
+var _saw_blade: Polygon2D = null
+var _saw_player: AudioStreamPlayer = null
 
 
 func setup(p_kind: int, p_velocity: Vector2, p_damage: int, p_lifetime: float,
@@ -193,7 +240,21 @@ func _ready() -> void:
 		_hp = MINE_HP
 		add_to_group("mines")
 		get_tree().create_timer(MINE_SETTLE_WATCHDOG).timeout.connect(_on_mine_watchdog)
-	else:
+	# Issue #570: the saw has no fuse either — it waits to come to rest,
+	# then spins. The watchdog guarantees the spin starts even on an
+	# endless slide, so the turn never waits on a saw forever.
+	if kind == Kind.SAW:
+		get_tree().create_timer(SAW_SETTLE_WATCHDOG).timeout.connect(_on_saw_watchdog)
+		_build_saw_blade()
+		var saw_stream: AudioStreamWAV = SAW_SPIN_SOUND.duplicate()
+		saw_stream.loop_mode = AudioStreamWAV.LOOP_FORWARD
+		saw_stream.loop_begin = 0
+		saw_stream.loop_end = saw_stream.data.size() / 2  # 16-bit mono
+		_saw_player = AudioStreamPlayer.new()
+		_saw_player.stream = saw_stream
+		_saw_player.bus = "SFX"
+		add_child(_saw_player)
+	elif kind != Kind.MINE:
 		get_tree().create_timer(lifetime).timeout.connect(_on_fuse)
 
 	# Issue #475: blast SFX player on the SFX bus (default 0 dB; fixed
@@ -224,6 +285,9 @@ func _ready() -> void:
 func _physics_process(delta: float) -> void:
 	# Issue #246: the mine's state machine. Everything else is physics
 	# handled by the engine plus the level gravity in _integrate_forces.
+	if kind == Kind.SAW:
+		_tick_saw(delta)
+		return
 	if kind != Kind.MINE:
 		return
 	if not _settled:
@@ -266,6 +330,103 @@ func _physics_process(delta: float) -> void:
 					if fmod(_fuse_left, 0.25) < 0.125 else 0.5
 		if _fuse_left <= 0.0:
 				_explode()
+
+
+## Issue #570: build the saw's rotating blade — a steel 8-tooth star
+## polygon around the body square. Plain code geometry, no assets; it
+## rotates while the saw spins so the spin reads at a glance.
+func _build_saw_blade() -> void:
+	var blade := Polygon2D.new()
+	var points := PackedVector2Array()
+	var teeth := 8
+	for i in teeth * 2:
+		var angle := TAU * float(i) / float(teeth * 2)
+		var radius := 22.0 if i % 2 == 0 else 14.0
+		points.append(Vector2(cos(angle), sin(angle)) * radius)
+	blade.polygon = points
+	blade.color = Color(0.75, 0.78, 0.85, 1)
+	add_child(blade)
+	_saw_blade = blade
+
+
+## Issue #570: one physics tick of the circular saw. Flying → wait to
+## rest (the watchdog forces the spin eventually). Spinning → anchor the
+## body, rotate the blade, SUCK IN every figure within SAW_SUCK_RADIUS
+## (velocity write + body shove, the #527/#363 push recipe) and grind
+## the contact ones for SAW_CUT_DPS per second. Then the spin ends and
+## the saw disappears.
+func _tick_saw(delta: float) -> void:
+	if not _saw_spinning:
+		if linear_velocity.length() < MINE_REST_SPEED:
+			_start_saw_spin()
+		return
+	_saw_spin_left -= delta
+	if _saw_blade != null:
+		_saw_blade.rotation += SAW_SPIN_VISUAL * delta
+	for group in ["player_team", "enemy_team"]:
+		for node in get_tree().get_nodes_in_group(group):
+			var body := node as Node2D
+			if body == null or not is_instance_valid(body) \
+					or not body.has_method("take_damage"):
+				continue
+			var hp = body.get("health")
+			if hp is int and hp <= 0:
+				continue
+			var to_blade := global_position - body.global_position
+			var dist := to_blade.length()
+			if dist > SAW_SUCK_RADIUS:
+				continue
+			# Suction: a steady pull toward the blade while the saw spins.
+			var pull := to_blade / maxf(dist, 1.0) * SAW_SUCK_SPEED
+			if "velocity" in body:
+				body.velocity = pull
+			var physics := body as PhysicsBody2D
+			if physics != null:
+				physics.move_and_collide(pull * delta)
+			else:
+				body.global_position += pull * delta
+			# Contact grind: streamed DPS inside the blade radius.
+			if dist <= SAW_CUT_RADIUS:
+				var acc: float = _saw_cut_acc.get(body, 0.0) \
+						+ SAW_CUT_DPS * delta
+				if acc >= 1.0:
+					body.take_damage(int(acc))
+					acc -= floorf(acc)
+				_saw_cut_acc[body] = acc
+	if _saw_spin_left <= 0.0:
+		_end_saw_spin()
+
+
+## Issue #570: the saw came to rest — anchor it and start the spin (the
+## sound too). Freezing the rigid body pins the spinning hazard in place
+## so dragged figures cannot shove it around.
+func _start_saw_spin() -> void:
+	_saw_spinning = true
+	_saw_spin_left = SAW_SPIN_TIME
+	freeze = true
+	if _saw_player != null:
+		_saw_player.play()
+
+
+## Issue #570: the spin is over — the saw stops and disappears, leaving
+## the "projectiles" group (turn handover) and the tree.
+func _end_saw_spin() -> void:
+	if _saw_player != null:
+		_saw_player.stop()
+	queue_free()
+
+
+## Issue #570: settle watchdog — a saw that never slows down still
+## spins (and then still ends after SAW_SPIN_TIME), so a turn never
+## waits on it forever.
+func _on_saw_watchdog() -> void:
+	if kind == Kind.SAW and not _saw_spinning and not _exploded:
+		_start_saw_spin()
+
+
+## Issue #570: test/headless accessor — is the blade spinning now?
+func is_saw_spinning() -> bool:
+	return _saw_spinning
 
 
 ## Issue #246: the mine came to rest — it stops being a live projectile

@@ -38,14 +38,27 @@ extends Node2D
 ##                    (issue #527 rework: the swing power is chosen
 ##                    like a rocket launch) — a melee swing along the
 ##                    aim: the hit not only damages the figure it
-##                    reaches, it LAUNCHES them — an acceleration along
-##                    the shot direction scaled by the charge that keeps
-##                    pushing for a moment after the contact (issue #527)
+##                    reaches, it LAUNCHES them like a projectile
+##                    (issue #549) — one initial impulse along the shot
+##                    direction with a guaranteed lift, after which the
+##                    level's gravity bends the flight into an arc until
+##                    the victim lands
+## 10 Circular saw (key C) — issue #570: thrown like a mine (hold F to
+##                    charge the lob). On landing the blade SPINS for a
+##                    few seconds, SUCKING IN every nearby figure (a
+##                    steady pull toward the blade, either team) and
+##                    grinding the ones it reaches for damage per
+##                    second — then it stops and disappears.
 ## Visuals are plain rectangles built in code — no extra assets.
 
 const ProjectileScript := preload("res://scripts/Projectile.gd")
 ## Issue #114: rockets and grenades spawn as real rigid bodies.
 const ProjectileBodyScript := preload("res://scripts/ProjectileBody.gd")
+## Issue #549: the bat's ballistic knockback integrates the figures'
+## shared gravity constant — figures are NOT rigid bodies, their own
+## scripts apply Stats.GRAVITY along the level's gravity field, so the
+## bat's flight must integrate the very same gravity.
+const Stats := preload("res://scripts/CharacterStats.gd")
 
 ## Owner task 2026-11-11 (godot-sound-work skill): the shot sound —
 ## preloaded once, never loaded per shot at runtime.
@@ -67,7 +80,7 @@ const COOLDOWN := 0.3
 ## shotgun 2, rocket 1, grenade 1, spear 2, mine 1, jackhammer 1, railgun 1,
 ## pistol 3, baseball bat 1 — issues #526, #527) and the 3-second delay
 ## after every shot during which the character cannot shoot.
-const SHOTS_PER_TURN: Array = [2, 1, 1, 2, 1, 1, 1, 3, 1]
+const SHOTS_PER_TURN: Array = [2, 1, 1, 2, 1, 1, 1, 3, 1, 1]
 const SHOT_DELAY := 3.0
 
 const PELLET_SPEED := 900.0
@@ -175,27 +188,49 @@ const PISTOL_LIFETIME := 0.6
 const PISTOL_DAMAGE := 10
 ## Issue #527: the baseball bat — a MELEE swing along the aim (a corridor
 ## check in front of the wielder, like the spear's thrust). The hit not
-## only damages the figure it reaches, it gives them an ACCELERATION:
-## they are pushed along the shot direction at BAT_KNOCKBACK_SPEED for
-## BAT_KNOCKBACK_TIME seconds (the velocity write + body shove the
-## jackhammer drill proved in #363 — an idle figure's physics clamp eats
-## a one-shot tangential velocity write, so the push ticks like the
-## drill does). Damage sits between the spear (25) and the rocket (35).
+## only damages the figure it reaches, it LAUNCHES them (issue #549):
+## ONE initial impulse along the shot direction at BAT_KNOCKBACK_SPEED,
+## after which they fly like a projectile — the level's gravity bends
+## the flight into an arc until they land (the velocity write + body
+## shove the jackhammer drill proved in #363 — an idle figure's physics
+## clamp eats a one-shot tangential velocity write, so the flight ticks
+## like the drill does, integrating gravity every tick). Damage sits
+## between the spear (25) and the rocket (35).
 const BAT_RANGE := 90.0
 const BAT_DAMAGE := 30
 ## How wide the swing's corridor is sideways of the aim axis — a figure
 ## capsule is 48 px wide, so 24 catches every figure whose centre is up
 ## to half a body off the aim line.
 const BAT_LATERAL := 24.0
+## Issue #549: the LAUNCH speed — the magnitude of the initial impulse
+## along the shot direction (scaled by the #527 charge).
 const BAT_KNOCKBACK_SPEED := 700.0
-const BAT_KNOCKBACK_TIME := 0.25
+## Issue #549: a flat swing would pin the victim to the floor, so every
+## launch carries at least this fraction of the launch speed as LIFT
+## against gravity — the victim always becomes airborne and gravity
+## gets to bend a real arc (a Worms-style pop-up off the bat).
+const BAT_MIN_LIFT := 0.4
+## Issue #549: safety cap on the ballistic flight — the flight ends
+## when every victim lands, but a figure knocked into a bottomless pit
+## never would, so the flight force-ends after this many seconds and
+## the turn-effect gate releases (TurnController's own 30 s effects
+## safety timer backs this up).
+const BAT_FLIGHT_CAP := 5.0
+## Issue #570: the circular saw — thrown with the mine's lobbed arc and
+## aiming. It never explodes: on landing the blade spins (all spin
+## behaviour constants live in ProjectileBody next to the mine's, see
+## Kind.SAW), sucking in nearby figures and grinding the contact ones
+## for damage per second, then it stops and disappears. One saw per turn,
+## the standard 5 uses per team per round (WeaponInventory).
+const SAW_SPEED := 480.0
+const SAW_MASS := 0.8
 
 var _facing := 1.0
 var _cooldown_left := 0.0
 ## Issue #101: shots already made this turn by this member, per weapon
 ## (issue #116: the quota is per weapon so switching after a shot keeps
 ## the newly selected weapon's own quota).
-var _shots_used := [0, 0, 0, 0, 0, 0, 0, 0, 0]
+var _shots_used := [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 
 ## Issue #101: seconds left before the character may shoot again.
 var _shot_delay_left := 0.0
@@ -219,10 +254,14 @@ var _bat_push_speed := BAT_KNOCKBACK_SPEED
 
 ## Issue #527: the baseball bat swing — a quick lunge of the held bat
 ## along the aim axis (visual only; the hit itself is instant, see
-## _swing_bat), plus the knockback state: every hit figure is pushed
-## along the shot direction while _bat_push_left > 0 (ticked from
-## _physics_process like the drill), and the turn-effect gate node that
-## keeps the post-shot handover waiting while they fly.
+## _swing_bat), plus the knockback state. Issue #549: every hit figure
+## flies BALLISTICALLY — _bat_push holds one flight record per victim
+## ({body, vel, air}: the figure, its CURRENT flight velocity, and
+## whether it has left the floor at least once — only an airborne body
+## can "land"), _bat_push_left is the BAT_FLIGHT_CAP countdown, and
+## _bat_effect is the turn-effect gate node that keeps the post-shot
+## handover waiting while they fly (ticked from _physics_process like
+## the drill).
 var _bat_swing_t := -1.0
 var _bat_push: Array = []
 var _bat_push_dir := Vector2.ZERO
@@ -337,6 +376,8 @@ func _held_style_index() -> int:
 		return 8  # pistol (#526)
 	if selected_weapon == 8:
 		return 9  # baseball bat (#527)
+	if selected_weapon == 9:
+		return 10  # circular saw (#570)
 	return selected_weapon
 
 ## Issue #68: size and color of the held weapon per selected weapon index.
@@ -353,10 +394,29 @@ const HELD_STYLES: Array = [
 	{"size": Vector2(46, 4), "color": Color(0.55, 0.85, 1.0, 1)},   # railgun (#359)
 	{"size": Vector2(18, 6), "color": Color(0.5, 0.55, 0.6, 1)},   # pistol (#526)
 	{"size": Vector2(30, 8), "color": Color(0.85, 0.6, 0.3, 1)},  # baseball bat (#527)
+	{"size": Vector2(16, 16), "color": Color(0.75, 0.78, 0.85, 1)},  # circular saw (#570)
 ]
 
 ## Currently selected weapon index (0..5), shared through the inventory HUD.
 var selected_weapon := 0
+
+## Issue #559: how far from the body CENTRE the held weapon floats,
+## along the aim axis — the 64 px reference body's EDGE (32 px), outside
+## the modular character's face zone (eyes and mouth span the middle
+## ±16 px of the body), so the weapon anchor itself never sits over a
+## facial feature. The weapon stays what it always was: a handless
+## rectangle pinned to the AIM alone — positioned and rotated by the
+## aim, never by the body visual or the face (a separate sibling node,
+## see ModularCharacterVisual), so expressions and weapons never affect
+## each other.
+const HELD_ANCHOR := 32.0
+## Issue #559: the spearhead position the DAMAGE corridor uses stays at
+## its authored reach — weapon mechanics are frozen by this issue (no
+## damage, firing or balance changes). The drawn spear now floats
+## further out (HELD_ANCHOR above), so the visible tip may overhang the
+## damage tip by a few px — the hit NEVER reaches beyond what the player
+## sees (the conservative direction).
+const SPEAR_TIP_BASE := 26.0
 
 
 func _ready() -> void:
@@ -528,7 +588,7 @@ func _physics_process(delta: float) -> void:
 		if _drill_left > 0.0:
 			aim = _drill_dir
 		var style: Dictionary = HELD_STYLES[_held_style_index()]
-		_held.position = aim * 26.0 - style["size"] / 2.0
+		_held.position = aim * HELD_ANCHOR - style["size"] / 2.0
 		# Issue #133: the spear (and every held weapon) rotates to the aim
 		# axis instead of staying parallel to the ground.
 		_held.pivot_offset = style["size"] / 2.0
@@ -549,7 +609,8 @@ func _physics_process(delta: float) -> void:
 			# wielder and the current tip position is damaged as it is
 			# reached, instead of one instant press-time check.
 			if _thrust_t >= 0.0:
-				_spear_sweep_hit(26.0 + thrust + HELD_STYLES[3]["size"].x / 2.0)
+				_spear_sweep_hit(SPEAR_TIP_BASE + thrust
+						+ HELD_STYLES[3]["size"].x / 2.0)
 		_held.position += aim * thrust
 		# Issue #527: the bat swing — a quick forward swipe along the aim
 		# axis, fast out (0.1 s) and slower back (0.3 s), mirroring the
@@ -601,7 +662,7 @@ func _update_held() -> void:
 	var style: Dictionary = HELD_STYLES[_held_style]
 	var size: Vector2 = style["size"]
 	_held.size = size
-	_held.position = Vector2(_facing * 26.0, 0.0) - size / 2.0
+	_held.position = Vector2(_facing * HELD_ANCHOR, 0.0) - size / 2.0
 	_held.color = style["color"]
 
 
@@ -629,6 +690,13 @@ func is_busy() -> bool:
 ## velocity intact) through the frozen-input handover.
 func is_drilling() -> bool:
 	return _drill_left > 0.0
+
+
+## Issue #559: true while this weapon is charging a shot (hold F on a
+## charged weapon). Read-only query for the character animator's angry
+## charge-focus face — no mechanics, no behavior change.
+func is_charging() -> bool:
+	return _charging
 
 
 func _fire(power := 1.0) -> void:
@@ -680,6 +748,7 @@ func _fire(power := 1.0) -> void:
 		6: _fire_railgun(power)
 		7: _fire_pistol()
 		8: _swing_bat(power)
+		9: _throw_saw(power)
 	# Issue #101+#65: only the LAST shot of the turn hands the turn over;
 	# with quota remaining the character keeps acting after the pause.
 	if _shots_used[clampi(selected_weapon, 0, _shots_used.size() - 1)] >= _shot_limit():
@@ -761,12 +830,14 @@ func _fire_pistol() -> void:
 ## along the aim (like the spear's thrust, but with the bat's own reach
 ## and lateral tolerance). EVERY figure it reaches — friendly fire is on
 ## (#57), only the wielder is exempt — takes BAT_DAMAGE and is LAUNCHED
-## along the shot direction: the knockback runs for BAT_KNOCKBACK_TIME
-## seconds (see _tick_bat_push), gated as a turn effect so the post-shot
-## handover waits while the hit figures fly (same pattern as the drill).
-## Issue #527 rework: the swing power (chosen by the hold-F charge, the
-## rocket's issue-#114 recipe) scales the launch — a tap pushes at 40%
-## of BAT_KNOCKBACK_SPEED, the full hold at 100%.
+## like a projectile (issue #549): the initial impulse runs along the
+## shot direction with a guaranteed lift against gravity (BAT_MIN_LIFT),
+## then gravity carries the flight (see _tick_bat_push), gated as a turn
+## effect so the post-shot handover waits while the hit figures fly
+## (same pattern as the drill). Issue #527 rework: the swing power
+## (chosen by the hold-F charge, the rocket's issue-#114 recipe) scales
+## the launch — a tap pushes at 40% of BAT_KNOCKBACK_SPEED, the full
+## hold at 100%.
 func _swing_bat(power := 1.0) -> void:
 	_bat_swing_t = 0.0
 	_bat_push.clear()
@@ -792,10 +863,10 @@ func _swing_bat(power := 1.0) -> void:
 			var lateral := absf(offset.dot(perp))
 			if along > 0.0 and along <= BAT_RANGE and lateral <= BAT_LATERAL:
 				body.take_damage(BAT_DAMAGE)
-				_bat_push.append(body)
+				_bat_push.append(_bat_launch(body))
 	if _bat_push.is_empty():
 		return
-	_bat_push_left = BAT_KNOCKBACK_TIME
+	_bat_push_left = BAT_FLIGHT_CAP
 	if _bat_effect == null or not is_instance_valid(_bat_effect):
 			_bat_effect = Node.new()
 			_bat_effect.name = "BatKnockback"
@@ -804,24 +875,60 @@ func _swing_bat(power := 1.0) -> void:
 				parent.get_parent().add_child(_bat_effect)
 
 
-## Issue #527: one physics tick of the bat's knockback — every hit figure
-## is pushed along the shot direction (velocity write + body shove, the
-## jackhammer's #363 recipe: an idle figure's clamp eats a one-shot
-## tangential velocity write, so the body itself is moved every tick).
+## Issue #549: the initial flight record of one victim — the impulse
+## along the shot direction, lifted so at least BAT_MIN_LIFT of the
+## launch speed points AGAINST the level's gravity at the victim (a
+## flat aim would pin them to the floor and there would be no arc to
+## bend; the missing anti-gravity component is replaced by the
+## guaranteed one, the aimed TANGENTIAL direction always survives).
+func _bat_launch(body: Node2D) -> Dictionary:
+	var vel := _bat_push_dir * _bat_push_speed
+	var grav := LevelTerrain.gravity_vector(body)
+	var lift := vel.dot(-grav)
+	var min_lift := _bat_push_speed * BAT_MIN_LIFT
+	if lift < min_lift:
+		vel -= grav * (min_lift - lift)
+	return {"body": body, "vel": vel, "air": false}
+
+
+## Issue #549: one physics tick of the bat's knockback — every hit
+## figure flies BALLISTICALLY like a projectile: gravity accelerates the
+## stored flight velocity every tick (the figures' shared Stats.GRAVITY
+## along the level's LevelTerrain gravity field, exactly what a figure
+## integrates in its own _physics_process), and the velocity write +
+## body shove is the jackhammer's #363 recipe (an idle figure's clamp
+## eats a one-shot tangential velocity write, so the body itself is
+## moved every tick). A CharacterBody2D victim that has been airborne
+## and is back on the floor has LANDED — its flight ends there; a plain
+## Node2D stand-in (tests) reports no floor contact and rides the
+## BAT_FLIGHT_CAP to the end.
 func _tick_bat_push(delta: float) -> void:
 	_bat_push_left -= delta
-	var push := _bat_push_dir * _bat_push_speed
-	for body in _bat_push:
+	var flying: Array = []
+	for entry in _bat_push:
+		var body := entry["body"] as Node2D
 		if body == null or not is_instance_valid(body):
 			continue
+		var vel: Vector2 = entry["vel"] \
+				+ LevelTerrain.gravity_vector(body) * Stats.GRAVITY * delta
+		entry["vel"] = vel
 		if "velocity" in body:
-				body.velocity = push
+			body.velocity = vel
 		var physics := body as PhysicsBody2D
 		if physics != null:
-				physics.move_and_collide(push * delta)
+			physics.move_and_collide(vel * delta)
 		else:
-			body.global_position += push * delta
-	if _bat_push_left <= 0.0:
+			body.global_position += vel * delta
+		var character := body as CharacterBody2D
+		if character != null:
+			if character.is_on_floor():
+				if entry["air"]:
+					continue  # landed — this flight is over
+			else:
+				entry["air"] = true
+		flying.append(entry)
+	_bat_push = flying
+	if _bat_push.is_empty() or _bat_push_left <= 0.0:
 		_end_bat_push()
 
 
@@ -886,6 +993,31 @@ func _throw_mine(power := 1.0) -> void:
 			MINE_SPEED * strength, strength)
 	_spawn_body(ProjectileBody.Kind.MINE, mine_velocity, MINE_DAMAGE, 0.0,
 		Vector2(14, 14), Color(0.22, 0.24, 0.3, 1), MINE_BLAST, MINE_MASS)
+
+
+## Issue #570: the CIRCULAR SAW throw — the mine's lobbed arc and aiming,
+## but the saw has no fuse and no blast: once it lands it spins in place,
+## sucking in nearby figures and grinding the contact ones (all of that
+## lives in ProjectileBody, Kind.SAW), then it disappears. Issue #99
+## mirror: an NPC lobs the saw ballistically at its target like the
+## grenade, so the blade lands ON the target and the suction does the rest.
+func _throw_saw(power := 1.0) -> void:
+	if npc_target != null and is_instance_valid(npc_target):
+		var to := npc_target.global_position - global_position
+		var t := clampf(to.length() / SAW_SPEED, 0.5, 1.5)
+		var velocity := to / t
+		velocity.y -= 0.5 * 1200.0 * t
+		_spawn_body(ProjectileBody.Kind.SAW, velocity, 0, 0.0,
+			Vector2(16, 16), Color(0.75, 0.78, 0.85, 1), 0.0, SAW_MASS)
+		npc_target = null
+		return
+	var saw_aim := _aim()
+	var strength := lerpf(MIN_SHOT_POWER, 1.0, power)
+	# Issue #277 rework: the indicated aim + frame lob (see lobbed_velocity).
+	var saw_velocity := lobbed_velocity(saw_aim, _frame_up(),
+			SAW_SPEED * strength, strength)
+	_spawn_body(ProjectileBody.Kind.SAW, saw_velocity, 0, 0.0,
+		Vector2(16, 16), Color(0.75, 0.78, 0.85, 1), 0.0, SAW_MASS)
 
 
 ## Issue #227: the Rock TOOL throw. Same launch arc as a player grenade

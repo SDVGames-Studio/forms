@@ -46,7 +46,9 @@ func _ready() -> void:
 			" outer20w=", outer_ok, " container=", container_ok)
 	ok = ok and ring_ok and outer_ok and inner_ok and container_ok
 
-	# --- Three teams by default (issue #208 team staging conventions). ---
+	# --- Three teams by default (issue #208 team staging conventions;
+	# issue #571: with FOUR default teams the three staged enemy
+	# figures now wear three distinct dealt team colors). ---
 	await get_tree().physics_frame
 	var player_count := get_tree().get_nodes_in_group("player_team").size()
 	var enemy_colors := {}
@@ -54,7 +56,7 @@ func _ready() -> void:
 		var body := member as Node2D
 		if is_instance_valid(body):
 			enemy_colors[body.get("team_color")] = true
-	var teams_ok := player_count == 3 and enemy_colors.size() == 2
+	var teams_ok := player_count == 3 and enemy_colors.size() == 3
 	print("ISSUE250 player_team=", player_count,
 			" enemy_teams=", enemy_colors.size())
 	ok = ok and teams_ok

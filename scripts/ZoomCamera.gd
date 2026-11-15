@@ -46,14 +46,24 @@ extends Camera2D
 ## moves the view away (issue #212) and the next controlled member
 ## re-centers it. Between turns and after the game nobody owns the view —
 ## it stays the free spectator camera of issue #126.
+##
+## Issue #552 renames the two types (same behaviour, new names on the
+## switch button): STATIC is now "character global" and CHARACTER is now
+## "character local". A third type GLOBAL is added: fully independent of
+## any figure — no follow, no turn/control recenter — the player's pans
+## and zooms are the only thing that move the view.
 
 const ZOOM_STEP := 1.25
 const MIN_ZOOM := 0.25
 const MAX_ZOOM := 3.0
 
-## Issue #289: camera types.
-const MODE_STATIC := 0
-const MODE_CHARACTER := 1
+## Issue #289: camera types (#552 renamed both and added the third).
+const MODE_STATIC := 0 ## "character global" since #552: follows the figure, world-aligned.
+const MODE_CHARACTER := 1 ## "character local" since #552: follows the figure, rotated to its frame.
+## Issue #552: fully independent of any figure — see the header doc.
+const MODE_GLOBAL := 2
+## Issue #552: how many types the switch cycles through.
+const MODE_COUNT := 3
 
 ## Issue #289: how fast the view rotates to a new frame angle (per second,
 ## exponential ease). Walking around a disc rim changes the angle slowly, so
@@ -72,6 +82,10 @@ var _drag_last := Vector2.ZERO
 ## it so the panned view persists hands-free; a new member resets it.
 var _pan_offset := Vector2.ZERO
 var _followed_member: Node2D = null
+## Issue #552: the type seen last frame — a type change re-anchors the
+## follow (a follow type entered from GLOBAL re-centers on the figure
+## with a zero pan offset, exactly like a control switch in #212).
+var _last_mode := -1
 
 
 func _ready() -> void:
@@ -106,10 +120,22 @@ func _process(delta: float) -> void:
 	_ensure_gravity_field()
 	var member := _focus_member()
 	# Issue #289: ease the view rotation to the current type's target — 0 in
-	# the static mode, the character's gravity frame in the character mode
-	# (no member to follow → back to world-aligned).
+	# the world-aligned types (character global, #552 global), the
+	# character's gravity frame in the character-local type (no member to
+	# follow → back to world-aligned).
 	rotation = lerp_angle(rotation, _rotation_target(member),
 			1.0 - exp(-ROTATION_SMOOTH * delta))
+	# Issue #552: a type change re-anchors the follow — leaving GLOBAL for a
+	# follow type re-centers on the current figure (zero pan offset)
+	# instead of keeping the free-roam position.
+	if _last_mode != camera_mode:
+		_last_mode = camera_mode
+		_followed_member = null
+	# Issue #552: the GLOBAL type follows NOBODY — game events (turn
+	# switches, control changes, figures moving) never move the view; only
+	# the player's pans and zooms do.
+	if camera_mode == MODE_GLOBAL:
+		return
 	if member == null:
 		return
 	if member != _followed_member:
@@ -167,10 +193,11 @@ func _controlled_member() -> Node2D:
 	return null
 
 
-## Issue #289: the view angle the CHARACTER camera type eases to. It is the
+## Issue #289: the view angle the CHARACTER-LOCAL type eases to. It is the
 ## SAME target FigurePose.align_to_gravity rotates the body children by, so
 ## the body's +Y (its feet) points at screen-down in the rendered view: the
 ## character's local frame becomes the screen frame wherever it stands.
+## Every other type (#552: character global and global) stays world-aligned.
 func _rotation_target(member: Node2D) -> float:
 	if camera_mode != MODE_CHARACTER or member == null:
 		return 0.0

@@ -1,11 +1,15 @@
 extends CanvasLayer
-## Camera-type switch button (issue #289).
+## Camera-type switch button (issue #289, reworked for #552).
 ##
-## A small button in the LEFT BOTTOM corner of the screen that flips the
-## shared player camera between its two types (see ZoomCamera.gd):
-##   CAM: STATIC    — the default world-aligned view;
-##   CAM: CHARACTER — the view aligned with the character's local
-##                    coordinate system (rotates with the figure's frame).
+## A small button in the LEFT BOTTOM corner of the screen that cycles the
+## shared player camera through its three types (see ZoomCamera.gd):
+##   CAM: CHARACTER GLOBAL — the default world-aligned view (the old
+##                            "STATIC", renamed by #552);
+##   CAM: CHARACTER LOCAL  — the view aligned with the character's local
+##                            coordinate system (rotates with the figure's
+##                            frame; the old "CHARACTER", renamed by #552);
+##   CAM: GLOBAL           — #552: fully independent of any figure; the
+##                            game never moves it, only the player does.
 ## The camera itself builds this layer as a child (like the OSD), so the
 ## button exists exactly where a player camera exists. The label rereads
 ## the shared mode every frame, so any instance (scene camera or fallback)
@@ -17,8 +21,10 @@ extends CanvasLayer
 
 const ZoomCameraScript := preload("res://scripts/ZoomCamera.gd")
 
-const TEXT_STATIC := "CAM: STATIC"
-const TEXT_CHARACTER := "CAM: CHARACTER"
+## Issue #552: the renamed pair plus the new third type.
+const TEXT_FOLLOW := "CAM: CHARACTER GLOBAL"
+const TEXT_LOCAL := "CAM: CHARACTER LOCAL"
+const TEXT_GLOBAL := "CAM: GLOBAL"
 
 var _button: Button
 
@@ -32,14 +38,14 @@ func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	_button = Button.new()
 	_button.name = "CameraSwitch"
-	_button.text = TEXT_STATIC
-	_button.custom_minimum_size = Vector2(180, 64)
+	_button.text = TEXT_FOLLOW
+	_button.custom_minimum_size = Vector2(280, 64)
 	_button.add_theme_font_size_override("font_size", 22)
 	_button.modulate = Color(1.0, 1.0, 1.0, 0.75)
 	_button.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
 	_button.grow_vertical = Control.GROW_DIRECTION_BEGIN
 	_button.offset_left = 24.0
-	_button.offset_right = 204.0
+	_button.offset_right = 304.0
 	_button.offset_top = -88.0
 	_button.offset_bottom = -24.0
 	if DisplayServer.is_touchscreen_available():
@@ -62,21 +68,39 @@ func _process(_delta: float) -> void:
 	# layer hides — the camera button must not hover above the pause dim
 	# and stay clickable. The next unpaused frame brings it back.
 	visible = not get_tree().paused
-	_button.text = TEXT_CHARACTER \
-			if ZoomCameraScript.camera_mode == ZoomCameraScript.MODE_CHARACTER \
-			else TEXT_STATIC
+	_button.text = _mode_text(ZoomCameraScript.camera_mode)
 
 
-## Issue #289: flip the shared camera type (every camera in the view reads
-## the same static var, so one press switches them all).
+## Issue #552: the button label for a shared camera type — the type names
+## are the issue's own ("character local" / "character global" / "global").
+func _mode_text(mode: int) -> String:
+	match mode:
+		ZoomCameraScript.MODE_CHARACTER:
+			return TEXT_LOCAL
+		ZoomCameraScript.MODE_GLOBAL:
+			return TEXT_GLOBAL
+		_:
+			return TEXT_FOLLOW
+
+
+func _mode_name(mode: int) -> String:
+	match mode:
+		ZoomCameraScript.MODE_CHARACTER:
+			return "character local"
+		ZoomCameraScript.MODE_GLOBAL:
+			return "global"
+		_:
+			return "character global"
+
+
+## Issue #289/#552: cycle the shared camera type through all three (every
+## camera in the view reads the same static var, so one press switches
+## them all).
 func _on_pressed() -> void:
-	ZoomCameraScript.camera_mode = ZoomCameraScript.MODE_CHARACTER \
-			if ZoomCameraScript.camera_mode == ZoomCameraScript.MODE_STATIC \
-			else ZoomCameraScript.MODE_STATIC
-	DebugInfo.log("camera mode: %s" % [
-			"character frame" \
-			if ZoomCameraScript.camera_mode == ZoomCameraScript.MODE_CHARACTER \
-			else "static"])
+	ZoomCameraScript.camera_mode = (ZoomCameraScript.camera_mode + 1) \
+			% ZoomCameraScript.MODE_COUNT
+	DebugInfo.log("camera mode: %s" \
+			% _mode_name(ZoomCameraScript.camera_mode))
 
 
 ## Issue #294: the C key flips the camera type exactly like the button.

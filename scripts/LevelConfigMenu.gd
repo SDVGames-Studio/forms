@@ -106,6 +106,8 @@ var _color_team_index := -1
 
 
 func _ready() -> void:
+	# Main-menu spec §9 (M4 hardening): adapt to the viewport width.
+	MenuAdapt.apply(self)
 	_turn_time.value_changed.connect(func(value: float) -> void: GameConfig.turn_time = value)
 	# Issue #367: the night regime is picked here, before the game.
 	_night_regime.toggled.connect(func(on: bool) -> void: GameConfig.night_regime = on)
@@ -290,7 +292,7 @@ func _build_member_grid(team: Dictionary, team_index: int) -> GridContainer:
 			# Owner item 1: the shape sits CENTERED in the gray square —
 			# a full-rect anchor with a small inset does exactly that at
 			# every tier's cell size.
-			var visual: Control = load("res://scripts/ShapeVisual.gd").new()
+			var visual: Control = load("res://scripts/ModularCharacterVisual.gd").new()
 			visual.set_anchors_preset(Control.PRESET_FULL_RECT)
 			var inset := cell_size * 0.14
 			visual.offset_left = inset
@@ -298,8 +300,10 @@ func _build_member_grid(team: Dictionary, team_index: int) -> GridContainer:
 			visual.offset_right = -inset
 			visual.offset_bottom = -inset
 			visual.mouse_filter = Control.MOUSE_FILTER_IGNORE
-			visual.set_shape(shape)
-			visual.set_shape_color(color)
+			# Issue #560: the cell shows the REAL in-game figure — team
+			# color, team silhouette and the member's resting personality
+			# (the slot index, same as the gameplay member index).
+			visual.apply_team_look(color, shape, slot)
 			cell.add_child(visual)
 			# Owner item 2: clicking a filled square removes the teammate.
 			cell.gui_input.connect(func(event: InputEvent) -> void:

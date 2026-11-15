@@ -12,7 +12,7 @@ extends CharacterBody2D
 ##    Issue #546: the WHOLE arsenal is in play — each distance band
 ##    rotates through every weapon that fits it (melee: spear/bat/
 ##    jackhammer; flat: shotgun/pistol; open lane: rocket/railgun;
-##    ballistic: grenade/mine, railgun on a clear line), and the tools
+##    ballistic: grenade/mine/saw, railgun on a clear line), and the tools
 ##    too: a badly hurt AI can hand its turn to the healthiest teammate
 ##    (Switch) and the ballistic band sometimes lobs the Rock tool
 ##    instead of a weapon (it crumbles into fresh ground — cover).
@@ -60,8 +60,7 @@ const BAR_HEIGHT := Stats.BAR_HEIGHT
 
 ## Issue #226: figure body shape of this NPC's team (square, circle,
 ## triangle, star or ellipse — same vocabulary as Player.team_shape).
-## Square keeps the plain ColorRect body; other shapes draw a
-## ShapeVisual body (see _apply_team_shape).
+## Every team wears the modular character body (see _apply_team_shape).
 @export var team_shape := "square"
 
 ## Issue #121: which side this AI fights for. "enemy" (default) behaves
@@ -76,9 +75,15 @@ const BAR_HEIGHT := Stats.BAR_HEIGHT
 var health: int = MAX_HEALTH
 var _bar_fill: ColorRect
 var _visual: ColorRect
-## Issue #226: ShapeVisual body drawn instead of the ColorRect body when
-## the team shape is not a square.
+## Issue #226: a shape body drawn instead of the ColorRect body when
+## the team shape is not a square (the modular character since #560).
 var _shape_visual: Control
+
+## Issue #558: procedural idle/walk/jump animation driver — a purely
+## visual Node that bends the body visual from this figure's movement
+## state (see CharacterAnimator.gd). Never touches physics or AI.
+var _animator: CharacterAnimator = null
+
 var _dead := false
 var _target: Node2D
 var _cooldown_left := 0.0
@@ -245,25 +250,53 @@ func _apply_team_color() -> void:
 func set_team_shape(value: String) -> void:
 	team_shape = value
 	_apply_team_shape()
+	_attach_animator()
 
 
-## Issue #226: non-square team shapes replace the plain ColorRect body
-## with a ShapeVisual drawing the team polygon (mirrors Player.gd).
+## Issue #558: point the procedural animator at whichever body visual is
+## active — the modular character silhouette or the ColorRect square
+## (mirrors
+## Player.gd; created once, re-targeted after every shape change).
+func _attach_animator() -> void:
+	var visual: Control = null
+	if _shape_visual != null and _shape_visual.visible:
+		visual = _shape_visual
+	elif _visual != null and _visual.visible:
+		visual = _visual
+	if visual == null:
+		return
+	if _animator == null:
+		_animator = CharacterAnimator.new()
+		_animator.name = "CharacterAnimator"
+		add_child(_animator)
+	_animator.setup(self, visual)
+
+
+## Issue #556: every NPC wears the modular expressive character (the
+## issue #557 component) as its body — square teams included (mirrors
+## Player.gd). The look (team color + silhouette + the member's
+## personality) is applied on EVERY call, so re-runs after a team-shape
+## change (set_team_shape / GameConfig) restyle the SAME node instead of
+## keeping the first shape.
 func _apply_team_shape() -> void:
-	if team_shape == "square" or _visual == null:
+	if _visual == null:
 		return
 	if _shape_visual == null:
 		_visual.visible = false
-		_shape_visual = load("res://scripts/ShapeVisual.gd").new()
+		_shape_visual = load("res://scripts/ModularCharacterVisual.gd").new()
 		_shape_visual.name = "VisualShape"
 		_shape_visual.offset_left = -32.0
 		_shape_visual.offset_top = -32.0
 		_shape_visual.offset_right = 32.0
 		_shape_visual.offset_bottom = 32.0
 		add_child(_shape_visual)
+	if _shape_visual.has_method("apply_team_look"):
+		_shape_visual.call("apply_team_look", team_color, team_shape,
+				get_index())
+	else:
 		_shape_visual.set_shape(team_shape)
 		_shape_visual.set_shape_color(team_color)
-	# Issue #282: the ShapeVisual body is appended after the Weapon node
+	# Issue #282: the body visual is appended after the Weapon node
 	# (Npc._ready adds the weapon last, but GameConfig.apply calls
 	# set_team_shape AFTER _ready) — that drew the held weapon/tool BEHIND
 	# the figure. Keep the Weapon the last child; it draws in front.
@@ -271,7 +304,7 @@ func _apply_team_shape() -> void:
 
 
 ## Issue #282: the held weapon/tool must render IN FRONT of the character
-## body — every body visual (ColorRect, ShapeVisual) stays BEFORE the
+## body — every body visual (ColorRect, the modular character) stays BEFORE the
 ## Weapon node in the child order (tree order decides which CanvasItem
 ## draws on top among same-z siblings). Mirrors Player.gd.
 func _keep_weapon_in_front() -> void:
@@ -335,6 +368,7 @@ func _ready() -> void:
 		add_child(_visual)
 	_visual.color = team_color
 	_apply_team_shape()
+	_attach_animator()
 
 	_build_health_bar()
 	# Issue #252: debug-mode visuals — HP number, damage popup, arrow.
@@ -449,6 +483,11 @@ func take_damage(amount: int, attacker: Node2D = null) -> void:
 	# the figures never manage it.
 	BotController.credit_combat_reward(attacker, self, amount)
 	_update_bar()
+	# Issue #559: the hit shows on the FACE too — a short SURPRISED
+	# flinch (purely visual; the animator restores the resting face).
+	# Same rule as Player.take_damage, no player/NPC difference.
+	if _animator != null:
+		_animator.flash_expression("SURPRISED", 0.8)
 	# Issue #252: debug damage number + action-log line.
 	DebugInfo.show_damage(self, amount)
 	DebugInfo.log("%s takes %d damage (%d/%d)" % [display_name, amount, health, MAX_HEALTH])
@@ -644,6 +683,9 @@ func _physics_process(delta: float) -> void:
 		# Issue #202: jump must point AWAY from the floor (see Player.gd).
 		velocity = grav * JUMP_VELOCITY
 		_jump_left = JUMP_COOLDOWN
+		# Issue #558: squash-before-takeoff impulse — purely visual.
+		if _animator != null:
+			_animator.notify_jump()
 
 	# Issue #66: pick the weapon by distance and take a shot when in range.
 	# Issue #147: hold fire until we actually face the target and the view
@@ -913,8 +955,10 @@ func _pick_weapon(distance: float, height_diff: float = 0.0) -> void:
 		# catches the shooter's own team below instead of the target).
 		# Issue #546: the mine joins the ballistic band (same lob, area
 		# denial where it lands) and the railgun fits too when the straight
-		# line to the target is clear of world geometry.
-		candidates = [2, 4]
+		# line to the target is clear of world geometry. Issue #570: the
+		# circular saw lobs the same way — it lands on the target and the
+		# suction drags it into the blade.
+		candidates = [2, 4, 9]
 		if _line_clear(_target):
 			candidates.append(6)
 	_weapon.selected_weapon = _pick_affordable(candidates)

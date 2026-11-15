@@ -33,14 +33,16 @@ func _body_visual(member: Node) -> Node:
 func _visual_color(visual: Node) -> Color:
 	if visual is ColorRect:
 		return visual.color
-	return visual.shape_color
+	# Issue #560: the Shape node is the modular character — its color
+	# property is body_color (read through get(), Node-typed here).
+	return visual.get("body_color")
 
 
 func _set_visual_color(visual: Node, value: Color) -> void:
 	if visual is ColorRect:
 		visual.color = value
 	else:
-		visual.shape_color = value
+		visual.set("body_color", value)
 
 
 func _ready() -> void:

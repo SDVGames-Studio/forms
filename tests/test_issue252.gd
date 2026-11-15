@@ -65,14 +65,19 @@ func _ready() -> void:
 	print("ISSUE252 popup shown_then_hidden=", popup_shown, " ", popup_hidden)
 	ok = ok and popup_shown and popup_hidden
 
-	# --- 3b. with debug off nothing attaches ---
+	# --- 3b. with debug off everything attaches but stays HIDDEN (#554:
+	# --- the switch applies live instead of from the next level on) ---
 	GameConfig.debug_mode = false
 	var bare := Node2D.new()
 	add_child(bare)
 	DebugInfo.attach(bare)
-	var bare_clean: bool = bare.get_child_count() == 0
-	print("ISSUE252 nothing_when_off=", bare_clean)
-	ok = ok and bare_clean
+	var bare_built: bool = bare.get_child_count() > 0
+	var bare_hidden := true
+	for child in bare.get_children():
+		if child is CanvasItem and (child as CanvasItem).visible:
+			bare_hidden = false
+	print("ISSUE252 hidden_when_off=", bare_built and bare_hidden)
+	ok = ok and bare_built and bare_hidden
 	GameConfig.debug_mode = true  # restore the default for later runs
 
 	# --- 4. OSD gate: hidden with debug off, log_action is a safe no-op ---

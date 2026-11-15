@@ -135,6 +135,11 @@ func reanchor_gravity_frame() -> void:
 var _bar_fill: ColorRect
 var _camera: Camera2D
 
+## Issue #558: procedural idle/walk/jump animation driver — a purely
+## visual Node that bends the body visual from this figure's movement
+## state (see CharacterAnimator.gd). Never touches physics or input.
+var _animator: CharacterAnimator = null
+
 ## Issue #33: true for the member currently driven by player input.
 var controlled := false
 
@@ -163,6 +168,7 @@ func _ready() -> void:
 	platform_floor_layers = 1
 	_apply_team_color()
 	_apply_team_shape()
+	_attach_animator()
 	_build_health_bar()
 	# Issue #252: debug-mode visuals — HP number, damage popup, arrow.
 	_build_debug_visuals()
@@ -196,6 +202,7 @@ func apply_team_setup() -> void:
 		team_shape = GameConfig.team_shape
 	_apply_team_color()
 	_apply_team_shape()
+	_attach_animator()
 
 
 ## Issue #60: tint every ColorRect visual authored in the scene (captured
@@ -207,37 +214,70 @@ func _apply_team_color() -> void:
 			rect.color = team_color
 
 
-## Issue #169: non-square body shapes replace the square ColorRect visual
-## with a ShapeVisual drawing the picked polygon.
+## Issue #556: every team figure wears the modular expressive character
+## (the issue #557 component) as its body — square teams included: the
+## authored square ColorRect is hidden and replaced exactly like the
+## other silhouettes replaced it before (issue #169). The look (team
+## color + silhouette + the member's personality) is applied on every
+## call, so GameConfig re-runs restyle the SAME node instead of leaving
+## a stale first shape. Physics, collisions and gameplay untouched.
 func _apply_team_shape() -> void:
-	if team_shape == "square":
-		return
+	var member_index := get_index()
 	for child in get_children():
 		var rect := child as ColorRect
 		# Issue #178: the health bar background must stay a bar — converting
-		# it drew a second body shape over each figure.
-		if rect != null and rect.name != "HealthBarBackground":
+		# it drew a second body shape over each figure. The Shield bubble
+		# (issue #170) is a gameplay overlay, not a body — never hidden.
+		if rect != null and rect.name != "HealthBarBackground" \
+				and rect.name != "Shield":
 			rect.visible = false
 			var visual_name := String(rect.name) + "Shape"
-			if get_node_or_null(NodePath(visual_name)) != null:
-				continue
-			var visual: Control = load("res://scripts/ShapeVisual.gd").new()
-			visual.name = String(rect.name) + "Shape"
-			for anchor in ["anchor_left", "anchor_top", "anchor_right", "anchor_bottom"]:
-				visual.set(anchor, rect.get(anchor))
-			visual.position = rect.position
-			visual.size = rect.size
-			visual.set_shape(team_shape)
-			visual.set_shape_color(team_color)
-			add_child(visual)
-	# Issue #282: the ShapeVisual body was appended AFTER the Weapon node,
+			var visual: Control = get_node_or_null(NodePath(visual_name))
+			if visual == null:
+				visual = load("res://scripts/ModularCharacterVisual.gd").new()
+				visual.name = visual_name
+				for anchor in ["anchor_left", "anchor_top", "anchor_right", "anchor_bottom"]:
+					visual.set(anchor, rect.get(anchor))
+				visual.position = rect.position
+				visual.size = rect.size
+				add_child(visual)
+			if visual.has_method("apply_team_look"):
+				visual.call("apply_team_look", team_color, team_shape,
+					member_index)
+			else:
+				visual.set_shape(team_shape)
+				visual.set_shape_color(team_color)
+	# Issue #282: the body visual was appended AFTER the Weapon node,
 	# so the held weapon/tool drew BEHIND the figure — keep the Weapon the
 	# last child; it draws in front of every body visual.
 	_keep_weapon_in_front()
 
 
+## Issue #558: point the procedural animator at whichever child
+## currently depicts the body — the authored ColorRect (square teams) or
+## the modular character (every silhouette). Re-run after every
+## shape change (apply_team_setup); the animator itself is created once.
+func _attach_animator() -> void:
+	var visual: Control = null
+	for child in get_children():
+		var ctrl := child as Control
+		# FigurePose.is_body_child picks the body visuals (and collision
+		# shapes — excluded here by the Control cast, the animator only
+		# ever bends a visual).
+		if ctrl != null and ctrl.visible and FigurePose.is_body_child(ctrl):
+			visual = ctrl
+			break
+	if visual == null:
+		return
+	if _animator == null:
+		_animator = CharacterAnimator.new()
+		_animator.name = "CharacterAnimator"
+		add_child(_animator)
+	_animator.setup(self, visual)
+
+
 ## Issue #282: the held weapon/tool must render IN FRONT of the character
-## body. All body visuals (scene ColorRect, ShapeVisual) stay BEFORE the
+## body. All body visuals (scene ColorRect, the modular character) stay BEFORE the
 ## Weapon node in the child order — tree order decides which CanvasItem
 ## draws on top among same-z siblings.
 func _keep_weapon_in_front() -> void:
@@ -278,13 +318,22 @@ func set_controlled(value: bool) -> void:
 			add_child(_camera)
 		if not _camera.is_in_group("player_camera"):
 			_camera.add_to_group("player_camera")
-	# Only the member hosting the camera node toggles it with control;
-	# the shared camera itself just follows the controlled member.
-	if _camera.get_parent() == self:
-		_camera.enabled = value
-	else:
-		# Non-hosting member takes control: make sure the shared camera is on.
-		_camera.enabled = _camera.enabled or value
+	# Issue #534 rework: the shared camera stays ENABLED through every
+	# control change. The old host toggle (`_camera.enabled = value`)
+	# disabled the camera exactly when its hosting figure dropped
+	# control — which happens at the start of every computer turn
+	# (TurnController._begin_turn clears controlled figures of other
+	# teams) — and a disabled Camera2D stops driving the viewport: the
+	# camera NODE kept following the acting NPC (issue #534's first fix)
+	# while the PICTURE froze on the human's figure for the whole
+	# computer turn (owner: "camera still blocks time to time, especially
+	# on the first turns" — the first turns are when the original host
+	# figure is still alive to drop control; deaths reparent the camera
+	# away, which masked the bug later in the match). The camera is
+	# per-VIEW, not per-figure (issue #63): always on — following the
+	# controlled member, the acting figure of a computer turn (#534), or
+	# nobody between turns (the free spectator camera, issue #126).
+	_camera.enabled = true
 
 
 ## Issue #6: apply damage and update the health bar.
@@ -313,6 +362,10 @@ func take_damage(amount: int, attacker: Node2D = null) -> void:
 	# the figures never manage it.
 	BotController.credit_combat_reward(attacker, self, amount)
 	_hit_flash()
+	# Issue #559: the hit shows on the FACE too — a short SURPRISED
+	# flinch (purely visual; the animator restores the resting face).
+	if _animator != null:
+		_animator.flash_expression("SURPRISED", 0.8)
 	# Issue #252: debug damage number + action-log line.
 	DebugInfo.show_damage(self, amount)
 	DebugInfo.log("%s takes %d damage (%d/%d)" % [display_name, amount, health, MAX_HEALTH])
@@ -532,6 +585,9 @@ func _physics_process(delta: float) -> void:
 			# inverted form pushed the figure INTO the floor and jump never
 			# lifted the character.
 			velocity = grav * JUMP_VELOCITY
+			# Issue #558: squash-before-takeoff impulse — purely visual.
+			if _animator != null:
+				_animator.notify_jump()
 
 		var direction := Input.get_axis("move_left", "move_right")
 		# Issue #104: any move or aim action locks character switching for

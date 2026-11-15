@@ -45,6 +45,64 @@ enum EyeStyle { NONE, NORMAL, WIDE, SLEEPY, HAPPY }
 enum EyebrowStyle { NONE, FLAT, ANGRY, RAISED, WORRIED }
 enum MouthStyle { NONE, NEUTRAL, SMILE, FROWN, OPEN }
 
+## Issue #559: whole-face EXPRESSIONS — a named mood composed from an
+## eye, an eyebrow and a mouth configuration (the feature enums above).
+## Setting `expression` (or calling set_expression) applies the whole
+## composition at once; each feature stays independently settable
+## afterwards for fine-tuning. The weapon system is a SEPARATE sibling
+## node and never reads or moves the face — expressions and weapons do
+## not affect each other (see Weapon.HELD_ANCHOR for the face-clear
+## weapon anchor).
+enum ExpressionType { NEUTRAL, ANGRY, FRIENDLY, CONFIDENT, SLEEPY, SCARED, SURPRISED }
+
+## The feature composition of every expression: which eye, eyebrow and
+## mouth style each mood is made of. Faces are BUILT from these three
+## parts, exactly as the issue asks — no per-expression sprites.
+const EXPRESSION_FEATURES := {
+	ExpressionType.NEUTRAL: {
+		"eye": EyeStyle.NORMAL, "brow": EyebrowStyle.FLAT,
+		"mouth": MouthStyle.NEUTRAL,
+	},
+	ExpressionType.ANGRY: {
+		"eye": EyeStyle.NORMAL, "brow": EyebrowStyle.ANGRY,
+		"mouth": MouthStyle.FROWN,
+	},
+	ExpressionType.FRIENDLY: {
+		"eye": EyeStyle.HAPPY, "brow": EyebrowStyle.RAISED,
+		"mouth": MouthStyle.SMILE,
+	},
+	ExpressionType.CONFIDENT: {
+		"eye": EyeStyle.SLEEPY, "brow": EyebrowStyle.FLAT,
+		"mouth": MouthStyle.SMILE,
+	},
+	## Issue #585: the SLEEPY mood the issue lists among its six — a
+	## droopy-eyed face that is NOT the confident smirk (flat mouth,
+	## heavy lids) so a drowsy character reads at a glance.
+	ExpressionType.SLEEPY: {
+		"eye": EyeStyle.SLEEPY, "brow": EyebrowStyle.FLAT,
+		"mouth": MouthStyle.NEUTRAL,
+	},
+	ExpressionType.SCARED: {
+		"eye": EyeStyle.WIDE, "brow": EyebrowStyle.WORRIED,
+		"mouth": MouthStyle.OPEN,
+	},
+	ExpressionType.SURPRISED: {
+		"eye": EyeStyle.WIDE, "brow": EyebrowStyle.RAISED,
+		"mouth": MouthStyle.OPEN,
+	},
+}
+
+## Issue #559: the character's current mood. The property setter IS the
+## simple API — `visual.expression = ExpressionType.ANGRY` restyles the whole
+## face in one assignment (see also set_expression for name-based calls).
+@export var expression: ExpressionType = ExpressionType.NEUTRAL:
+	set(value):
+		var key := expression_key(value)
+		if key < 0:
+			return
+		expression = key
+		apply_expression_features(key)
+
 @export var eye_style: EyeStyle = EyeStyle.NORMAL:
 	set(value):
 		eye_style = value
@@ -62,6 +120,43 @@ enum MouthStyle { NONE, NEUTRAL, SMILE, FROWN, OPEN }
 		pupil_color = value
 		queue_redraw()
 
+## Issue #558: animation hooks, driven by CharacterAnimator (harmless
+## on their own). eye_open < 1 draws a lid closing over the eye
+## (0 = fully closed — the blink); pupil_shift moves both pupils by a
+## fraction of the eye radius (small idle glances).
+@export_range(0.0, 1.0, 0.01) var eye_open := 1.0:
+	set(value):
+		eye_open = clampf(value, 0.0, 1.0)
+		queue_redraw()
+
+@export var pupil_shift := Vector2.ZERO:
+	set(value):
+		pupil_shift = value
+		queue_redraw()
+
+## Issue #585: INDEPENDENT pupils — per-eye gaze offsets on top of the
+## shared glance (same unit: a fraction of the eye radius). The left
+## eye can look left while the right looks at the target, a wall-eyed
+## or focused gaze; 0 keeps the eye on the shared pupil_shift line.
+@export var pupil_shift_left := Vector2.ZERO:
+	set(value):
+		pupil_shift_left = value
+		queue_redraw()
+
+@export var pupil_shift_right := Vector2.ZERO:
+	set(value):
+		pupil_shift_right = value
+		queue_redraw()
+
+## Issue #585: eye SIZE — a scale multiplier on the eye (whites,
+## pupils, glints and lids all derive from the radius, so they scale
+## together). 1.0 keeps the authored cartoon proportions; pairs with
+## the eyebrow_lift/tilt exports to fine-tune a bigger-eyed look.
+@export_range(0.5, 1.6, 0.01) var eye_size := 1.0:
+	set(value):
+		eye_size = value
+		queue_redraw()
+
 @export var eyebrow_style: EyebrowStyle = EyebrowStyle.RAISED:
 	set(value):
 		eyebrow_style = value
@@ -70,6 +165,22 @@ enum MouthStyle { NONE, NEUTRAL, SMILE, FROWN, OPEN }
 @export var eyebrow_color := Color(0.12, 0.08, 0.16, 1.0):
 	set(value):
 		eyebrow_color = value
+		queue_redraw()
+
+## Issue #586: eyebrow POSITION offset — extra lift as a fraction of
+## the body height (positive = higher, negative = lower). 0 keeps the
+## style's authored spot; it composes with every eyebrow style.
+@export var eyebrow_lift := 0.0:
+	set(value):
+		eyebrow_lift = value
+		queue_redraw()
+
+## Issue #586: eyebrow ROTATION offset — extra degrees BOTH brows turn
+## by around their own centers (positive = clockwise). 0 keeps the
+## style's authored angle; compose with the lift to fine-tune any mood.
+@export var eyebrow_tilt_deg := 0.0:
+	set(value):
+		eyebrow_tilt_deg = value
 		queue_redraw()
 
 @export var mouth_style: MouthStyle = MouthStyle.SMILE:
@@ -85,6 +196,11 @@ enum MouthStyle { NONE, NEUTRAL, SMILE, FROWN, OPEN }
 ## All face metrics are fractions of the control size, so the face
 ## scales with the body. Reference body = 64 px.
 const REF_SIZE := 64.0
+
+## Horizontal centers of the eyes and the eyebrows, as a fraction of
+## the body width — one shared constant keeps the brows tracking the
+## eyes when the face proportions are retuned (issue #586).
+const EYE_SPAN := 0.16
 
 func _draw() -> void:
 	var s := size
@@ -104,6 +220,87 @@ func _draw() -> void:
 func set_team_look(color: Color, shape: String) -> void:
 	body_color = color
 	body_shape = shape
+
+
+## Issue #556: ShapeVisual API parity — Player/Npc embed this component
+## as the gameplay body visual exactly where the old ShapeVisual sat
+## (FigurePose.is_body_child, the damage hit flashes and the Npc body
+## tint all speak the set_shape/set_shape_color protocol).
+func set_shape(value: String) -> void:
+	body_shape = value
+
+
+func set_shape_color(value: Color) -> void:
+	body_color = value
+
+
+## Issue #556: per-figure resting PERSONALITIES — a stable member index
+## picks a mood so one team reads as several characters (the confident
+## one, the friendly one, the grumpy one...), not identical clones.
+const PERSONALITIES := [
+	ExpressionType.NEUTRAL, ExpressionType.FRIENDLY,
+	ExpressionType.CONFIDENT, ExpressionType.ANGRY,
+	ExpressionType.SLEEPY,
+]
+
+
+static func personality_for_index(index: int) -> ExpressionType:
+	return PERSONALITIES[absi(index) % PERSONALITIES.size()]
+
+
+## Issue #556: full team look in one call — body color, silhouette and
+## the member's resting personality (a stable member index; the mood is
+## the RESTING face, gameplay still overrides it — charge focus, damage
+## flinch and the airborne face all win, see CharacterAnimator).
+func apply_team_look(color: Color, shape: String, member_index := 0) -> void:
+	set_team_look(color, shape)
+	set_expression(personality_for_index(member_index))
+
+
+## Issue #559 simple API: set the whole face in one call. Accepts an
+## Expression enum value or its name in any letter case ("angry",
+## "Scared", "SURPRISED"). An unknown name changes NOTHING — the face
+## keeps its current look — so gameplay code can feed names straight
+## from data tables without a crash risk.
+func set_expression(value: Variant) -> void:
+	var key := expression_key(value)
+	if key >= 0:
+		expression = key
+
+
+## Apply the feature composition of one expression (an Expression key).
+## Publishing point of the expression system: everything routes here.
+func apply_expression_features(key: int) -> void:
+	if not EXPRESSION_FEATURES.has(key):
+		return
+	var features: Dictionary = EXPRESSION_FEATURES[key]
+	eye_style = features["eye"]
+	eyebrow_style = features["brow"]
+	mouth_style = features["mouth"]
+	_expression_authored = true
+
+
+## Normalize anything a call site offers — an Expression enum value or
+## its name in any letter case — to the enum key. -1 = unknown value.
+static func expression_key(value: Variant) -> int:
+	if value is int:
+		return value if EXPRESSION_FEATURES.has(value) else -1
+	if value is float:
+		var as_int := int(value)
+		return as_int if EXPRESSION_FEATURES.has(as_int) else -1
+	var key: Variant = ExpressionType.get(String(value).to_upper())
+	return int(key) if key != null else -1
+
+
+## True once an expression has been applied — CharacterAnimator shows
+## the expression's face on the ground instead of the authored trio
+## (authored #557 faces keep their authored look until then).
+func has_expression() -> bool:
+	return _expression_authored
+
+
+## Set by apply_expression_features (see has_expression).
+var _expression_authored := false
 
 
 ## Same silhouette drawer as ShapeVisual (kept identical so every
@@ -163,17 +360,44 @@ func _draw_eyes(s: Vector2, off: float, u: float) -> void:
 	if eye_style == EyeStyle.NONE:
 		return
 	var eye_y := s.y * 0.44 + off
-	var radius := s.x * (0.10 if eye_style == EyeStyle.WIDE else 0.08)
+	# Issue #586: bigger cartoon eyes — the proportion refinement that
+	# makes the face read as a character, not an emoji sticker.
+	# Issue #585: eye_size scales the whole eye (shape AND size stay
+	# configurable, per the issue's expressive-eyes section).
+	var radius := s.x * (0.115 if eye_style == EyeStyle.WIDE else 0.10) * eye_size
 	if eye_style == EyeStyle.HAPPY:
 		# Closed happy eye: an upward arch (^) per eye.
 		for side in [-1.0, 1.0]:
-			var center := Vector2(s.x * 0.5 + side * s.x * 0.15, eye_y)
+			var center := Vector2(s.x * 0.5 + side * s.x * EYE_SPAN, eye_y)
 			draw_arc(center, radius * 0.85, PI, TAU, 16, pupil_color, 2.2 * u)
 		return
 	for side in [-1.0, 1.0]:
-		var center := Vector2(s.x * 0.5 + side * s.x * 0.15, eye_y)
-		draw_circle(center, radius, eye_white)
-		draw_circle(center + Vector2(0.0, radius * 0.25), radius * 0.45, pupil_color)
+		var center := Vector2(s.x * 0.5 + side * s.x * EYE_SPAN, eye_y)
+		# Issue #558: the animated pupil glance offset (fraction of the
+		# eye radius, zero when the face is not animated).
+		# Issue #585: the per-eye gaze composes with the shared glance —
+		# each pupil can also move on its own (independent gaze).
+		var shift := (pupil_shift \
+				+ (pupil_shift_left if side < 0.0 else pupil_shift_right)) \
+				* radius
+		var pupil_center := center + Vector2(0.0, radius * 0.25) + shift
+		var pupil_r := radius * 0.45
+		draw_circle(center + shift, radius, eye_white)
+		draw_circle(pupil_center, pupil_r, pupil_color)
+		# Issue #586: pupil highlight — the small white glint that makes
+		# the eye read as glossy. It moves with the pupil and sits UNDER
+		# the blink/sleepy lids, so a closing lid covers it naturally.
+		draw_circle(pupil_center + Vector2(-0.35, -0.35) * pupil_r,
+				pupil_r * 0.32, eye_white)
+		# Issue #558: the animated blink — a body-colored lid slides over
+		# the eye from the top (eye_open = 1 draws no lid at all). It
+		# follows the eye's own shift so an independently glancing pupil
+		# stays covered too (issue #585).
+		if eye_open < 0.999:
+			var lid_h := radius * 2.0 * (1.0 - eye_open)
+			draw_rect(Rect2(center.x + shift.x - radius * 1.15,
+					center.y + shift.y - radius,
+					radius * 2.3, lid_h), body_color)
 		if eye_style == EyeStyle.SLEEPY:
 			# Half-closed lid: body-colored cover over the eye's top plus
 			# a dark edge line where the lid ends.
@@ -189,12 +413,18 @@ func _draw_eyes(s: Vector2, off: float, u: float) -> void:
 func _draw_eyebrows(s: Vector2, off: float, u: float) -> void:
 	if eyebrow_style == EyebrowStyle.NONE:
 		return
-	var y := s.y * 0.44 + off - s.y * 0.16
+	# Issue #586: the configurable POSITION — eyebrow_lift raises/lowers
+	# both brows on top of the style's authored height.
+	var y := s.y * 0.44 + off - s.y * 0.16 - eyebrow_lift * s.y
 	var length := s.x * 0.15
 	var width := 0.055 * s.x
 	var tilt := s.y * 0.035
+	# Issue #586: the configurable ROTATION — both brows turn by the
+	# same extra angle around their own centers.
+	var rot := deg_to_rad(eyebrow_tilt_deg)
 	for side in [-1.0, 1.0]:
-		var x: float = s.x * 0.5 + side * s.x * 0.15
+		var x: float = s.x * 0.5 + side * s.x * EYE_SPAN
+		var brow_center := Vector2(x, y)
 		# inner end = towards the face center, outer end = away from it.
 		var inner := Vector2(x - side * length * 0.5, y)
 		var outer := Vector2(x + side * length * 0.5, y)
@@ -203,13 +433,22 @@ func _draw_eyebrows(s: Vector2, off: float, u: float) -> void:
 				inner.y += tilt
 				outer.y -= tilt
 			EyebrowStyle.RAISED:
-				# Surprised arch above the eye.
-				draw_arc(Vector2(x, y), length * 0.6, PI, TAU, 16,
+				# Surprised arch above the eye (turns with the tilt config).
+				if rot == 0.0:
+					draw_arc(brow_center, length * 0.6, PI, TAU, 16,
 						eyebrow_color, width)
+				else:
+					draw_set_transform(brow_center, rot)
+					draw_arc(Vector2.ZERO, length * 0.6, PI, TAU, 16,
+						eyebrow_color, width)
+					draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 				continue
 			EyebrowStyle.WORRIED:
 				inner.y -= tilt
 				outer.y += tilt
+		if rot != 0.0:
+			inner = brow_center + (inner - brow_center).rotated(rot)
+			outer = brow_center + (outer - brow_center).rotated(rot)
 		draw_line(inner, outer, eyebrow_color, width)
 
 

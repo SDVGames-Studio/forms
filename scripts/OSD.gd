@@ -90,6 +90,10 @@ func _make_label(y: float) -> Label:
 
 
 func _process(_delta: float) -> void:
+	# Issue #554: follow the debug switch LIVE (the #384 gravity-field
+	# pattern) — the settings toggle shows/hides the OSD without a level
+	# restart, matching the per-figure debug visuals (DebugInfo.sync).
+	visible = GameConfig.debug_mode
 	# Issue #252: with the debug mode off the layer is invisible — skip
 	# the per-frame bookkeeping entirely.
 	if not visible:

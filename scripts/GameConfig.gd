@@ -53,7 +53,10 @@ static var night_regime := false
 ## random team anchor, 1 = every figure spawns on its own random spot,
 ## 2 = spawn points defined in the level by the designer (Marker2D
 ## nodes in the "spawn_points" group; levels without markers keep the
-## authored figure positions — today's behavior, and the default).
+## authored figure positions — today's behavior, and the default),
+## 3 = issue #547 "choose after the start": the level runs, the game
+## pauses, and the player clicks every hero-team figure onto a spot
+## of their choosing (see scripts/SpawnChooser.gd).
 ## See scripts/SpawnRegime.gd.
 static var spawn_regime := SpawnRegime.REGIME_DESIGNER
 
@@ -226,6 +229,11 @@ const DEFAULT_LANGUAGE := "English"
 ## Issue #226: the default set of teams = the teams that are in the
 ## levels, with NEUTRAL names (owner rework: no player/enemies concept
 ## in the team configuration) and DISTINCT body shapes per team.
+## Issue #572: a third default team joins the set — RED STARS speaking
+## Russian (the TeamMenu palette's red, so a hand-made red matches).
+## Issue #571: a fourth default team joins the set — WHITE, almost
+## transparent TRIANGLES speaking French (the alpha carries the
+## transparency straight into the figure bodies).
 static func default_teams() -> Array:
 	var first_names: Array[String] = []
 	for member_name in member_names:
@@ -233,6 +241,12 @@ static func default_teams() -> Array:
 	var second_names: Array[String] = []
 	for i in range(1, DEFAULT_TEAM_MEMBERS + 1):
 		second_names.append("Member %d" % i)
+	var third_names: Array[String] = []
+	for i in range(1, DEFAULT_TEAM_MEMBERS + 1):
+		third_names.append("Member %d" % i)
+	var fourth_names: Array[String] = []
+	for i in range(1, DEFAULT_TEAM_MEMBERS + 1):
+		fourth_names.append("Member %d" % i)
 	return [
 		{
 			"label": "Team 1", "color": team_color,
@@ -247,6 +261,22 @@ static func default_teams() -> Array:
 			"names": second_names,
 			"skill": ai_skill, "friendly_fire": ai_friendly_fire,
 			"language": DEFAULT_LANGUAGE,
+			"controller": "computer",
+		},
+		{
+			"label": "Team 3", "color": Color(0.9, 0.3, 0.3, 1),
+			"shape": "star",
+			"names": third_names,
+			"skill": ai_skill, "friendly_fire": ai_friendly_fire,
+			"language": "Russian",
+			"controller": "computer",
+		},
+		{
+			"label": "Team 4", "color": Color(1, 1, 1, 0.25),
+			"shape": "triangle",
+			"names": fourth_names,
+			"skill": ai_skill, "friendly_fire": ai_friendly_fire,
+			"language": "French",
 			"controller": "computer",
 		},
 	]
