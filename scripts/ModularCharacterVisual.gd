@@ -137,6 +137,22 @@ const EXPRESSION_FEATURES := {
 		eyebrow_color = value
 		queue_redraw()
 
+## Issue #586: eyebrow POSITION offset — extra lift as a fraction of
+## the body height (positive = higher, negative = lower). 0 keeps the
+## style's authored spot; it composes with every eyebrow style.
+@export var eyebrow_lift := 0.0:
+	set(value):
+		eyebrow_lift = value
+		queue_redraw()
+
+## Issue #586: eyebrow ROTATION offset — extra degrees BOTH brows turn
+## by around their own centers (positive = clockwise). 0 keeps the
+## style's authored angle; compose with the lift to fine-tune any mood.
+@export var eyebrow_tilt_deg := 0.0:
+	set(value):
+		eyebrow_tilt_deg = value
+		queue_redraw()
+
 @export var mouth_style: MouthStyle = MouthStyle.SMILE:
 	set(value):
 		mouth_style = value
@@ -150,6 +166,11 @@ const EXPRESSION_FEATURES := {
 ## All face metrics are fractions of the control size, so the face
 ## scales with the body. Reference body = 64 px.
 const REF_SIZE := 64.0
+
+## Horizontal centers of the eyes and the eyebrows, as a fraction of
+## the body width — one shared constant keeps the brows tracking the
+## eyes when the face proportions are retuned (issue #586).
+const EYE_SPAN := 0.16
 
 func _draw() -> void:
 	var s := size
@@ -308,21 +329,29 @@ func _draw_eyes(s: Vector2, off: float, u: float) -> void:
 	if eye_style == EyeStyle.NONE:
 		return
 	var eye_y := s.y * 0.44 + off
-	var radius := s.x * (0.10 if eye_style == EyeStyle.WIDE else 0.08)
+	# Issue #586: bigger cartoon eyes — the proportion refinement that
+	# makes the face read as a character, not an emoji sticker.
+	var radius := s.x * (0.115 if eye_style == EyeStyle.WIDE else 0.10)
 	if eye_style == EyeStyle.HAPPY:
 		# Closed happy eye: an upward arch (^) per eye.
 		for side in [-1.0, 1.0]:
-			var center := Vector2(s.x * 0.5 + side * s.x * 0.15, eye_y)
+			var center := Vector2(s.x * 0.5 + side * s.x * EYE_SPAN, eye_y)
 			draw_arc(center, radius * 0.85, PI, TAU, 16, pupil_color, 2.2 * u)
 		return
 	for side in [-1.0, 1.0]:
-		var center := Vector2(s.x * 0.5 + side * s.x * 0.15, eye_y)
+		var center := Vector2(s.x * 0.5 + side * s.x * EYE_SPAN, eye_y)
 		# Issue #558: the animated pupil glance offset (fraction of the
 		# eye radius, zero when the face is not animated).
 		var shift := pupil_shift * radius
+		var pupil_center := center + Vector2(0.0, radius * 0.25) + shift
+		var pupil_r := radius * 0.45
 		draw_circle(center + shift, radius, eye_white)
-		draw_circle(center + Vector2(0.0, radius * 0.25) + shift,
-				radius * 0.45, pupil_color)
+		draw_circle(pupil_center, pupil_r, pupil_color)
+		# Issue #586: pupil highlight — the small white glint that makes
+		# the eye read as glossy. It moves with the pupil and sits UNDER
+		# the blink/sleepy lids, so a closing lid covers it naturally.
+		draw_circle(pupil_center + Vector2(-0.35, -0.35) * pupil_r,
+				pupil_r * 0.32, eye_white)
 		# Issue #558: the animated blink — a body-colored lid slides over
 		# the eye from the top (eye_open = 1 draws no lid at all).
 		if eye_open < 0.999:
@@ -344,12 +373,18 @@ func _draw_eyes(s: Vector2, off: float, u: float) -> void:
 func _draw_eyebrows(s: Vector2, off: float, u: float) -> void:
 	if eyebrow_style == EyebrowStyle.NONE:
 		return
-	var y := s.y * 0.44 + off - s.y * 0.16
+	# Issue #586: the configurable POSITION — eyebrow_lift raises/lowers
+	# both brows on top of the style's authored height.
+	var y := s.y * 0.44 + off - s.y * 0.16 - eyebrow_lift * s.y
 	var length := s.x * 0.15
 	var width := 0.055 * s.x
 	var tilt := s.y * 0.035
+	# Issue #586: the configurable ROTATION — both brows turn by the
+	# same extra angle around their own centers.
+	var rot := deg_to_rad(eyebrow_tilt_deg)
 	for side in [-1.0, 1.0]:
-		var x: float = s.x * 0.5 + side * s.x * 0.15
+		var x: float = s.x * 0.5 + side * s.x * EYE_SPAN
+		var brow_center := Vector2(x, y)
 		# inner end = towards the face center, outer end = away from it.
 		var inner := Vector2(x - side * length * 0.5, y)
 		var outer := Vector2(x + side * length * 0.5, y)
@@ -358,13 +393,22 @@ func _draw_eyebrows(s: Vector2, off: float, u: float) -> void:
 				inner.y += tilt
 				outer.y -= tilt
 			EyebrowStyle.RAISED:
-				# Surprised arch above the eye.
-				draw_arc(Vector2(x, y), length * 0.6, PI, TAU, 16,
+				# Surprised arch above the eye (turns with the tilt config).
+				if rot == 0.0:
+					draw_arc(brow_center, length * 0.6, PI, TAU, 16,
 						eyebrow_color, width)
+				else:
+					draw_set_transform(brow_center, rot)
+					draw_arc(Vector2.ZERO, length * 0.6, PI, TAU, 16,
+						eyebrow_color, width)
+					draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 				continue
 			EyebrowStyle.WORRIED:
 				inner.y -= tilt
 				outer.y += tilt
+		if rot != 0.0:
+			inner = brow_center + (inner - brow_center).rotated(rot)
+			outer = brow_center + (outer - brow_center).rotated(rot)
 		draw_line(inner, outer, eyebrow_color, width)
 
 
