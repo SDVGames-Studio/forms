@@ -43,6 +43,8 @@ extends NcnnAIController2D
 
 const Stats := preload("res://scripts/CharacterStats.gd")
 
+static var _last_reset_frame: int = -1
+
 ## Issue #381: fixed observation layout. OBS_SLOTS enemies and OBS_SLOTS
 ## allies are reported every step — nearest first, missing figures pad
 ## with zeros — so the flat vector length never changes
@@ -573,6 +575,9 @@ func on_episode_outcome(winner_team: String) -> void:
 	var won: bool = not winner_team.is_empty() \
 			and TurnController.team_id_of(figure) == winner_team
 	var delta: float = EPISODE_WIN_REWARD if won else EPISODE_LOSS_REWARD
+
+	print("!!! TRIGGERING GAME OVER !!! winner_team: ", winner_team, " won: ", won)
+
 	game_over(delta)
 	_log_reward_component("episode_outcome", delta)
 	if won:
@@ -880,6 +885,10 @@ func reset() -> void:
 	_turn_command = _idle_command()
 	_restore_figure()
 
+	if _last_reset_frame != Engine.get_process_frames():
+		_last_reset_frame = Engine.get_process_frames()
+		TurnController.reset_game.call_deferred()
+
 ## Issue #409: the horizon auto-reset must restore the episode too — the
 ## base reset_if_done() only clears core bookkeeping, which would leave a
 ## stale command and a battered figure behind at a reset_after boundary.
@@ -944,11 +953,16 @@ func _revive_figure(figure: Node2D) -> void:
 	figure.scale = Vector2.ONE
 
 func get_action_space() -> Dictionary:
-	# Describe each action head. Examples:
-	#     "move": {"size": 4, "action_type": "discrete"}     # one of 4 choices
-	#     "steer": {"size": 2, "action_type": "continuous"}  # 2 floats in [-1, 1]
-	push_error("get_action_space() not implemented")
-	return {}
+	return {
+		"move": {
+			"size": MoveCommand.size(),
+			"action_type": "discrete"
+		},
+		"action": {
+			"size": ActionCommand.size(),
+			"action_type": "discrete"
+		}
+	}
 
 ## Issue #407: concrete game commands the raw policy indices translate
 ## into. "move" orders the turn's walk direction (HOLD = stand still);

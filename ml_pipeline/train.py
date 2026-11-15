@@ -192,7 +192,7 @@ def main() -> int:
     )
     parser.add_argument(
         "--env_path",
-        default="builds/training/forms_training.x86_64",
+        default="../builds/training/forms_training.x86_64",
         help="path to the exported training executable; the platform suffix is appended if missing",
     )
     parser.add_argument(

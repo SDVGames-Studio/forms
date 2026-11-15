@@ -1,0 +1,16 @@
+# Forms — unified training + export/convert venv
+# Validated combo: godot-rl 0.8.2 + SB3 2.4.0
+
+godot-rl
+stable-baselines3
+gymnasium
+torch
+numpy
+tensorboard
+
+# --- export + conversion ---
+onnx
+onnxruntime
+ncnn
+pnnx
+ml_dtypes

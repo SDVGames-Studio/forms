@@ -211,7 +211,7 @@ func _process(delta: float) -> void:
 	# still be flying. queue_free()d members count as dead too (issue #85).
 	if active_member != null:
 		var hp = active_member.get("health") if is_instance_valid(active_member) else 0
-		if not (hp is int) or hp <= 0:
+		if hp == null or float(hp) <= 0.0:
 			_hand_over()
 			return
 	_turn_left = maxf(0.0, _turn_left - delta)
@@ -389,6 +389,17 @@ func _on_level_changed() -> void:
 		_turn_order = []
 		_last_active = {}
 		return
+	_start_round()
+
+
+func reset_game() -> void:
+	game_over = false
+	_switching = false
+	active_team = ""
+	active_member = null
+	_stall_wait = 0.0
+	_roll_wait = 0.0
+	_switch_wait = 0.0
 	_start_round()
 
 
@@ -597,6 +608,16 @@ func _finish_roll() -> void:
 	# the roll is done; the flag itself must never block recovery.
 	if active_team != "" or _level == null or game_over:
 		return
+
+	# Если нашли меньше 2 команд, значит сцена еще не прогрузилась (боты не добавились в дерево)
+	if _teams.size() < 2:
+		_scan_teams()
+		if _teams.size() < 2:
+			# Ждем 0.1 секунды и пробуем снова
+			_roll_wait = 0.0
+			get_tree().create_timer(0.1).timeout.connect(_finish_roll)
+			return
+
 	_roll_wait = 0.0
 	_turn_index = 0
 	var first: String = _turn_order[0] if not _turn_order.is_empty() \
@@ -753,7 +774,7 @@ func _alive(group: String) -> Array:
 		if not is_instance_valid(member):
 			continue
 		var hp = member.get("health")
-		if hp is int and hp > 0:
+		if hp != null and float(hp) > 0.0:
 			result.append(member)
 	return result
 
@@ -796,6 +817,9 @@ func _team_name(team: String) -> String:
 
 
 func _check_win() -> void:
+	if _teams.size() < 2:
+		return
+
 	# Issue #191: the game ends when at most one TEAM (by id) is alive.
 	var alive_teams: Array[String] = []
 	for id in _teams:
