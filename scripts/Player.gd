@@ -512,6 +512,10 @@ func _build_health_bar() -> void:
 	var background := ColorRect.new()
 	# Issue #178: named so the team shape/color passes skip it.
 	background.name = "HealthBarBackground"
+	# Issue #598: the HP renders in front of everything except the
+	# character's line (Stats.LINE_Z) — overlapping bodies, terrain and
+	# projectiles (rings at z 50) can no longer cover the bar.
+	background.z_index = Stats.HP_Z
 	background.offset_left = -BAR_WIDTH / 2.0
 	background.offset_top = -44.0
 	background.offset_right = BAR_WIDTH / 2.0
