@@ -108,6 +108,21 @@ theme_override_colors/font_color = Color(0.467, 0.49, 0.545, 1)
 theme_override_font_sizes/font_size = 15
 text = "Editing: Team 1"
 
+[node name="NameRow" type="HBoxContainer" parent="Layout/Columns/Column/Scroll/Rows"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="NameLabel" type="Label" parent="Layout/Columns/Column/Scroll/Rows/NameRow"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+text = "Team name:"
+
+[node name="TeamNameEdit" type="LineEdit" parent="Layout/Columns/Column/Scroll/Rows/NameRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(220, 44)
+layout_mode = 2
+max_length = 24
+
 [node name="ShapeLabel" type="Label" parent="Layout/Columns/Column/Scroll/Rows"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 20
