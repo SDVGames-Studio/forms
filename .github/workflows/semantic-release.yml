@@ -2,11 +2,9 @@
 name: Semantic Release
 
 on:
-  pull_request:
+  push:
     branches:
       - main
-    types:
-      - closed
 
 permissions:
   contents: write
@@ -18,7 +16,6 @@ concurrency:
 jobs:
   release:
     name: Calculate version and publish release
-    if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
 
     steps:
