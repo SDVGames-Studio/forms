@@ -317,3 +317,8 @@ func accumulate_reward() -> void:
 
 func _physics_process(_delta) -> void:
 	_core.step(reset_after)
+	# Issue #437 (restored after the v0.4.0 addon refresh, #596): consume
+	# needs_reset exactly like the 2D wrapper — see the matching comment in
+	# ncnn_ai_controller_2d.gd for the full rationale.
+	if _core.needs_reset:
+		reset()
