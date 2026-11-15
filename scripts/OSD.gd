@@ -66,6 +66,9 @@ func _ready() -> void:
 	_log_label.offset_bottom = 200.0
 	_log_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	_log_label.vertical_alignment = VERTICAL_ALIGNMENT_TOP
+	# Issue #590: Arabic team lines must not log as tofu symbols — the
+	# log draws through the Arabic-capable speech font.
+	_log_label.add_theme_font_override("font", TextFonts.text_font())
 	_log_label.add_theme_font_size_override("font_size", 14)
 	_log_label.add_theme_color_override("font_color", Color(1, 1, 1, 0.9))
 	_log_label.add_theme_color_override("font_outline_color", Color(0.1, 0.05, 0.1, 1.0))
