@@ -53,7 +53,7 @@ enum MouthStyle { NONE, NEUTRAL, SMILE, FROWN, OPEN }
 ## node and never reads or moves the face — expressions and weapons do
 ## not affect each other (see Weapon.HELD_ANCHOR for the face-clear
 ## weapon anchor).
-enum ExpressionType { NEUTRAL, ANGRY, FRIENDLY, CONFIDENT, SCARED, SURPRISED }
+enum ExpressionType { NEUTRAL, ANGRY, FRIENDLY, CONFIDENT, SLEEPY, SCARED, SURPRISED }
 
 ## The feature composition of every expression: which eye, eyebrow and
 ## mouth style each mood is made of. Faces are BUILT from these three
@@ -74,6 +74,13 @@ const EXPRESSION_FEATURES := {
 	ExpressionType.CONFIDENT: {
 		"eye": EyeStyle.SLEEPY, "brow": EyebrowStyle.FLAT,
 		"mouth": MouthStyle.SMILE,
+	},
+	## Issue #585: the SLEEPY mood the issue lists among its six — a
+	## droopy-eyed face that is NOT the confident smirk (flat mouth,
+	## heavy lids) so a drowsy character reads at a glance.
+	ExpressionType.SLEEPY: {
+		"eye": EyeStyle.SLEEPY, "brow": EyebrowStyle.FLAT,
+		"mouth": MouthStyle.NEUTRAL,
 	},
 	ExpressionType.SCARED: {
 		"eye": EyeStyle.WIDE, "brow": EyebrowStyle.WORRIED,
@@ -125,6 +132,29 @@ const EXPRESSION_FEATURES := {
 @export var pupil_shift := Vector2.ZERO:
 	set(value):
 		pupil_shift = value
+		queue_redraw()
+
+## Issue #585: INDEPENDENT pupils — per-eye gaze offsets on top of the
+## shared glance (same unit: a fraction of the eye radius). The left
+## eye can look left while the right looks at the target, a wall-eyed
+## or focused gaze; 0 keeps the eye on the shared pupil_shift line.
+@export var pupil_shift_left := Vector2.ZERO:
+	set(value):
+		pupil_shift_left = value
+		queue_redraw()
+
+@export var pupil_shift_right := Vector2.ZERO:
+	set(value):
+		pupil_shift_right = value
+		queue_redraw()
+
+## Issue #585: eye SIZE — a scale multiplier on the eye (whites,
+## pupils, glints and lids all derive from the radius, so they scale
+## together). 1.0 keeps the authored cartoon proportions; pairs with
+## the eyebrow_lift/tilt exports to fine-tune a bigger-eyed look.
+@export_range(0.5, 1.6, 0.01) var eye_size := 1.0:
+	set(value):
+		eye_size = value
 		queue_redraw()
 
 @export var eyebrow_style: EyebrowStyle = EyebrowStyle.RAISED:
@@ -210,6 +240,7 @@ func set_shape_color(value: Color) -> void:
 const PERSONALITIES := [
 	ExpressionType.NEUTRAL, ExpressionType.FRIENDLY,
 	ExpressionType.CONFIDENT, ExpressionType.ANGRY,
+	ExpressionType.SLEEPY,
 ]
 
 
@@ -331,7 +362,9 @@ func _draw_eyes(s: Vector2, off: float, u: float) -> void:
 	var eye_y := s.y * 0.44 + off
 	# Issue #586: bigger cartoon eyes — the proportion refinement that
 	# makes the face read as a character, not an emoji sticker.
-	var radius := s.x * (0.115 if eye_style == EyeStyle.WIDE else 0.10)
+	# Issue #585: eye_size scales the whole eye (shape AND size stay
+	# configurable, per the issue's expressive-eyes section).
+	var radius := s.x * (0.115 if eye_style == EyeStyle.WIDE else 0.10) * eye_size
 	if eye_style == EyeStyle.HAPPY:
 		# Closed happy eye: an upward arch (^) per eye.
 		for side in [-1.0, 1.0]:
@@ -342,7 +375,11 @@ func _draw_eyes(s: Vector2, off: float, u: float) -> void:
 		var center := Vector2(s.x * 0.5 + side * s.x * EYE_SPAN, eye_y)
 		# Issue #558: the animated pupil glance offset (fraction of the
 		# eye radius, zero when the face is not animated).
-		var shift := pupil_shift * radius
+		# Issue #585: the per-eye gaze composes with the shared glance —
+		# each pupil can also move on its own (independent gaze).
+		var shift := (pupil_shift \
+				+ (pupil_shift_left if side < 0.0 else pupil_shift_right)) \
+				* radius
 		var pupil_center := center + Vector2(0.0, radius * 0.25) + shift
 		var pupil_r := radius * 0.45
 		draw_circle(center + shift, radius, eye_white)
@@ -353,10 +390,13 @@ func _draw_eyes(s: Vector2, off: float, u: float) -> void:
 		draw_circle(pupil_center + Vector2(-0.35, -0.35) * pupil_r,
 				pupil_r * 0.32, eye_white)
 		# Issue #558: the animated blink — a body-colored lid slides over
-		# the eye from the top (eye_open = 1 draws no lid at all).
+		# the eye from the top (eye_open = 1 draws no lid at all). It
+		# follows the eye's own shift so an independently glancing pupil
+		# stays covered too (issue #585).
 		if eye_open < 0.999:
 			var lid_h := radius * 2.0 * (1.0 - eye_open)
-			draw_rect(Rect2(center.x - radius * 1.15, center.y - radius,
+			draw_rect(Rect2(center.x + shift.x - radius * 1.15,
+					center.y + shift.y - radius,
 					radius * 2.3, lid_h), body_color)
 		if eye_style == EyeStyle.SLEEPY:
 			# Half-closed lid: body-colored cover over the eye's top plus
