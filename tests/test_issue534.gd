@@ -109,10 +109,23 @@ func _ready() -> void:
 	(level.get_node("Npc") as Node2D).set_physics_process(false)
 	(level.get_node("Npc2") as Node2D).set_physics_process(false)
 
+	# Issue #572 added a THIRD default team: computer figures are dealt
+	# round-robin to per-color team ids ("enemy:<color>"), so the literal
+	# TEAM_ENEMY no longer names any team when several computer teams
+	# exist. Resolve the acting computer team the way the real turn loop
+	# does — from a live enemy figure — so _begin_turn gets a team that
+	# actually has members.
+	var computer_team: String = TurnController.TEAM_ENEMY
+	for figure in get_tree().get_nodes_in_group("enemy_team"):
+		var hp = figure.get("health")
+		if hp is int and hp > 0:
+			computer_team = TurnController.team_id_of(figure)
+			break
+
 	# --- 1) enemy rolls first: the acting NPC owns the view ----------
 	# Nobody is controlled yet on a fresh level — this is the state the
 	# very first computer turn starts from.
-	TurnController._begin_turn(TurnController.TEAM_ENEMY)
+	TurnController._begin_turn(computer_team)
 	await _settle()
 	var acting: Node2D = TurnController.active_member
 	_check(cam.enabled, "enemy-first turn: the camera must stay enabled")
@@ -161,7 +174,7 @@ func _ready() -> void:
 	# (TurnController._begin_turn clears controlled figures of other
 	# teams) — the exact moment the camera used to disable itself and the
 	# view froze for the whole computer turn.
-	TurnController._begin_turn(TurnController.TEAM_ENEMY)
+	TurnController._begin_turn(computer_team)
 	await _settle()
 	acting = TurnController.active_member
 	var none_controlled := true
