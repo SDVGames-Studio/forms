@@ -408,6 +408,10 @@ func set_display_name(value: String) -> void:
 	# Issue #270: named so FigurePose (and any pose/HUD pass, like
 	# Player.gd's) can tell the health bar from the BODY visual rect.
 	background.name = "HealthBarBackground"
+	# Issue #598: the HP renders in front of everything except the
+	# character's line (Stats.LINE_Z) — overlapping bodies, terrain and
+	# projectiles (rings at z 50) can no longer cover the bar.
+	background.z_index = Stats.HP_Z
 	background.offset_left = -BAR_WIDTH / 2.0
 	background.offset_top = -44.0
 	background.offset_right = BAR_WIDTH / 2.0

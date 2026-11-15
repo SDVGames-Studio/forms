@@ -21,6 +21,14 @@ const VIEW_MAX := 1.2
 const BAR_WIDTH := 64.0
 const BAR_HEIGHT := 8.0
 
+## Issue #598 render layers: the character's LINE (speech balloon)
+## draws in front of EVERYTHING, the HP bar in front of everything
+## EXCEPT the line. Both clear the highlight rings (z 50 — LevelItem,
+## ProjectileBody), so no body, terrain or projectile can cover them.
+## Single-sourced here so SpeechBubble, Player and Npc can never drift.
+const LINE_Z := 100
+const HP_Z := 90
+
 ## Issue #270: the figure's footprint — the square shape visual and the
 ## capsule are 64 px wide/tall, so ONE character width is 64 px. The level
 ## terrain rules are expressed as multiples of it.

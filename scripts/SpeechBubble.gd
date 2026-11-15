@@ -49,6 +49,11 @@ const BORDER := 3.0
 const BUMP := 9.0
 const TRAIL := [8.0, 6.0, 4.0]
 
+## Issue #598: the render-layer constant (LINE_Z) comes from the shared
+## CharacterStats, exactly like the figure stats — one source for the
+## line-vs-HP layer contract.
+const Stats := preload("res://scripts/CharacterStats.gd")
+
 var kind: int = Kind.SPEECH
 
 ## Issue #395: the speaker this balloon belongs to while the night
@@ -67,6 +72,14 @@ var _line := ""
 ## figure, whichever canvas the bubble sits in (on the figure by day, in
 ## the CharacterLinesLayer at night) — a new line replaces the old one.
 static var _live := {}
+
+
+func _init() -> void:
+	# Issue #598: the character's line renders in front of EVERYTHING —
+	# bodies, terrain, projectiles and the HP bar (Stats.HP_Z) alike.
+	# Whichever canvas the balloon ends up in (figure child by day,
+	# CharacterLinesLayer at night), z_index lifts it above the world.
+	z_index = Stats.LINE_Z
 
 
 ## Issue #335: pop `line` above `figure` — the one door characters speak
