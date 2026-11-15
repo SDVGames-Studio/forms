@@ -9,11 +9,13 @@ extends Node
 ##     wielder reaches (BAT_RANGE along the aim, BAT_LATERAL sideways) —
 ##     friendly fire included, the wielder itself exempt; a figure beyond
 ##     the range or off to the side is missed;
-##  3. KNOCKBACK: the hit not only damages, it LAUNCHES the victim along
-##     the shot direction (an acceleration that keeps pushing for
-##     BAT_KNOCKBACK_TIME), and while it runs the turn-effect gate keeps
-##     the post-shot handover waiting — until the push ends and the gate
-##     is released.
+##  3. KNOCKBACK: the hit not only damages, it LAUNCHES the victim
+##     like a projectile (issue #549): one initial impulse along the
+##     shot direction plus a guaranteed lift, then gravity bends the
+##     flight into an arc (the dedicated checks live in test_issue549);
+##     while the flight runs the turn-effect gate keeps the post-shot
+##     handover waiting — until the flight ends and the gate is
+##     released.
 ##  4. POWER (#527 rework): the bat is a CHARGED weapon — the hold-F
 ##     charge picks the swing power, scaling the launch speed from 40%
 ##     (a tap) to the full BAT_KNOCKBACK_SPEED (the full hold), so a
@@ -104,12 +106,14 @@ func _ready() -> void:
 	_check(victim.velocity.x > 0.0,
 			"the hit figure must carry the push velocity (got %s)"
 			% victim.velocity)
-	_check(absf(victim.position.y) < 0.001,
-			"the push stays along the aim axis (y=%f)" % victim.position.y)
+	_check(victim.velocity.y < 0.0,
+			"the launch must lift the victim against gravity (vy=%f)"
+			% victim.velocity.y)
 
-	# 3) The push is an ACCELERATION with a duration — after
-	# BAT_KNOCKBACK_TIME it ends and the gate is released.
-	for i in 30:
+	# 3) The flight is BOUNDED — a stand-in victim with no floor contact
+	# rides the BAT_FLIGHT_CAP safety limit, after which it ends and the
+	# gate is released (issue #549).
+	for i in int(WeaponScript.BAT_FLIGHT_CAP * 60.0) + 5:
 		await get_tree().physics_frame
 		if gun._bat_push_left <= 0.0:
 			break
@@ -176,8 +180,8 @@ func _ready() -> void:
 	_check(tap_victim.health == 100 - WeaponScript.BAT_DAMAGE
 			and full_victim.health == 100 - WeaponScript.BAT_DAMAGE,
 			"the charge must scale the launch, not the damage")
-	# Wait out both knockbacks, then compare how far each victim flew.
-	for i in 40:
+	# Wait out both flights, then compare how far each victim flew.
+	for i in int(WeaponScript.BAT_FLIGHT_CAP * 60.0) + 5:
 		await get_tree().physics_frame
 		if tap_gun._bat_push_left <= 0.0 and full_gun._bat_push_left <= 0.0:
 			break
