@@ -184,47 +184,80 @@ per decision step.
 
 ## 2. `BotController.gd` — battlefield controller (`Level*.tscn`)
 
-`get_action_space()` is still a **declared stub** (pushes an error and
-returns `{}` — its own issue is pending), and the controller does not
-implement `get_action_mask()`, so no `action_mask` key is shipped:
-**every index of both heads below is always legal** until that issue
-lands. `set_action()` is implemented and consumes two discrete heads:
+Issue #607 widened the controller to the **FULL repertoire**: five
+discrete heads — every movement command (jump and backflip included),
+aiming, all 10 weapon slots and all 4 tools. `get_action_space()` and
+`get_action_mask()` are both implemented, so the mask ships in
+`info["action_mask"]` on every training step.
 
-| Head | Effective size (per `set_action`) | Mask |
-|---|---|---|
-| `move` | 3 | all indices always legal (no mask shipped) |
-| `action` | 4 | all indices always legal (no mask shipped) |
+### `get_action_space()` — the declared heads (issue #607)
 
-**`move` (3, `MoveCommand`):**
-
-| Index | Game command (`set_action()`) | Masking condition (legal when) | `move_dir` |
+| Head | Size | Type | Grounded in |
 |---|---|---|---|
-| 0 | `HOLD` — stand still | always legal | `Vector2.ZERO` |
-| 1 | `RIGHT` — walk right for the turn | always legal | `Vector2.RIGHT` |
-| 2 | `LEFT` — walk left for the turn | always legal | `Vector2.LEFT` |
+| `move` | 6 | discrete | hold + the 5 movement commands (walk right/left, jump, backflip, skip turn) — the §1 scaffold set (`TrainingBot.gd`, #422) |
+| `aim` | 3 | discrete | hold + aim up/down |
+| `attack` | 11 | discrete | hold fire + the 10 weapon slots (`WeaponInventory.WEAPONS`) |
+| `target` | 4 | discrete | no target + the enemy team cap (`GameConfig.MAX_TEAM_MEMBERS` = 3) |
+| `tool` | 5 | discrete | no tool + the 4 tools (`ToolInventory.TOOLS`: Switch, Teleport, Shield, Rock) |
 
-**`action` (4, `ActionCommand`):**
+The dict's key order (`move`, `aim`, `attack`, `target`, `tool`) is the
+wire order. 29 integer slots per step; the joint space is
+6·3·11·4·5 = 3960 combinations.
 
-| Index | Game command (`set_action()`) | Masking condition (legal when) |
-|---|---|---|
-| 0 | `IDLE` — pass | always legal |
-| 1 | `ATTACK_ENEMY_A` — attack the **nearest** alive enemy (the same nearest-first order the observation vector reports figures in) | always legal |
-| 2 | `ATTACK_ENEMY_B` — attack the **second nearest** alive enemy | always legal |
-| 3 | `USE_ABILITY` — the figure's special | always legal |
+### Integer → command → mask mapping
+
+**`move` (6, `MoveCommand`):** 0 `HOLD`, 1 walk right, 2 walk left,
+3 `JUMP`, 4 `BACKFLIP`, 5 `SKIP_TURN` — always legal. `move_dir` is
+`Vector2.RIGHT`/`LEFT` for 1/2 and `Vector2.ZERO` otherwise (jump,
+backflip and skip-turn are discrete orders the game loop reads off the
+`move` index, not walk directions).
+
+**`aim` (3, `AimCommand`):** 0 hold aim, 1 aim up, 2 aim down — always
+legal.
+
+**`attack` (11, `AttackCommand`):** 0 `HOLD_FIRE`; index i+1 selects +
+fires `WeaponInventory.WEAPONS[i]` (1 Shotgun … 10 Circular Saw) —
+index 0 always legal, indices 1–10 legal iff ≥ 1 visible enemy.
+
+**`target` (4, `TargetCommand`):** 0 `NONE`; index k targets the k-th
+visible enemy (`ENEMY_1`…`ENEMY_3`) — legal iff k ≤ visible enemy
+count.
+
+**`tool` (5, `ToolCommand`):** 0 `NONE`; index i+1 spends
+`ToolInventory.TOOLS[i]` (1 `USE_SWITCH`, 2 `USE_TELEPORT`,
+3 `USE_SHIELD`, 4 `USE_ROCK`) — always legal in the mask: the
+once-per-turn / per-team quota is spent at EXECUTION by
+`ToolInventory`, not by the mask.
+
+**"Visible enemy"** = a figure that is (a) **alive** (duck-typed on
+`health`), (b) on the **opposing side** of the controller's figure, and
+(c) **within `ATTACK_REACH = 620.0` px** — the controller's own
+`_enemies_in_reach` predicate — ordered **nearest-first** (distance
+ties broken by node name), the same order the observation vector
+reports enemies in (issue #381), so `target` k and the k-th observation
+enemy slot always name the same figure. Without a bound figure the
+opposing side defaults to `"player_team"` (the figure-less default
+view, issue #381).
 
 ### Execution model and robustness
 
-- `set_action()` does not actuate directly: it translates the indices and
-  stores `pending_command = {"move": <int>, "action": <int>,
-  "move_dir": <Vector2>}`. The turn-based game loop executes it when the
-  bot's turn comes and fetches it via `consume_pending_command()`, which
-  hands the order over and immediately resets the bot to idle/hold so a
-  stale command can never fire twice.
-- Defended input — garbage degrades to the neutral index, never a script
-  error: a non-Dictionary `action` → full idle/hold command; a missing
-  head, a non-integer-coercible value, an array/dictionary/object, or an
-  index outside `[0, size-1]` → that head falls back to index 0
-  (`HOLD`/`IDLE`) with a `push_warning`.
+- `set_action()` does not actuate directly: it translates the five
+  heads and stores `pending_command = {"move": <int>,
+  "move_dir": <Vector2>, "aim": <int>, "attack": <int>,
+  "target": <int>, "tool": <int>}`. The turn-based game loop executes
+  it when the bot's turn comes and fetches it via
+  `consume_pending_command()`, which hands the order over and
+  immediately resets the bot to the all-neutral command so a stale
+  command can never fire twice. Actuating jump/backflip/skip/aim,
+  threading weapon fire through the selected target and spending tool
+  quotas are the game-loop follow-up layered on this contract.
+- Defended input — garbage degrades per head to the neutral index,
+  never a script error: a non-Dictionary `action` → full idle command; a
+  missing head, a non-integer-coercible value, an
+  array/dictionary/object, or an index outside `[0, size-1]` → that
+  head falls back to index 0 (hold) with a `push_warning`. Unknown
+  heads (a stale #407-era trainer still emitting `"action"`) are
+  ignored — their slot stays neutral.
 
 ## 3. Implementing a compatible action-masking wrapper (issue #424)
 
@@ -241,7 +274,8 @@ inference side) from this file alone:
    is a `Dictionary` mapping each head name to an `Array` of `size`
    booleans, `true` = legal, positions aligned with the index tables in
    §1. A missing mask, or a missing head inside it, means **all indices
-   of that head are legal** (`BotController.gd` today).
+   of that head are legal** (any controller that does not implement
+   `get_action_mask()`).
 3. **Per-index rules** (recomputed independently only if the environment
    does not ship a mask; otherwise consume the shipped mask):
    - `move`, `aim`: all indices legal, unconditionally.

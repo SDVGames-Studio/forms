@@ -34,7 +34,12 @@ extends NcnnAIController2D
 ## (elimination / draw) pays the REWARD_SPEC §2.9 win/loss through the
 ## framework's game_over() flags — done=true + needs_reset=true, truncated
 ## stays false, and the turn-limit horizon (truncation) never pays it.
-## The action-space declaration remains a loud stub until its own issue.
+## Issue #607 widens that declaration to the FULL action repertoire:
+## five discrete heads — move (all 6 movement commands, jump and
+## backflip included), aim (hold/up/down), attack (hold fire + all 10
+## WeaponInventory slots), target (nearest-first enemy selection) and
+## tool (all 4 ToolInventory tools) — with a per-head legality mask
+## shipped in info["action_mask"].
 ## Issue #447 appends the TEAM block (4 floats) on top of the local
 ## observations: the shared focus target's relative position, the team's
 ## average HP fraction and the living ally-to-enemy ratio — all sourced
@@ -831,11 +836,15 @@ func _on_danger_tile(figure: Node2D) -> bool:
 			return true
 	return false
 
-## Issue #434: §2.7's neutral command — every head the controller
-## translates (#407) sits on its neutral value.
+## Issue #434/#607: §2.7's neutral command — every head the controller
+## translates sits on its neutral value (hold position, hold aim, hold
+## fire, no target, no tool).
 func _command_all_neutral(command: Dictionary) -> bool:
 	return int(command.get("move", MoveCommand.HOLD)) == MoveCommand.HOLD \
-			and int(command.get("action", ActionCommand.IDLE)) == ActionCommand.IDLE
+			and int(command.get("aim", AimCommand.HOLD)) == AimCommand.HOLD \
+			and int(command.get("attack", AttackCommand.HOLD_FIRE)) == AttackCommand.HOLD_FIRE \
+			and int(command.get("target", TargetCommand.NONE)) == TargetCommand.NONE \
+			and int(command.get("tool", ToolCommand.NONE)) == ToolCommand.NONE
 
 ## Issue #433: the framework clears the accumulator per decision step
 ## (NcnnSync calls zero_reward()) — the §2.1 cap / §2.6 floor budgets
@@ -953,29 +962,92 @@ func _revive_figure(figure: Node2D) -> void:
 	figure.scale = Vector2.ONE
 
 func get_action_space() -> Dictionary:
+	# Issue #607: the full action declaration for the trainer's handshake —
+	# five discrete heads, the wire order frozen here and in ACTION_SPEC.md
+	# §2: move (6), aim (3), attack (11), target (4), tool (5) = 29 integer
+	# slots per decision step. Sizes are enum-driven so the declaration can
+	# never drift from the translation below.
 	return {
-		"move": {
-			"size": MoveCommand.size(),
-			"action_type": "discrete"
-		},
-		"action": {
-			"size": ActionCommand.size(),
-			"action_type": "discrete"
-		}
+		"move": {"size": MoveCommand.size(), "action_type": "discrete"},
+		"aim": {"size": AimCommand.size(), "action_type": "discrete"},
+		"attack": {"size": AttackCommand.size(), "action_type": "discrete"},
+		"target": {"size": TargetCommand.size(), "action_type": "discrete"},
+		"tool": {"size": ToolCommand.size(), "action_type": "discrete"},
 	}
 
-## Issue #407: concrete game commands the raw policy indices translate
-## into. "move" orders the turn's walk direction (HOLD = stand still);
-## "action" orders the combat move — ATTACK_ENEMY_A targets the nearest
-## alive enemy, ATTACK_ENEMY_B the second nearest (the same nearest-first
-## order the observation vector reports them in, issue #381), USE_ABILITY
-## the figure's special, IDLE passes. Resolving which node "enemy A"/"B"
-## name at execution time stays with the game loop.
-enum MoveCommand { HOLD, RIGHT, LEFT }
-enum ActionCommand { IDLE, ATTACK_ENEMY_A, ATTACK_ENEMY_B, USE_ABILITY }
+## Issue #607: per-head legality mask, the same contract as the training
+## scaffold (#410/#422) — one boolean array per discrete head (true =
+## legal), auto-shipped in info["action_mask"] by the base class whenever
+## this method exists. move, aim and tool are unconditionally legal (a
+## jump, an aim step or a tool order is always a well-formed choice; the
+## tool quota is spent at EXECUTION by ToolInventory, not by the mask).
+## attack slots 1-10 need at least one visible enemy; target index k
+## needs the k-th visible enemy to exist. "Visible" reuses this
+## controller's own enemy predicate — alive, opposing side, inside
+## ATTACK_REACH — ordered nearest-first, the same order the observation
+## vector reports enemies in (issue #381), so "target k" and the k-th
+## observation enemy slot always name the same figure.
+func get_action_mask() -> Dictionary:
+	var visible := _visible_enemies_nearest_first()
+	var mask := {}
+	for key in get_action_space().keys():
+		var size: int = get_action_space()[key]["size"]
+		var legal: Array = []
+		legal.resize(size)
+		legal.fill(true)
+		if key == "attack":
+			for i in range(1, size):
+				legal[i] = not visible.is_empty()
+		elif key == "target":
+			for k in range(1, size):
+				legal[k] = k <= visible.size()
+		mask[key] = legal
+	return mask
+
+## Issue #607: the mask's enemy list — alive opposing figures inside
+## ATTACK_REACH, nearest first (distance ties broken by node name, the
+## same deterministic order _team_features sorts the observation slots
+## with). The k-th entry is the figure TargetCommand.ENEMY_k selects.
+func _visible_enemies_nearest_first() -> Array:
+	var figure := _resolve_alive_figure()
+	if figure == null or not is_inside_tree():
+		return []
+	var enemies := _enemies_in_reach(figure)
+	enemies.sort_custom(func(a, b):
+		var da: float = figure.global_position.distance_squared_to(a.global_position)
+		var db: float = figure.global_position.distance_squared_to(b.global_position)
+		if da == db:
+			return String(a.name) < String(b.name)
+		return da < db)
+	return enemies
+
+## Issue #407/#607: concrete game commands the raw policy indices
+## translate into — #607 replaced the two-head set with the full
+## repertoire:
+## "move" carries every movement command the game offers (the TrainingBot
+## scaffold's six, #422: hold, walk right/left, jump, backflip, skip
+## turn); "aim" the view-angle adjustment; "attack" selects + fires one
+## of the 10 WeaponInventory.WEAPONS slots (index i+1 = WEAPONS[i]; slot
+## order pinned by test_issue607); "target" names the enemy an attack is
+## aimed at (index k = the k-th of _visible_enemies_nearest_first(), the
+## observation vector's order); "tool" spends one of the 4
+## ToolInventory.TOOLS (index i+1 = TOOLS[i]: Switch, Teleport, Shield,
+## Rock). Resolving nodes, spending quotas and actuating the orders stays
+## with the turn-based game loop, exactly the #407 execution model.
+enum MoveCommand { HOLD, RIGHT, LEFT, JUMP, BACKFLIP, SKIP_TURN }
+enum AimCommand { HOLD, UP, DOWN }
+enum AttackCommand {
+	HOLD_FIRE,
+	FIRE_WEAPON_1, FIRE_WEAPON_2, FIRE_WEAPON_3, FIRE_WEAPON_4, FIRE_WEAPON_5,
+	FIRE_WEAPON_6, FIRE_WEAPON_7, FIRE_WEAPON_8, FIRE_WEAPON_9, FIRE_WEAPON_10,
+}
+enum TargetCommand { NONE, ENEMY_1, ENEMY_2, ENEMY_3 }
+enum ToolCommand { NONE, USE_SWITCH, USE_TELEPORT, USE_SHIELD, USE_ROCK }
 
 ## Walk direction each MoveCommand maps to (unit vector; distance and
-## timing stay with the game loop's turn logic).
+## timing stay with the game loop's turn logic). JUMP, BACKFLIP and
+## SKIP_TURN are discrete orders, not walk directions — they carry
+## Vector2.ZERO and the game loop reads the "move" index itself.
 const MOVE_DIRS := {
 	MoveCommand.HOLD: Vector2.ZERO,
 	MoveCommand.RIGHT: Vector2.RIGHT,
@@ -984,23 +1056,31 @@ const MOVE_DIRS := {
 
 ## Issue #407: the translated command the game loop executes on the bot's
 ## next turn — set_action() rewrites it on every policy decision step.
-## Always carries "move" (MoveCommand), "action" (ActionCommand) and
-## "move_dir" (Vector2); malformed policy output degrades to idle/hold.
+## Always carries "move" (MoveCommand) + "move_dir" (Vector2), "aim"
+## (AimCommand), "attack" (AttackCommand), "target" (TargetCommand) and
+## "tool" (ToolCommand); malformed policy output degrades per head to
+## the neutral index, never a script error.
 var pending_command: Dictionary = {
 	"move": MoveCommand.HOLD,
-	"action": ActionCommand.IDLE,
 	"move_dir": Vector2.ZERO,
+	"aim": AimCommand.HOLD,
+	"attack": AttackCommand.HOLD_FIRE,
+	"target": TargetCommand.NONE,
+	"tool": ToolCommand.NONE,
 }
 
 func set_action(action) -> void:
 	# Issue #407: NcnnSync (TRAINING mode) calls this once per decision step
 	# with the decoded policy output — for a discrete action space a
 	# dictionary of action head -> integer index, e.g. {"move": 2,
-	# "action": 0}. The indices are translated into the concrete commands
-	# above and STORED on the bot: actuation stays with the turn-based game
-	# loop, which executes pending_command when the bot's turn comes. The
-	# input is defended at the type/range level — garbage degrades to the
-	# idle command with a warning, never a script error.
+	# "aim": 1, "attack": 5, "target": 1, "tool": 0}. The indices are
+	# translated into the concrete commands above and STORED on the bot:
+	# actuation stays with the turn-based game loop, which executes
+	# pending_command when the bot's turn comes. The input is defended at
+	# the type/range level — garbage degrades per head to the neutral
+	# index with a warning, never a script error. Unknown heads (a stale
+	# #407-era trainer still emitting "action") are simply ignored: their
+	# slot stays neutral.
 	if typeof(action) != TYPE_DICTIONARY:
 		push_warning(
 			"BotController.set_action: expected a Dictionary of action heads, "
@@ -1008,11 +1088,17 @@ func set_action(action) -> void:
 		pending_command = _idle_command()
 		return
 	var move := _head_index(action, "move", MoveCommand.size())
-	var order := _head_index(action, "action", ActionCommand.size())
+	var aim := _head_index(action, "aim", AimCommand.size())
+	var attack := _head_index(action, "attack", AttackCommand.size())
+	var target := _head_index(action, "target", TargetCommand.size())
+	var tool := _head_index(action, "tool", ToolCommand.size())
 	pending_command = {
 		"move": move,
-		"action": order,
-		"move_dir": MOVE_DIRS[move],
+		"move_dir": MOVE_DIRS.get(move, Vector2.ZERO),
+		"aim": aim,
+		"attack": attack,
+		"target": target,
+		"tool": tool,
 	}
 	# Issue #434: a decision arrived — the NEXT own turn is one the policy
 	# chose commands on, so its idle audit may fire (REWARD_SPEC §1).
@@ -1053,8 +1139,11 @@ func _head_index(action: Dictionary, head: String, size: int) -> int:
 func _idle_command() -> Dictionary:
 	return {
 		"move": MoveCommand.HOLD,
-		"action": ActionCommand.IDLE,
 		"move_dir": Vector2.ZERO,
+		"aim": AimCommand.HOLD,
+		"attack": AttackCommand.HOLD_FIRE,
+		"target": TargetCommand.NONE,
+		"tool": ToolCommand.NONE,
 	}
 
 #func get_obs_space() -> Dictionary:
