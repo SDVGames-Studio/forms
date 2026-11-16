@@ -121,7 +121,7 @@ class LogitsOnnxPolicy(torch.nn.Module):
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--model", default="runs/issue471_check/final_model.zip",
+    parser.add_argument("--model", default="runs/tdm_v1/final_model.zip",
                         help="SB3 PPO checkpoint (final_model.zip of an experiment)")
     parser.add_argument("--vecnormalize", default=None,
                         help="matching vecnormalize.pkl; '' disables normalization")
