@@ -1,0 +1,4 @@
+*.onnx
+*.pnnx.*
+*_pnnx.py
+*_ncnn.py
