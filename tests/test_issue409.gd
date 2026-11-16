@@ -70,8 +70,12 @@ func _ready() -> void:
 	figure.death_tween.tween_property(figure, "scale", Vector2.ZERO, 5.0)
 	figure.scale = Vector2(0.4, 0.4)
 
-	# Controller-side leftovers reset() must also clear.
-	bot.pending_command = {"move": 1, "action": 2, "move_dir": Vector2.RIGHT}
+	# Controller-side leftovers reset() must also clear (a full stale
+	# #607-era order: every head non-neutral).
+	bot.pending_command = {
+		"move": 1, "move_dir": Vector2.RIGHT,
+		"aim": 2, "attack": 5, "target": 2, "tool": 4,
+	}
 	bot.needs_reset = true
 	bot.reward = 1.0
 
@@ -100,8 +104,10 @@ func _ready() -> void:
 
 	# The pending order never survives into the new episode.
 	var command: Dictionary = bot.consume_pending_command()
-	ok = _expect(command["move"] == 0 and command["action"] == 0,
-			"pending command cleared to HOLD/IDLE, got %s" % command) and ok
+	ok = _expect(command["move"] == 0 and command["attack"] == 0
+			and command["aim"] == 0 and command["target"] == 0
+			and command["tool"] == 0,
+			"pending command cleared to all-neutral, got %s" % command) and ok
 
 	# Framework bookkeeping: the core reset ran (needs_reset down) and the
 	# reward accumulator is left to the framework's zero_reward().

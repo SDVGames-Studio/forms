@@ -1,10 +1,14 @@
 extends Node
 ## Regression check for issue #407: set_action() translates discrete policy
-## action indices into concrete game commands stored on the bot — "move"
-## index -> walk direction, "action" index -> combat order — and must
+## action indices into concrete game commands stored on the bot, and must
 ## interpret the issue's sample dictionary correctly while surviving any
 ## type/range garbage without script errors. The bot is instantiated but
 ## never added to the tree: set_action() is pure state translation.
+##
+## Issue #607 widened the two-head contract to five discrete heads
+## (move/aim/attack/target/tool — see test_issue607.gd); this file keeps
+## guarding the original #407 half: robust index translation and the
+## consume-once execution model.
 ##
 ## Run headless: godot --headless res://tests/test_issue407.tscn
 ## Exit code 0 = pass.
@@ -19,50 +23,51 @@ func _ready() -> void:
 	# A fresh bot idles until the first policy step arrives.
 	ok = _check(bot, "fresh bot idles", {
 		"move": Bot.MoveCommand.HOLD,
-		"action": Bot.ActionCommand.IDLE,
+		"attack": Bot.AttackCommand.HOLD_FIRE,
 		"move_dir": Vector2.ZERO,
 	}) and ok
 
-	# The issue's own sample: {"move": 2, "action": 0} -> walk left, idle.
-	bot.set_action({"move": 2, "action": 0})
-	ok = _check(bot, "sample {move:2, action:0}", {
+	# The issue's own sample: {"move": 2, ...} -> walk left, hold fire.
+	bot.set_action({"move": 2, "attack": 0})
+	ok = _check(bot, "sample {move:2, attack:0}", {
 		"move": Bot.MoveCommand.LEFT,
-		"action": Bot.ActionCommand.IDLE,
+		"attack": Bot.AttackCommand.HOLD_FIRE,
 		"move_dir": Vector2.LEFT,
 	}) and ok
 
 	# Every command slot maps to its concrete order.
-	bot.set_action({"move": 1, "action": 1})
-	ok = _check(bot, "walk right + attack enemy A", {
+	bot.set_action({"move": 1, "attack": 3})
+	ok = _check(bot, "walk right + fire weapon 3", {
 		"move": Bot.MoveCommand.RIGHT,
-		"action": Bot.ActionCommand.ATTACK_ENEMY_A,
+		"attack": Bot.AttackCommand.FIRE_WEAPON_3,
 		"move_dir": Vector2.RIGHT,
 	}) and ok
-	bot.set_action({"move": 0, "action": 2})
-	ok = _check(bot, "attack enemy B", {
+	bot.set_action({"move": 0, "attack": 10})
+	ok = _check(bot, "fire weapon 10 (circular saw)", {
 		"move": Bot.MoveCommand.HOLD,
-		"action": Bot.ActionCommand.ATTACK_ENEMY_B,
+		"attack": Bot.AttackCommand.FIRE_WEAPON_10,
 	}) and ok
-	bot.set_action({"move": 0, "action": 3})
-	ok = _check(bot, "use ability", {
+	bot.set_action({"move": 0, "aim": 2, "tool": 3})
+	ok = _check(bot, "aim down + shield", {
 		"move": Bot.MoveCommand.HOLD,
-		"action": Bot.ActionCommand.USE_ABILITY,
+		"aim": Bot.AimCommand.DOWN,
+		"tool": Bot.ToolCommand.USE_SHIELD,
 		"move_dir": Vector2.ZERO,
 	}) and ok
 
 	# Range safety: out-of-range indices degrade to the neutral 0 command.
-	bot.set_action({"move": 99, "action": -7})
+	bot.set_action({"move": 99, "attack": -7})
 	ok = _check(bot, "out-of-range indices degrade", {
 		"move": Bot.MoveCommand.HOLD,
-		"action": Bot.ActionCommand.IDLE,
+		"attack": Bot.AttackCommand.HOLD_FIRE,
 		"move_dir": Vector2.ZERO,
 	}) and ok
 
 	# Type safety: float truncates, numeric string coerces — no errors.
-	bot.set_action({"move": 1.9, "action": "2"})
+	bot.set_action({"move": 1.9, "attack": "2"})
 	ok = _check(bot, "float/string coercion", {
 		"move": Bot.MoveCommand.RIGHT,
-		"action": Bot.ActionCommand.ATTACK_ENEMY_B,
+		"attack": Bot.AttackCommand.FIRE_WEAPON_2,
 		"move_dir": Vector2.RIGHT,
 	}) and ok
 
@@ -70,7 +75,7 @@ func _ready() -> void:
 	bot.set_action({})
 	ok = _check(bot, "empty dictionary", {
 		"move": Bot.MoveCommand.HOLD,
-		"action": Bot.ActionCommand.IDLE,
+		"attack": Bot.AttackCommand.HOLD_FIRE,
 		"move_dir": Vector2.ZERO,
 	}) and ok
 
@@ -78,24 +83,24 @@ func _ready() -> void:
 	bot.set_action(null)
 	ok = _check(bot, "null payload", {
 		"move": Bot.MoveCommand.HOLD,
-		"action": Bot.ActionCommand.IDLE,
+		"attack": Bot.AttackCommand.HOLD_FIRE,
 	}) and ok
 	bot.set_action(3)
 	ok = _check(bot, "scalar payload", {
 		"move": Bot.MoveCommand.HOLD,
-		"action": Bot.ActionCommand.IDLE,
+		"attack": Bot.AttackCommand.HOLD_FIRE,
 	}) and ok
 
 	# The game loop consumes the stored order once, then the bot idles.
-	bot.set_action({"move": 1, "action": 1})
+	bot.set_action({"move": 1, "attack": 4})
 	var consumed: Dictionary = bot.consume_pending_command()
 	if consumed.get("move") != Bot.MoveCommand.RIGHT \
-			or consumed.get("action") != Bot.ActionCommand.ATTACK_ENEMY_A:
+			or consumed.get("attack") != Bot.AttackCommand.FIRE_WEAPON_4:
 		print("FAIL consume_pending_command returned ", consumed)
 		ok = false
 	ok = _check(bot, "bot idles after consume", {
 		"move": Bot.MoveCommand.HOLD,
-		"action": Bot.ActionCommand.IDLE,
+		"attack": Bot.AttackCommand.HOLD_FIRE,
 		"move_dir": Vector2.ZERO,
 	}) and ok
 
