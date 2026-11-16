@@ -324,6 +324,18 @@ static func lobbed_velocity(aim: Vector2, up: Vector2, speed: float,
 		strength: float) -> Vector2:
 	return aim * speed + up * 320.0 * strength
 
+## Issue #114: the weapon slots fired through the hold-F charge meter —
+## pressing shoot starts the charge, releasing it fires with the power
+## scaled by the hold time (rocket, grenade, mine, jackhammer, railgun,
+## baseball bat — and the armed rock, handled by its own flag at the
+## call site). Issue #570 rework (owner, 2026-11-16): the circular saw
+## (slot 9) joins them — holding the shot key must change the power of
+## the shot. It was missing from the gate, so the saw fired at full
+## power on the press instead of charging.
+static func is_charged_weapon(slot: int) -> bool:
+	return slot == 1 or slot == 2 or slot == 4 or slot == 5 \
+			or slot == 6 or slot == 8 or slot == 9
+
 ## Issue #68: visual of the weapon currently held "in hands".
 var _held: ColorRect
 var _held_style := -1
@@ -546,16 +558,18 @@ func _physics_process(delta: float) -> void:
 	# Issue #234: an armed rock is charged too — same F mechanic as the
 	# grenade; releasing F throws the rock instead of firing the weapon.
 	# Issue #246: the mine (4) is charged too — it is thrown like a grenade.
+	# Issue #570 rework (owner, 2026-11-16): the circular saw (9) is
+	# charged too — holding the shot key changes the power of the throw
+	# (it used to fire at full power on the press).
 	# Issue #244: while the handover waits for effects (after a shot or
 	# when the timer ran out) the character is BLOCKED — no new charge, no
 	# throw/fire; a charge in progress is cancelled without spending
 	# anything (the not-can_act branch below).
 	var frozen: bool = TurnController.is_input_frozen()
 	var rock_armed := _rock_armed()
-	# Issue #359: the railgun; issue #527 rework: the baseball bat.
-	var charged := rock_armed or selected_weapon == 1 or selected_weapon == 2 \
-			or selected_weapon == 4 or selected_weapon == 5 \
-			or selected_weapon == 6 or selected_weapon == 8
+	# Issue #359: the railgun; issue #527 rework: the baseball bat;
+	# issue #570 rework: the circular saw.
+	var charged: bool = rock_armed or is_charged_weapon(selected_weapon)
 	var can_act: bool = (rock_armed or can_shoot) and not frozen
 	if controlled and can_act and not _charging \
 			and Input.is_action_just_pressed("shoot"):
