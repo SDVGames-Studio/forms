@@ -101,6 +101,32 @@ func _ready() -> void:
 	_check(saw.is_in_group("projectiles"),
 			"a flying saw is a live projectile the turn handover waits for")
 
+	# 2b) Rework (owner, 2026-11-16): holding the shot key must change
+	# the power of the shot. The saw is a CHARGED weapon — slot 9 sits in
+	# the hold-F charge gate — and the lob speed really scales with the
+	# charge: a tap throws short/slow, a full hold throws far/fast.
+	_check(WeaponScript.is_charged_weapon(WEAPON_SLOT_SAW),
+			"the saw must fire through the hold-F charge (is_charged_weapon(9))")
+	var charge_gun := _make_weapon()
+	charge_gun._throw_saw(0.05)
+	charge_gun._throw_saw(0.95)
+	var saw_speed: float = WeaponScript.SAW_SPEED
+	var weak_seen := false
+	var strong_seen := false
+	for body in get_tree().get_nodes_in_group("projectiles"):
+		if body is RigidBody2D and body.get_script() == BodyScript \
+				and body.kind == BodyScript.Kind.SAW and body != saw:
+			var v: float = body.launch_velocity.length()
+			if v < saw_speed * 0.6:
+				weak_seen = true
+			elif v > saw_speed * 0.9:
+				strong_seen = true
+			body.queue_free()
+	_check(weak_seen and strong_seen,
+			"the throw speed must scale with the charge power (weak+strong lobs)")
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+
 	# 3) Rest → spin: force the saw to rest, place a victim inside the
 	# suction radius and one far outside it.
 	saw.linear_velocity = Vector2.ZERO
@@ -156,7 +182,7 @@ func _ready() -> void:
 
 func _finish() -> void:
 	if failures == 0:
-		print("ISSUE570 ok=true (circular saw: registry, throw, spin, suction, grind, end)")
+		print("ISSUE570 ok=true (circular saw: registry, throw, charge power, spin, suction, grind, end)")
 	else:
 		print("ISSUE570 ok=false failures=", failures)
 	get_tree().quit(1 if failures > 0 else 0)
