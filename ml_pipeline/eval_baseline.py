@@ -40,9 +40,9 @@ def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("--results", default="builds/eval/eval_results.json",
                    help="eval_results.json written by the exported run")
-    p.add_argument("--model", default="runs/issue471_check/final_model.zip",
+    p.add_argument("--model", default="runs/tdm_v1/final_model.zip",
                    help="SB3 checkpoint the deployed ncnn model was exported from")
-    p.add_argument("--vecnormalize", default="runs/issue471_check/vecnormalize.pkl",
+    p.add_argument("--vecnormalize", default="runs/tdm_v1/vecnormalize.pkl",
                    help="SB3 VecNormalize pickle co-located with the checkpoint")
     p.add_argument("--onnx", default="models/policy-logits.onnx",
                    help="logits ONNX graph (the pnnx input) for the ORT cross-check")

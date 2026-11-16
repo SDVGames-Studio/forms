@@ -155,7 +155,7 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
     if args.vecnormalize is None:
-        default = "runs/issue471_check/vecnormalize.pkl"
+        default = "runs/tdm_v1/vecnormalize.pkl"
         args.vecnormalize = default if os.path.exists(default) else ""
     if not args.vecnormalize or not os.path.exists(args.vecnormalize):
         raise SystemExit(f"vecnormalize stats not found: {args.vecnormalize!r}")

@@ -2,10 +2,10 @@
 # Validated combo: godot-rl 0.8.2 + SB3 2.4.0
 
 godot-rl
-stable-baselines3
+stable-baselines3<=2.4.0,>=2.0.0
 gymnasium
 torch
-numpy
+numpy<2.0,>=1.20
 tensorboard
 
 # --- export + conversion ---
@@ -13,4 +13,17 @@ onnx
 onnxruntime
 ncnn
 pnnx
-ml_dtypes
+ml-dtypes>=0.5.0  # need that version to exclude 'float4_e2m1fn' error
+
+# Versions info:
+#godot-rl 0.8.2 requires stable-baselines3<=2.4.0,>=2.0.0
+
+#stable-baselines3 2.4.0 requires numpy<2.0,>=1.20
+
+#ml-dtypes 0.5.0 requires numpy>=2.1.0; python_version >= "3.13"
+#ml-dtypes 0.5.4 requires numpy>=2.1.0; python_version >= "3.13"
+#ml-dtypes 0.6.0 requires numpy>=2.1.0; python_version >= "3.13"
+#ml-dtypes 0.6.0 requires numpy>=2.3.0; python_version >= "3.14"
+
+
+

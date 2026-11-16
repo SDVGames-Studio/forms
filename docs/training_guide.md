@@ -132,7 +132,7 @@ python export_vecnormalize_stats.py
 Convert the ONNX model to the `.param` and `.bin` files required by the GDExtension using `pnnx`. 
 
 ```bash
-pnnx policy.onnx
+pnnx ./models/policy.onnx
 ```
 *(Note: Because your model uses dictionary observations, you may need to specify input shapes if `pnnx` fails to infer them automatically, e.g., `pnnx policy.onnx inputshape=[1,OBS_SIZE_1],[1,OBS_SIZE_2]`).*
 This generates `policy.ncnn.param` and `policy.ncnn.bin`.
