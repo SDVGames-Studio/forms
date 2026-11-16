@@ -62,6 +62,13 @@ layout_mode = 2
 size_flags_vertical = 4
 theme_override_constants/separation = 14
 
+[node name="NextButton" type="Button" parent="Layout/Columns/Nav"]
+unique_name_in_owner = true
+visible = false
+custom_minimum_size = Vector2(340, 64)
+layout_mode = 2
+text = "NEXT"
+
 [node name="HostButton" type="Button" parent="Layout/Columns/Nav"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(340, 64)

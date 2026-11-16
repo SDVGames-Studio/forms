@@ -9,12 +9,20 @@ extends Control
 ## addresses to type on the other device. Join: type the host address,
 ## CONNECT. Back/Esc (issue #303) always closes the connection first —
 ## no peer outlives this screen.
+##
+## Issue #551 rework (owner follow-up 2026-11-16): once HOST GAME
+## starts, the host's setup controls (HOST GAME, host address, port,
+## CONNECT) disappear and a NEXT button appears, taking the host into
+## the usual level flow — LevelsMenu → LevelConfigMenu → START runs
+## the game. The ENet connection still does not drive a synchronized
+## shared match — that remains the next step.
 
 const DEFAULT_PORT := 24565
 ## Room for a comfortable local lobby (host + 7 joiners).
 const MAX_CLIENTS := 7
 
 @onready var _host_button: Button = %HostButton
+@onready var _next_button: Button = %NextButton
 @onready var _address_edit: LineEdit = %AddressEdit
 @onready var _port_edit: LineEdit = %PortEdit
 @onready var _connect_button: Button = %ConnectButton
@@ -27,7 +35,9 @@ func _ready() -> void:
 	# Main-menu spec §9 (M4 hardening): adapt to the viewport width.
 	MenuAdapt.apply(self)
 	_port_edit.text = str(DEFAULT_PORT)
+	_next_button.visible = false
 	_host_button.pressed.connect(_on_host_pressed)
+	_next_button.pressed.connect(_on_next_pressed)
 	_connect_button.pressed.connect(_on_connect_pressed)
 	_back_button.pressed.connect(_on_back_pressed)
 	multiplayer.peer_connected.connect(_on_peer_connected)
@@ -59,6 +69,16 @@ func _on_host_pressed() -> void:
 		_set_status("Could not host on port %d — is it already in use?" % port)
 		return
 	multiplayer.multiplayer_peer = peer
+	# Issue #551 rework (owner follow-up): once this machine hosts, the
+	# setup controls are done — the HOST GAME button and the join row
+	# (host address, port, CONNECT) disappear and NEXT takes over,
+	# leading into the level flow below.
+	_host_button.visible = false
+	_address_edit.visible = false
+	_port_edit.visible = false
+	_connect_button.visible = false
+	_next_button.visible = true
+	_next_button.grab_focus()
 	var addresses := ", ".join(_lan_addresses())
 	_set_status("Hosting. On the other device connect to: %s (port %d)."
 		% [addresses, port])
@@ -81,6 +101,10 @@ func _on_connect_pressed() -> void:
 	multiplayer.multiplayer_peer = peer
 	_set_status("Connecting to %s:%d ..." % [address, port])
 	_refresh_players()
+
+
+func _on_next_pressed() -> void:
+	get_tree().change_scene_to_file("res://scenes/menus/LevelsMenu.tscn")
 
 
 func _on_back_pressed() -> void:
