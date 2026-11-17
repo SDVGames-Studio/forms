@@ -575,6 +575,11 @@ static func apply(level: Node) -> void:
 		team_size = chosen_heroes
 	if chosen_foes > 0:
 		enemy_count = chosen_foes
+	# Issue #613: the level scenes stage JUST CHARACTERS (plain
+	# Character.gd bodies with no brain) — dress each with its
+	# controller BEFORE the trim/deal passes run, so every later pass
+	# sees the classic scripted cast it addresses by node name.
+	_dress_just_characters(level)
 	# Trim the player team: keep the hero plus team_size - 1 teammates.
 	# Issue #537 rework v3 (owner item 2): when the level menu drove the
 	# team set, the count comes straight from the menu's grid —
@@ -682,6 +687,101 @@ static func apply(level: Node) -> void:
 	# spawn beside the team's first figure.
 	if menu_team_sizes:
 		_reconcile_menu_team_sizes(level)
+
+
+## Issue #613 ("rework all levels"): the campaign scenes no longer
+## author the player/computer split — every staged figure is a PLAIN
+## Character.gd body ("just a character": a staging name, a position,
+## a display name, maybe looks) and THIS pass gives it a brain from
+## the team configuration, because each team may be played by the
+## player or by the computer:
+##   - a first-team slot (Player/Teammate*) becomes a human Player.gd
+##     figure while the first team's controller is "player", and a
+##     computer Npc.gd figure fighting on the player side otherwise
+##     (issue #121's spectate staging — the level plays itself);
+##   - an Npc* slot becomes a computer Npc.gd figure (a configured
+##     team dealt onto it later may still be swapped for human
+##     figures — the hot-seat flow of issue #521).
+## The replacement keeps the staging NAME (the trim/deal passes and
+## the tests address figures by name), the position, the display name
+## and the authored team looks; the hero's shared camera follows its
+## figure into a human brain, or is rescued onto the level for the
+## computer to spectate (the same handover a hero swap does).
+static func _dress_just_characters(level: Node) -> void:
+	var staged: Array = level.get_children()
+	for figure in staged:
+		var brain: Script = figure.get_script()
+		if brain == null \
+				or brain.resource_path != "res://scripts/Character.gd":
+			continue
+		var slot := str(figure.name)
+		var enemy_side := slot.begins_with("Npc")
+		var human := not enemy_side and team_controller(0) == "player"
+		var dressed := CharacterBody2D.new()
+		dressed.name = slot
+		dressed.position = (figure as Node2D).position
+		dressed.set_script(load("res://scripts/Player.gd") if human \
+				else load("res://scripts/Npc.gd"))
+		dressed.set("display_name", str(figure.get("display_name")))
+		dressed.set("team_color", figure.get("team_color"))
+		dressed.set("team_shape", str(figure.get("team_shape")))
+		if human:
+			_build_figure_body(dressed)
+			_carry_camera(figure, dressed)
+		else:
+			if not enemy_side:
+				dressed.set("team", "player")
+			_carry_camera(figure, null)
+		# Swap in place: the staging order (TurnController scans figures
+		# in stable scene order) and the staging name both survive.
+		var index: int = figure.get_index()
+		level.remove_child(figure)
+		figure.queue_free()
+		level.add_child(dressed)
+		level.move_child(dressed, index)
+
+
+## Issue #613: the runtime body of a human figure — the same children
+## the levels used to author (capsule body, team-tinted visual, and the
+## weapon LAST so it draws in front of the body — issue #282).
+static func _build_figure_body(figure: Node) -> void:
+	var capsule := CollisionShape2D.new()
+	var shape := CapsuleShape2D.new()
+	shape.radius = 24.0
+	shape.height = 57.6
+	capsule.shape = shape
+	capsule.name = "BodyShape"
+	figure.add_child(capsule)
+	var visual := ColorRect.new()
+	visual.name = "BodyVisual"
+	visual.offset_left = -32.0
+	visual.offset_top = -32.0
+	visual.offset_right = 32.0
+	visual.offset_bottom = 32.0
+	figure.add_child(visual)
+	var weapon := Node2D.new()
+	weapon.name = "Weapon"
+	weapon.set_script(load("res://scripts/Weapon.gd"))
+	figure.add_child(weapon)
+
+
+## Issue #613: move a camera authored under a staged body to its
+## replacement. `into == null` rescues it onto the level instead — the
+## computer plays the hero, so the camera must survive its body and
+## keep spectating (issue #534: it stays enabled and follows the
+## acting figure; reparenting drops transient groups, so the
+## player_camera membership is restored by hand).
+static func _carry_camera(from: Node, into: Node) -> void:
+	for child in from.get_children():
+		if child is Camera2D:
+			if into != null:
+				from.remove_child(child)
+				into.add_child(child)
+			else:
+				child.reparent(from.get_parent())
+				child.enabled = true
+				child.add_to_group("player_camera")
+			return
 
 
 ## Issue #537 rework v3: record one dealt (possibly swapped) figure for
