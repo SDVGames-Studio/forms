@@ -1,8 +1,15 @@
-[gd_scene load_steps=4 format=3 uid="uid://lvlocfgmenu137"]
+[gd_scene load_steps=5 format=3 uid="uid://lvlocfgmenu137"]
 
 [ext_resource type="Script" path="res://scripts/LevelConfigMenu.gd" id="1_lvcfg"]
 [ext_resource type="Theme" path="res://scenes/menus/MenuTheme.tres" id="2_theme"]
 [ext_resource type="PackedScene" path="res://scenes/menus/MenuBackground.tscn" id="3_bg"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBox_teams_panel"]
+content_margin_left = 10.0
+content_margin_top = 10.0
+content_margin_right = 10.0
+content_margin_bottom = 10.0
+bg_color = Color(0.09, 0.098, 0.122, 1)
 
 [node name="LevelConfigMenu" type="Control"]
 layout_mode = 3
@@ -122,6 +129,7 @@ theme_override_font_sizes/font_size = 20
 
 [node name="TeamsPanel" type="PanelContainer" parent="Layout/Columns/Nav"]
 layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBox_teams_panel")
 
 [node name="TeamsBox" type="VBoxContainer" parent="Layout/Columns/Nav/TeamsPanel"]
 layout_mode = 2
@@ -133,8 +141,8 @@ theme_override_font_sizes/font_size = 20
 text = "Teams"
 
 [node name="TeamsScroll" type="ScrollContainer" parent="Layout/Columns/Nav/TeamsPanel/TeamsBox"]
-custom_minimum_size = Vector2(0, 170)
 layout_mode = 2
+size_flags_vertical = 3
 horizontal_scroll_mode = 0
 
 [node name="TeamsList" type="VBoxContainer" parent="Layout/Columns/Nav/TeamsPanel/TeamsBox/TeamsScroll"]

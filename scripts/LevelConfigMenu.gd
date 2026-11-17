@@ -64,7 +64,7 @@ const GRID_TIERS: Array[Array] = [[1, 4], [2, 8], [4, 16]]
 
 ## Fixed footprint of the member grid — every tier's cells shrink to
 ## keep this width (and, with square cells, this height).
-const GRID_WIDTH := 132.0
+const GRID_WIDTH := 124.0
 const GRID_SEPARATION := 2.0
 
 ## The "+" sign on a free spot (the theme's muted text tone).
@@ -181,14 +181,14 @@ func _rebuild_team_rows() -> void:
 	for i in GameConfig.teams.size():
 		var team: Dictionary = GameConfig.teams[i]
 		var row := HBoxContainer.new()
-		row.add_theme_constant_override("separation", 10)
+		row.add_theme_constant_override("separation", 6)
 		# Issue #537 rework v3 (item 6): a DOUBLE-CLICK on the team name
 		# swaps it for an inline LineEdit; Enter (or clicking away)
 		# commits the rename — for this game only (see _on_start_pressed).
 		if i == _rename_team_index:
 			var edit := LineEdit.new()
 			edit.text = str(team["label"])
-			edit.custom_minimum_size = Vector2(96, 0)
+			edit.custom_minimum_size = Vector2(64, 0)
 			edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 			edit.add_theme_font_size_override("font_size", 16)
 			edit.select_all()
@@ -201,7 +201,7 @@ func _rebuild_team_rows() -> void:
 		else:
 			var label := Label.new()
 			label.text = str(team["label"])
-			label.custom_minimum_size = Vector2(96, 0)
+			label.custom_minimum_size = Vector2(64, 0)
 			label.add_theme_font_size_override("font_size", 18)
 			label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 			label.clip_text = true
@@ -236,7 +236,8 @@ func _rebuild_team_rows() -> void:
 		controller.add_item("Computer")
 		controller.add_item("Player")
 		controller.select(1 if GameConfig.team_controller(i) == "player" else 0)
-		controller.custom_minimum_size = Vector2(140, 40)
+		controller.custom_minimum_size = Vector2(0, 40)
+		controller.add_theme_font_size_override("font_size", 16)
 		var team_index := i
 		controller.item_selected.connect(func(index: int) -> void:
 			var choice := "player" if index == 1 else "computer"
@@ -244,7 +245,8 @@ func _rebuild_team_rows() -> void:
 		row.add_child(controller)
 		var remove := Button.new()
 		remove.text = "Remove"
-		remove.custom_minimum_size = Vector2(100, 40)
+		remove.custom_minimum_size = Vector2(0, 40)
+		remove.add_theme_font_size_override("font_size", 16)
 		remove.disabled = GameConfig.teams.size() <= 2
 		remove.pressed.connect(func() -> void: _on_remove_team_pressed(i))
 		row.add_child(remove)

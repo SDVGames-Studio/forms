@@ -59,59 +59,69 @@ size_flags_horizontal = 3
 
 [node name="Nav" type="VBoxContainer" parent="Layout/Columns"]
 layout_mode = 2
-size_flags_vertical = 4
+size_flags_vertical = 3
 theme_override_constants/separation = 12
 
-[node name="Level1Button" type="Button" parent="Layout/Columns/Nav"]
+[node name="Scroll" type="ScrollContainer" parent="Layout/Columns/Nav"]
+layout_mode = 2
+size_flags_vertical = 3
+horizontal_scroll_mode = 0
+
+[node name="List" type="VBoxContainer" parent="Layout/Columns/Nav/Scroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 12
+
+[node name="Level1Button" type="Button" parent="Layout/Columns/Nav/Scroll/List"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(340, 56)
 layout_mode = 2
 text = "Level 1"
 
-[node name="Level2Button" type="Button" parent="Layout/Columns/Nav"]
+[node name="Level2Button" type="Button" parent="Layout/Columns/Nav/Scroll/List"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(340, 56)
 layout_mode = 2
 text = "Level 2"
 
-[node name="Level3Button" type="Button" parent="Layout/Columns/Nav"]
+[node name="Level3Button" type="Button" parent="Layout/Columns/Nav/Scroll/List"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(340, 56)
 layout_mode = 2
 text = "Level 3"
 
-[node name="Level4Button" type="Button" parent="Layout/Columns/Nav"]
+[node name="Level4Button" type="Button" parent="Layout/Columns/Nav/Scroll/List"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(340, 56)
 layout_mode = 2
 text = "Level 4"
 
-[node name="Level5Button" type="Button" parent="Layout/Columns/Nav"]
+[node name="Level5Button" type="Button" parent="Layout/Columns/Nav/Scroll/List"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(340, 56)
 layout_mode = 2
 text = "Level 5"
 
-[node name="DuelButton" type="Button" parent="Layout/Columns/Nav"]
+[node name="DuelButton" type="Button" parent="Layout/Columns/Nav/Scroll/List"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(340, 56)
 layout_mode = 2
 text = "Duel (spectate)"
 
-[node name="Duel3v3Button" type="Button" parent="Layout/Columns/Nav"]
+[node name="Duel3v3Button" type="Button" parent="Layout/Columns/Nav/Scroll/List"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(340, 56)
 layout_mode = 2
 text = "Duel 3v3 (spectate)"
 
-[node name="CustomLabel" type="Label" parent="Layout/Columns/Nav"]
+[node name="CustomLabel" type="Label" parent="Layout/Columns/Nav/Scroll/List"]
 unique_name_in_owner = true
 visible = false
 theme_override_colors/font_color = Color(0.467, 0.49, 0.545, 1)
 theme_override_font_sizes/font_size = 13
 text = "CUSTOM LEVELS"
 
-[node name="CustomLevels" type="VBoxContainer" parent="Layout/Columns/Nav"]
+[node name="CustomLevels" type="VBoxContainer" parent="Layout/Columns/Nav/Scroll/List"]
 unique_name_in_owner = true
 visible = false
 theme_override_constants/separation = 12
