@@ -109,6 +109,16 @@ var _human_teams := {}
 ## CONFIGURED controller — with every team played by the computer the
 ## whole match is AI vs AI and nobody receives input.
 var _hero_is_human := true
+## Issue #617: endgame safety for the first-team roll. _scan_teams
+## rebuilds the team list from the ALIVE figures, so a team that dies
+## before the first turn begins (spawn hazards, a mid-roll kill)
+## shrinks the list below two — the roll's "scene still loading"
+## branch would then retry forever and _check_win()'s own <2 guard
+## would refuse to end the match. _saw_enemy_team distinguishes a
+## genuinely not-yet-staged level from a match whose enemy side is
+## already gone: the first ends the game instead of wedging it.
+var _saw_enemy_team := false
+var _enemy_team_wiped := false
 ## Issue #343: per-team member rotation — the member that acted a team's
 ## last turn is remembered (team id -> figure) so the team's NEXT turn
 ## begins with the NEXT member, never the same figure twice in a row.
@@ -457,6 +467,15 @@ func _scan_teams() -> void:
 			seen[c] = true
 			enemy_colors.append(c)
 	var single := enemy_colors.size() == 1
+	# Issue #617: remember whether an enemy side was ever seen alive —
+	# a later scan finding NONE (after one was seen) means it died
+	# before play began: the match must END, not wait for a staging that
+	# already happened.
+	if enemy_colors.is_empty():
+		if _saw_enemy_team:
+			_enemy_team_wiped = true
+	else:
+		_saw_enemy_team = true
 	for c in enemy_colors:
 		var id := TEAM_ENEMY if single else "enemy:%s" % c.to_html()
 		_color_to_id[c] = id
@@ -542,6 +561,8 @@ func _start_round() -> void:
 	game_over = false
 	_win_celebrated = false
 	_switching = false
+	_saw_enemy_team = false
+	_enemy_team_wiped = false
 	# A fresh round must never inherit a wedged transition (issue #85).
 	_stall_wait = 0.0
 	# Issue #364: a fresh game starts at round 1 — items drop from round 2.
@@ -632,6 +653,13 @@ func _finish_roll() -> void:
 	if _teams.size() < 2:
 		_scan_teams()
 		if _teams.size() < 2:
+			# Issue #617: the enemy side was SEEN alive before and is gone
+			# now — it died during the roll. This is the END of the match,
+			# not a slow load: end it (the surviving team wins, or a draw
+			# when nobody is left) instead of retrying forever.
+			if _enemy_team_wiped:
+				_check_win()
+				return
 			# Ждем 0.1 секунды и пробуем снова
 			_roll_wait = 0.0
 			get_tree().create_timer(0.1).timeout.connect(_finish_roll)
@@ -836,7 +864,10 @@ func _team_name(team: String) -> String:
 
 
 func _check_win() -> void:
-	if _teams.size() < 2:
+	# Issue #617: the <2 guard means "enemies not staged YET" — except
+	# when an enemy side was already seen alive and has since died (the
+	# _enemy_team_wiped endgame path): then the match must end.
+	if _teams.size() < 2 and not _enemy_team_wiped:
 		return
 
 	# Issue #191: the game ends when at most one TEAM (by id) is alive.

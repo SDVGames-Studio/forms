@@ -40,7 +40,8 @@ extends Node
 ## Run headless: godot --headless res://tests/test_issue534.tscn
 ## Exit code 0 = pass.
 
-const LevelScene := preload("res://scenes/levels/Level.tscn")
+const LevelScene := preload("res://scenes/levels/Level1.tscn")
+const ZoomCameraScript := preload("res://scripts/ZoomCamera.gd")
 
 const FOLLOW_TOLERANCE := 5.0
 ## The level camera has position_smoothing (speed 8/s): every view check
@@ -93,6 +94,13 @@ func _settle() -> void:
 
 func _ready() -> void:
 	await get_tree().physics_frame
+	# Issue #617: every team defaults to the computer and the camera
+	# boots on the free GLOBAL view — this regression checks the FOLLOW
+	# behavior on computer turns, so opt the hero team in as the player
+	# and pin the world-aligned follow camera before the level loads.
+	GameConfig.teams = GameConfig.default_teams()
+	GameConfig.teams[0]["controller"] = "player"
+	ZoomCameraScript.camera_mode = ZoomCameraScript.MODE_STATIC
 	var level: Node = LevelScene.instantiate()
 	add_child(level)
 	for _i in 10:
@@ -106,8 +114,8 @@ func _ready() -> void:
 	# Freeze both NPCs: their turn AI may otherwise walk, shoot and end
 	# the turn while the checks run — the camera must be the only thing
 	# moving in this test.
-	(level.get_node("Npc") as Node2D).set_physics_process(false)
-	(level.get_node("Npc2") as Node2D).set_physics_process(false)
+	(level.get_node("Team2mate1") as Node2D).set_physics_process(false)
+	(level.get_node("Team2mate2") as Node2D).set_physics_process(false)
 
 	# Issue #572 added a THIRD default team: computer figures are dealt
 	# round-robin to per-color team ids ("enemy:<color>"), so the literal

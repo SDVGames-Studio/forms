@@ -72,7 +72,11 @@ func _ready() -> void:
 	await get_tree().process_frame
 
 	# --- Part B: the N/P keys in the real Level scene.
-	var level: Node = load("res://scenes/levels/Level.tscn").instantiate()
+	# Issue #617: every team defaults to the computer now — this test
+	# needs a HUMAN first team, so opt one in like the level menu does.
+	GameConfig.teams = GameConfig.default_teams()
+	GameConfig.teams[0]["controller"] = "player"
+	var level: Node = load("res://scenes/levels/Level1.tscn").instantiate()
 	add_child(level)
 	for i in 30:
 		await get_tree().physics_frame

@@ -73,7 +73,10 @@ const ROTATION_SMOOTH := 6.0
 
 ## Issue #289: the active camera type — a static var, so every camera in
 ## the view (scene-authored plus fallbacks) shares one mode, like zoom.
-static var camera_mode := MODE_STATIC
+## Issue #617: every level now STARTS on the GLOBAL camera (the owner's
+## rework default — the free overview of the field); the switch button
+## and the C key cycle to the follow types as before.
+static var camera_mode := MODE_GLOBAL
 
 
 var _dragging := false

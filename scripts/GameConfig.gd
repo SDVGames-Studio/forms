@@ -253,7 +253,10 @@ static func default_teams() -> Array:
 			"shape": team_shape, "names": first_names,
 			"skill": ai_skill, "friendly_fire": ai_friendly_fire,
 			"language": DEFAULT_LANGUAGE,
-			"controller": "player",
+			# Issue #617: EVERY team defaults to the computer — a level run
+			# directly stages computers only; the player picks a team to
+			# play in the level configuration menu before the game.
+			"controller": "computer",
 		},
 		{
 			"label": "Team 2", "color": Color(0.75, 0.2, 0.45, 1),
@@ -284,14 +287,15 @@ static func default_teams() -> Array:
 
 ## Issue #521: who plays a team — "player" (a human, hot-seat on this
 ## device) or "computer" (the AI). The stored set may predate the key
-## (older team.cfg), so a missing value defaults by SLOT: the first team
-## is the classic human hero team, every other team plays the computer.
+## (older team.cfg), so a missing value defaults by SLOT: every slot
+## plays the computer (issue #617 — the player opts a team in via the
+## level configuration menu).
 static func team_controller(index: int) -> String:
-	# Issue #521 rework: with NO team set at all (tests, a fresh boot
-	# before the team menu or apply() ever loaded one) the CLASSIC
-	# defaults hold — the hero team is human, every other slot computer.
+	# Issue #617: with NO team set at all (tests, a fresh boot before
+	# the team menu or apply() ever loaded one) every slot plays the
+	# computer — running a level directly fields computers only.
 	if teams.is_empty():
-		return "player" if index == 0 else "computer"
+		return "computer"
 	if index < 0 or index >= teams.size():
 		return "computer"
 	var controller := str(teams[index].get("controller", ""))
@@ -593,11 +597,19 @@ static func apply(level: Node) -> void:
 	if menu_team_sizes and not teams.is_empty():
 		hero_count = (teams[0]["names"] as Array).size()
 	elif team_size <= 0 and not teams.is_empty():
-		hero_count = (teams[0]["names"] as Array).size()
-	var teammates: Array[String] = ["Teammate1", "Teammate2"]
-	for i in teammates.size():
-		if i + 1 >= hero_count:
-			var member := level.get_node_or_null(NodePath(teammates[i]))
+		# Issue #617: with no explicit choice the level's STAGED cast
+		# drives — the uniform Team1mate* names define the first team's
+		# layout (a duel stages one figure, the campaign three), so a
+		# direct run fields exactly the authored side instead of the
+		# team set's member count.
+		hero_count = maxi(1, _live_player_figures(level).size())
+	# Issue #617: trim the first team to the chosen count — the uniform
+	# Team1mate* staging and the legacy Player/Teammate* pair (both are
+	# member 2 and 3 of the first team).
+	for entry in [["Teammate1", 2], ["Teammate2", 3],
+			["Team1mate2", 2], ["Team1mate3", 3]]:
+		if int(entry[1]) > hero_count:
+			var member := level.get_node_or_null(NodePath(str(entry[0])))
 			if member != null:
 				member.queue_free()
 	# Issue #537 rework v4: the gate stays > 3 — beyond the classic trio
@@ -605,8 +617,23 @@ static func apply(level: Node) -> void:
 	# only the staged cast (the #521 swap stays 1:1 with the staging).
 	if hero_count > 3:
 		_spawn_missing_player_figures(level, hero_count)
-	# Trim the enemy team: the scenes place at most Npc..Npc3.
-	var npcs: Array[String] = ["Npc", "Npc2", "Npc3"]
+	# Trim the enemy team: the scenes place at most Npc..Npc3, and the
+	# uniform #617 staging names every enemy figure Team<N>mate<M>
+	# (N >= 2) — sorted so the trim/deal passes walk teams in order.
+	# Issue #617 fix: the list must hold only slots that EXIST — the
+	# legacy Npc* placeholders consumed deal indices on uniform levels
+	# (the first staged enemy sat at i=3 and the enemy_count trim freed
+	# it — a direct duel run lost its whole enemy side).
+	var npcs: Array[String] = []
+	for legacy in ["Npc", "Npc2", "Npc3"]:
+		if level.get_node_or_null(NodePath(legacy)) != null:
+			npcs.append(legacy)
+	for child in level.get_children():
+		var staged_enemy := _staged_team_slot(str(child.name))
+		if staged_enemy.size() == 2 and staged_enemy[0] >= 2:
+			npcs.append(str(child.name))
+	npcs.sort_custom(func(a, b):
+		return _staged_team_slot(a) < _staged_team_slot(b))
 	# Issue #180: AI behavior parameters come from the team configuration:
 	# skill maps onto the difficulty bands, friendly-fire passes through.
 	var ai_difficulty := 0 if ai_skill <= 3 else (1 if ai_skill <= 7 else 2)
@@ -618,15 +645,28 @@ static func apply(level: Node) -> void:
 	# "player" (hot-seat) replaces its computer figures with human
 	# Player.gd figures staged on the enemy side (team_side = "enemy").
 	var extra := maxi(1, teams.size() - 1)
+	# Issue #617: with the uniform staging the chosen enemy count caps
+	# EACH staged team's roster (Team2's three mates), not the level's
+	# whole enemy side — a level may stage several teams (Level4 stages
+	# three) and they must survive the trim as teams.
+	var staged_kept := {}
 	# Issue #226: NPCs staged for the player side (duel levels,
 	# team = "player") keep taking teams[0]'s looks.
 	for i in npcs.size():
 		var npc := level.get_node_or_null(NodePath(npcs[i]))
 		if npc == null:
 			continue
-		if enemy_count > 0 and i >= enemy_count and not menu_team_sizes:
-			npc.queue_free()
-			continue
+		if enemy_count > 0 and not menu_team_sizes:
+			var slot := _staged_team_slot(str(npc.name))
+			if slot.size() == 2:
+				var kept: int = staged_kept.get(int(slot[0]), 0)
+				if kept >= enemy_count:
+					npc.queue_free()
+					continue
+				staged_kept[int(slot[0])] = kept + 1
+			elif i >= enemy_count:
+				npc.queue_free()
+				continue
 		if str(npc.get("team")) == "player":
 			if npc.get("difficulty") != null:
 				npc.set("difficulty", ai_difficulty)
@@ -635,7 +675,12 @@ static func apply(level: Node) -> void:
 			if npc.has_method("set_team_shape"):
 				npc.call("set_team_shape", team_shape)
 			continue
-		var dealt_team := 1 + (_dealt % extra)
+		var staged_deal := _staged_team_slot(str(npc.name))
+		# Issue #617: a staged Team<N> (N >= 2) maps onto ONE configured
+		# team — figures staged together stay one team. The legacy Npc*
+		# staging keeps the round-robin deal.
+		var dealt_team := 1 + ((int(staged_deal[0]) - 2) % extra) \
+				if staged_deal.size() == 2 else 1 + (_dealt % extra)
 		_record_dealt_figure(dealt_team, _apply_extra_team(level, npc, dealt_team))
 		_dealt += 1
 	# Issue #226 rework: shape EVERY enemy figure, not only Npc..Npc3 —
@@ -674,6 +719,22 @@ static func apply(level: Node) -> void:
 					str(hero_names[mini(idx, hero_names.size() - 1)]))
 		if member.has_method("apply_team_setup"):
 			member.call("apply_team_setup")
+		elif member.get("team_color") != null:
+			# Issue #617: the hero side now plays COMPUTER figures (Npc.gd
+			# has no apply_team_setup) — the team's configured looks must
+			# still land on them, exactly like on human figures: the menu
+			# set when it drove the sizes, the CLASSIC customisation fields
+			# otherwise (issue #169).
+			if menu_team_sizes:
+				member.set("team_color", teams[0]["color"])
+				member.set("team_shape", str(teams[0]["shape"]))
+			else:
+				member.set("team_color", team_color)
+				member.set("team_shape", team_shape)
+			if member.has_method("_apply_team_color"):
+				member.call("_apply_team_color")
+			if member.has_method("set_team_shape"):
+				member.call("set_team_shape", str(member.get("team_shape")))
 	# Issue #521 rework (owner: "the level totally depends on the level
 	# settings"): when the FIRST configured team is played by the COMPUTER,
 	# its human Player figures must not stay on the field answerable to
@@ -715,7 +776,13 @@ static func _dress_just_characters(level: Node) -> void:
 				or brain.resource_path != "res://scripts/Character.gd":
 			continue
 		var slot := str(figure.name)
-		var enemy_side := slot.begins_with("Npc")
+		# Issue #617: the uniform staging name Team<N>mate<M> decides the
+		# side — Team1 stages the first team, Team2 and beyond stage the
+		# enemy side. The legacy Player/Teammate*/Npc* staging keeps its
+		# old split.
+		var staged_slot := _staged_team_slot(slot)
+		var enemy_side := (staged_slot.size() == 2 and int(staged_slot[0]) >= 2) \
+				or slot.begins_with("Npc")
 		var human := not enemy_side and team_controller(0) == "player"
 		var dressed := CharacterBody2D.new()
 		dressed.name = slot
@@ -739,6 +806,57 @@ static func _dress_just_characters(level: Node) -> void:
 		figure.queue_free()
 		level.add_child(dressed)
 		level.move_child(dressed, index)
+	# Issue #617: the levels no longer author a camera under a figure —
+	# the default view is the level's shared camera — so make sure
+	# exactly one exists, hosted by the first live figure.
+	_ensure_shared_camera(level)
+
+
+## Issue #617: parse the uniform staging name Team<N>mate<M>. Returns
+## [team_index, member_index] (both 1-based), or an empty array when the
+## name is not in the uniform format.
+static func _staged_team_slot(slot: String) -> Array:
+	if not slot.begins_with("Team"):
+		return []
+	var mate := slot.find("mate")
+	if mate < 0:
+		return []
+	var team := slot.substr(4, mate - 4).to_int()
+	var member := slot.substr(mate + 4).to_int()
+	if team < 1 or member < 1:
+		return []
+	return [team, member]
+
+
+## Issue #617: the uniform levels stage characters ONLY — no authored
+## camera — and every level's default view is the shared camera. Create
+## it once when none exists, hosted by the first live FIGURE: a figure
+## host keeps the #280 rescue semantics (the camera survives its host's
+## death by reparenting onto the level) while the GLOBAL default mode
+## (#617) keeps it following nobody.
+static func _ensure_shared_camera(level: Node) -> void:
+	var tree := level.get_tree()
+	if tree == null:
+		return
+	for camera in tree.get_nodes_in_group("player_camera"):
+		if is_instance_valid(camera) \
+				and not (camera as Node).is_queued_for_deletion():
+			return
+	var host: Node2D = null
+	for group in ["player_team", "enemy_team"]:
+		for figure in tree.get_nodes_in_group(group):
+			if figure is Node2D and not figure.is_queued_for_deletion():
+				host = figure
+				break
+		if host != null:
+			break
+	if host == null:
+		return
+	var camera: Camera2D = load("res://scripts/ZoomCamera.gd").new()
+	camera.name = "Camera"
+	camera.zoom = Vector2(0.5, 0.5)
+	camera.position = host.position
+	host.add_child(camera)
 
 
 ## Issue #613: the runtime body of a human figure — the same children
@@ -888,7 +1006,9 @@ static func _first_live_figure(level: Node) -> Node2D:
 static func _spawn_missing_player_figures(level: Node, hero_count: int) -> void:
 	var team: Dictionary = teams[0]
 	var names: Array = team["names"]
-	var hero := level.get_node_or_null(NodePath("Player"))
+	var hero := level.get_node_or_null(NodePath("Team1mate1"))
+	if hero == null:
+		hero = level.get_node_or_null(NodePath("Player"))
 	var anchor: Vector2 = hero.position if hero is Node2D else Vector2(200.0, 0.0)
 	# From the LIVE staged count (re-applying to a dressed level must not
 	# duplicate the extras — the reconciliation owns the surplus).
@@ -996,8 +1116,15 @@ static func _spawn_computer_figure(level: Node, at: Vector2,
 	figure.set_script(load("res://scripts/Npc.gd"))
 	figure.position = at
 	figure.set("team", "player")
-	figure.set("team_color", team["color"])
-	figure.set("team_shape", str(team["shape"]))
+	# Issue #169/#617: the looks the swap must carry — the team menu set
+	# when it drove the sizes, the classic customisation fields the human
+	# figure wore otherwise (this swap replaces apply_team_setup figures).
+	if menu_team_sizes:
+		figure.set("team_color", team["color"])
+		figure.set("team_shape", str(team["shape"]))
+	else:
+		figure.set("team_color", team_color)
+		figure.set("team_shape", team_shape)
 	figure.set("display_name", member_name)
 	var skill := clampi(int(team["skill"]), 0, 10)
 	figure.set("difficulty", 0 if skill <= 3 else (1 if skill <= 7 else 2))

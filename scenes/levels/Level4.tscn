@@ -1,6 +1,4 @@
-[gd_scene load_steps=6 format=3 uid="uid://cev4lline4lvl"]
-
-[ext_resource type="Script" path="res://scripts/ZoomCamera.gd" id="4_zoomcam"]
+[gd_scene load_steps=5 format=3 uid="uid://cev4lline4lvl"]
 
 [ext_resource type="Script" path="res://scripts/LevelConfig.gd" id="9_lvlcfg"]
 
@@ -71,76 +69,70 @@ position = Vector2(3300, 72)
 script = ExtResource("11_destr")
 rect_size = Vector2(384, 48)
 
-[node name="Player" type="CharacterBody2D" parent="."]
+[node name="Team1mate1" type="CharacterBody2D" parent="."]
 script = ExtResource("2_char")
 position = Vector2(300, 220)
 display_name = "Player 1"
 
-[node name="Camera" type="Camera2D" parent="Player"]
-script = ExtResource("4_zoomcam")
-position_smoothing_enabled = true
-position_smoothing_speed = 8.0
-zoom = Vector2(0.5, 0.5)
-
-[node name="Teammate1" type="CharacterBody2D" parent="."]
+[node name="Team1mate2" type="CharacterBody2D" parent="."]
 script = ExtResource("2_char")
 position = Vector2(180, 220)
 display_name = "Player 2"
 
-[node name="Teammate2" type="CharacterBody2D" parent="."]
+[node name="Team1mate3" type="CharacterBody2D" parent="."]
 script = ExtResource("2_char")
 position = Vector2(420, 220)
 display_name = "Player 3"
 
-[node name="Npc" type="CharacterBody2D" parent="."]
+[node name="Team2mate1" type="CharacterBody2D" parent="."]
 script = ExtResource("2_char")
 position = Vector2(1600, 220)
 display_name = "Red 1"
 team_color = Color(0.85, 0.25, 0.25, 1)
 
-[node name="Npc2" type="CharacterBody2D" parent="."]
+[node name="Team2mate2" type="CharacterBody2D" parent="."]
 script = ExtResource("2_char")
 position = Vector2(1780, 220)
 display_name = "Red 2"
 team_color = Color(0.85, 0.25, 0.25, 1)
 
-[node name="Npc3" type="CharacterBody2D" parent="."]
+[node name="Team2mate3" type="CharacterBody2D" parent="."]
 script = ExtResource("2_char")
 position = Vector2(1960, 220)
 display_name = "Red 3"
 team_color = Color(0.85, 0.25, 0.25, 1)
 
-[node name="Npc4" type="CharacterBody2D" parent="."]
+[node name="Team3mate1" type="CharacterBody2D" parent="."]
 script = ExtResource("2_char")
 position = Vector2(2450, 220)
 display_name = "Green 1"
 team_color = Color(0.25, 0.75, 0.35, 1)
 
-[node name="Npc5" type="CharacterBody2D" parent="."]
+[node name="Team3mate2" type="CharacterBody2D" parent="."]
 script = ExtResource("2_char")
 position = Vector2(2630, 220)
 display_name = "Green 2"
 team_color = Color(0.25, 0.75, 0.35, 1)
 
-[node name="Npc6" type="CharacterBody2D" parent="."]
+[node name="Team3mate3" type="CharacterBody2D" parent="."]
 script = ExtResource("2_char")
 position = Vector2(2760, 220)
 display_name = "Green 3"
 team_color = Color(0.25, 0.75, 0.35, 1)
 
-[node name="Npc7" type="CharacterBody2D" parent="."]
+[node name="Team4mate1" type="CharacterBody2D" parent="."]
 script = ExtResource("2_char")
 position = Vector2(3420, 220)
 display_name = "Blue 1"
 team_color = Color(0.25, 0.45, 0.9, 1)
 
-[node name="Npc8" type="CharacterBody2D" parent="."]
+[node name="Team4mate2" type="CharacterBody2D" parent="."]
 script = ExtResource("2_char")
 position = Vector2(3600, 220)
 display_name = "Blue 2"
 team_color = Color(0.25, 0.45, 0.9, 1)
 
-[node name="Npc9" type="CharacterBody2D" parent="."]
+[node name="Team4mate3" type="CharacterBody2D" parent="."]
 script = ExtResource("2_char")
 position = Vector2(3780, 220)
 display_name = "Blue 3"

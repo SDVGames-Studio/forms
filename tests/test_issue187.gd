@@ -39,7 +39,13 @@ func _camera_ok() -> bool:
 
 
 func _ready() -> void:
-	var level: Node = load("res://scenes/levels/Level.tscn").instantiate()
+	# Issue #617: every team now defaults to the computer — this
+	# regression drives the HUMAN control flow, so opt the hero team in
+	# as the player (the level configuration menu's choice) before the
+	# level loads.
+	GameConfig.teams = GameConfig.default_teams()
+	GameConfig.teams[0]["controller"] = "player"
+	var level: Node = load("res://scenes/levels/Level1.tscn").instantiate()
 	add_child(level)
 	for i in 30:
 		await get_tree().physics_frame
@@ -104,6 +110,10 @@ func _ready() -> void:
 	# 3: the Switch tool hands control over on the fresh turn.
 	var switch_ok := false
 	if ctrl != null and ToolInventory.use_tool(ToolInventory.TOOL_SWITCH):
+		# Issue #306 semantics: the Switch tool ARMS; the N/P keys move
+		# control while armed. Drive the armed switch directly (the N
+		# key's path) — the change must land on another living member.
+		TeamController.switch_next()
 		await get_tree().physics_frame
 		var am = TurnController.active_member
 		switch_ok = am != null and is_instance_valid(am) \

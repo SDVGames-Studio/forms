@@ -27,7 +27,7 @@ const ARC_POINTS := 32
 
 func _ready() -> void:
 	# z_index lifts the overlay ABOVE the opaque body visuals: the level
-	# scenes disagree about the shape/visual child order (Level.tscn's
+	# scenes disagree about the shape/visual child order (Level1.tscn's
 	# Player lists the visual first, Teammate1 the shape first), so tree
 	# order alone would hide the hitbox behind the body half of the time.
 	z_index = 1

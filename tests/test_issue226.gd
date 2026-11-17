@@ -6,7 +6,7 @@ extends Node
 ## Run headless: godot --headless res://tests/test_issue226.tscn
 ## Exit code 0 = pass.
 
-const LEVELS := ["res://scenes/levels/Level.tscn", "res://scenes/levels/LevelDuel.tscn", "res://scenes/levels/Level2.tscn",
+const LEVELS := ["res://scenes/levels/Level1.tscn", "res://scenes/levels/Level6.tscn", "res://scenes/levels/Level2.tscn",
 	"res://scenes/levels/Level3.tscn", "res://scenes/levels/Level4.tscn"]
 
 

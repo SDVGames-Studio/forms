@@ -20,7 +20,7 @@ func _ready() -> void:
 	ok = ok and ToolInventory.TOOLS.size() >= 4 and ToolInventory.TOOLS[3] == "Rock"
 	print("ISSUE227 tools=", ToolInventory.TOOLS)
 
-	var level: Node = load("res://scenes/levels/Level.tscn").instantiate()
+	var level: Node = load("res://scenes/levels/Level1.tscn").instantiate()
 	add_child(level)
 	for i in 10:
 		await get_tree().physics_frame

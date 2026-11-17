@@ -5,7 +5,7 @@ extends Node
 ## collision shape) are rotated so the figure's bottom faces the ground —
 ## rotation == gravity.angle() - PI/2 — while the HUD (name label, health
 ## bar, shield) and the camera keep rotation 0.
-## On the flat Level.tscn gravity is straight down, so every body child
+## On the flat Level1.tscn gravity is straight down, so every body child
 ## must stay unrotated (0).
 ##
 ## Run headless: godot --headless res://tests/test_issue270_pose.tscn
@@ -18,7 +18,7 @@ const EPS := 0.05
 
 func _ready() -> void:
 	var ok := await _check_level(preload("res://scenes/levels/Level5.tscn").instantiate())
-	ok = (await _check_level(preload("res://scenes/levels/Level.tscn").instantiate())) and ok
+	ok = (await _check_level(preload("res://scenes/levels/Level1.tscn").instantiate())) and ok
 	print("ISSUE270POSE ok=", ok)
 	get_tree().quit(0 if ok else 1)
 

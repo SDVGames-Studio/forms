@@ -5,7 +5,7 @@ extends Node
 ## Run headless: godot --headless res://tests/test_health_bar.tscn
 ## Exit code 0 = pass. Two checks:
 ##  1. A fresh CharacterBody2D with Player.gd attached.
-##  2. The real Player inside Level.tscn.
+##  2. The real Player inside Level1.tscn.
 
 func _ready() -> void:
 	var ok := true
@@ -33,10 +33,23 @@ func _check_fresh() -> bool:
 
 
 func _check_in_scene() -> bool:
-	var level: Node = load("res://scenes/levels/Level.tscn").instantiate()
+	# Issue #617: the uniform staging names the first figure Team1mate1
+	# (no authored "Player" node anymore) and every team defaults to the
+	# computer — dress the first team as the human player so the figure
+	# under test is a real Player runtime body, as before the rework.
+	GameConfig.teams = GameConfig.default_teams()
+	GameConfig.teams[0]["controller"] = "player"
+	var level: Node = load("res://scenes/levels/Level1.tscn").instantiate()
 	add_child(level)
 	await get_tree().process_frame
-	var player: Node = level.get_node("Player")
+	var player: Node = level.get_node("Team1mate1")
+	# The uniform #617 staging: the dressed runtime figure keeps the
+	# staged slot name (Team1mate1 is member 1 of the first team).
+	for i in 10:
+		if player != null and player.get("_bar_fill") != null:
+			break
+		await get_tree().physics_frame
+		player = level.get_node_or_null("Team1mate1")
 	var fill: ColorRect = player.get("_bar_fill")
 	var w0: float = fill.size.x
 	var c0: Color = fill.color

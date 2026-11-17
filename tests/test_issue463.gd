@@ -30,9 +30,9 @@ class MusicDriver extends Node:
 	signal done(ok: bool)
 
 	const LEVELS: Array[String] = [
-		"res://scenes/levels/Level.tscn", "res://scenes/levels/Level2.tscn", "res://scenes/levels/Level3.tscn",
+		"res://scenes/levels/Level1.tscn", "res://scenes/levels/Level2.tscn", "res://scenes/levels/Level3.tscn",
 		"res://scenes/levels/Level4.tscn", "res://scenes/levels/Level5.tscn",
-		"res://scenes/levels/LevelDuel.tscn", "res://scenes/levels/LevelDuelBig.tscn",
+		"res://scenes/levels/Level6.tscn", "res://scenes/levels/Level7.tscn",
 	]
 
 	func run() -> void:
@@ -96,9 +96,9 @@ class MusicDriver extends Node:
 		var keeps: bool = player.playing \
 			and manager.current_level() == "res://scenes/levels/Level3.tscn"
 		# ...switches to another level's track...
-		manager.play_for_level("res://scenes/levels/LevelDuel.tscn")
+		manager.play_for_level("res://scenes/levels/Level6.tscn")
 		var switches: bool = player.playing \
-			and player.stream == MusicManager.TRACKS["res://scenes/levels/LevelDuel.tscn"]
+			and player.stream == MusicManager.TRACKS["res://scenes/levels/Level6.tscn"]
 		# ...and stops on trackless menu paths (the main menu itself now
 		# has a theme — issue #476 — so a submenu proves the stop path).
 		manager.play_for_level("res://scenes/menus/SettingsMenu.tscn")

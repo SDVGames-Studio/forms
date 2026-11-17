@@ -68,7 +68,7 @@ func _ready() -> void:
 	await get_tree().physics_frame
 
 	# --- 4. Terrain-only gravity bends toward the nearest surface. ---
-	var level1: Node = load("res://scenes/levels/Level.tscn").instantiate()
+	var level1: Node = load("res://scenes/levels/Level1.tscn").instantiate()
 	add_child(level1)
 	for i in 30:
 		await get_tree().physics_frame

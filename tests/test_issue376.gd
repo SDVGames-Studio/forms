@@ -19,7 +19,7 @@ extends Node
 ## Exit code 0 = pass.
 
 const LEVEL_SCENES := [
-	preload("res://scenes/levels/Level.tscn"),
+	preload("res://scenes/levels/Level1.tscn"),
 	preload("res://scenes/levels/Level2.tscn"),
 	preload("res://scenes/levels/Level3.tscn"),
 	preload("res://scenes/levels/Level4.tscn"),

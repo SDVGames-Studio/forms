@@ -1,6 +1,4 @@
-[gd_scene load_steps=6 format=3 uid="uid://bx8k2level2fa"]
-
-[ext_resource type="Script" path="res://scripts/ZoomCamera.gd" id="5_zoomcam"]
+[gd_scene load_steps=5 format=3 uid="uid://bx8k2level2fa"]
 
 [ext_resource type="Script" path="res://scripts/LevelConfig.gd" id="9_lvlcfg"]
 
@@ -73,38 +71,32 @@ position = Vector2(1888, 124)
 script = ExtResource("11_destr")
 rect_size = Vector2(260, 40)
 
-[node name="Player" type="CharacterBody2D" parent="."]
+[node name="Team1mate1" type="CharacterBody2D" parent="."]
 script = ExtResource("2_char")
 position = Vector2(200, 300)
 display_name = "Player 1"
 
-[node name="Camera" type="Camera2D" parent="Player"]
-script = ExtResource("5_zoomcam")
-position_smoothing_enabled = true
-position_smoothing_speed = 8.0
-zoom = Vector2(0.5, 0.5)
-
-[node name="Teammate1" type="CharacterBody2D" parent="."]
+[node name="Team1mate2" type="CharacterBody2D" parent="."]
 script = ExtResource("2_char")
 position = Vector2(320, 300)
 display_name = "Player 2"
 
-[node name="Teammate2" type="CharacterBody2D" parent="."]
+[node name="Team1mate3" type="CharacterBody2D" parent="."]
 script = ExtResource("2_char")
 position = Vector2(440, 300)
 display_name = "Player 3"
 
-[node name="Npc" type="CharacterBody2D" parent="."]
+[node name="Team2mate1" type="CharacterBody2D" parent="."]
 script = ExtResource("2_char")
 position = Vector2(1880, 300)
 display_name = "Enemy 1"
 
-[node name="Npc2" type="CharacterBody2D" parent="."]
+[node name="Team2mate2" type="CharacterBody2D" parent="."]
 script = ExtResource("2_char")
 position = Vector2(1980, 300)
 display_name = "Enemy 2"
 
-[node name="Npc3" type="CharacterBody2D" parent="."]
+[node name="Team2mate3" type="CharacterBody2D" parent="."]
 script = ExtResource("2_char")
 position = Vector2(2060, 300)
 display_name = "Enemy 3"

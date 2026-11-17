@@ -18,7 +18,7 @@ extends Node
 ##  - A level staging fewer than three player figures (duel-style)
 ##    still fields the full configured count.
 ##  - The menu path (menu_team_sizes=true) keeps fielding exactly the
-##    picked counts on the REAL Level.tscn.
+##    picked counts on the REAL Level1.tscn.
 ##
 ## Run headless: godot --headless res://tests/test_issue537_v4.tscn
 ## Exit code 0 = pass.
@@ -118,13 +118,13 @@ func _ready() -> void:
 	# ---- 5) the menu path on the REAL first level ------------------
 	GameConfig.teams = _set_4_1()
 	GameConfig.menu_team_sizes = true
-	var real: Node = (load("res://scenes/levels/Level.tscn") as PackedScene).instantiate()
+	var real: Node = (load("res://scenes/levels/Level1.tscn") as PackedScene).instantiate()
 	add_child(real)
 	for i in 4:
 		await get_tree().process_frame
-	_check("menu start fields the picked 4 heroes (real Level.tscn)",
+	_check("menu start fields the picked 4 heroes (real Level1.tscn)",
 		_live_count(get_tree(), "player_team", HERO_COLOR) == 4)
-	_check("menu start fields the picked 1 foe (real Level.tscn)",
+	_check("menu start fields the picked 1 foe (real Level1.tscn)",
 		_live_count(get_tree(), "enemy_team", FOE_COLOR) == 1)
 	real.queue_free()
 	for i in 2:

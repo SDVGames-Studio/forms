@@ -58,7 +58,7 @@ static var _last_reset_frame: int = -1
 const OBS_SLOTS := 4
 const FEATURES_PER_FIGURE := 5
 
-## Issue #381: normalization scales — the Level.tscn arena half-extents
+## Issue #381: normalization scales — the Level1.tscn arena half-extents
 ## (playable column 1152x752, same convention as TrainingBot.gd), so a
 ## figure on the opposite side of the arena maps to ~[-1, 1]. Velocities
 ## divide by the shared run speed (CharacterStats.SPEED).

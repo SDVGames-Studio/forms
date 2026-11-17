@@ -45,6 +45,12 @@ var _pin := Vector2.ZERO
 
 func _ready() -> void:
 	var ok := true
+	# Issue #617: every team now defaults to the computer — this
+	# regression drives the HUMAN camera flow, so opt the hero team in
+	# as the player (the level configuration menu's choice) before the
+	# level loads.
+	GameConfig.teams = GameConfig.default_teams()
+	GameConfig.teams[0]["controller"] = "player"
 	var level: Node = load("res://scenes/levels/Level3.tscn").instantiate()
 	add_child(level)
 	for i in 30:
