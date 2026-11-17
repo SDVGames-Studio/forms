@@ -92,6 +92,24 @@ func _ready() -> void:
 	print("ISSUE289 frame_flipped=", frame_flipped)
 	ok = ok and frame_flipped
 
+	# Issue #617 rework v2: the defaults field THREE teams — pin the
+	# camera window deterministically: land on a PLAYER turn (skipping
+	# computer turns, whose "enemy:<color>" ids are not the legacy
+	# "enemy") and stretch the turn timer so no hand-over retargets the
+	# camera mid-ease (the ease needs the full 240-frame window).
+	GameConfig.turn_time = 600.0
+	var waited := 0.0
+	while TurnController.active_team != "player" and waited < 20.0:
+		await get_tree().physics_frame
+		waited += 1.0 / 60.0
+		if TurnController.active_team != "player" \
+				and TurnController.active_team != "":
+			TurnController._end_turn()
+			for i in 5:
+				await get_tree().physics_frame
+			waited = 0.0
+	TurnController.active_member = member
+
 	# --- 2. Static default: the view stays world-aligned anyway. ---
 	for i in 60:
 		await get_tree().physics_frame

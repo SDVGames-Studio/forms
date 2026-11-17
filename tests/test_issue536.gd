@@ -56,9 +56,13 @@ func _ready() -> void:
 	await get_tree().physics_frame
 	# Issue #617: uniform staging — the old Player/Teammate* names are
 	# Team1mate* now, and the hero side must be opted in as the player
-	# (the level configuration menu's choice) for its weapon flow.
+	# (the level configuration menu's choice) for its weapon flow. A
+	# THREE-member hero side is staged — the test shoots at Team1mate3
+	# (the #617 rework v2 default squad is two).
 	GameConfig.teams = GameConfig.default_teams()
 	GameConfig.teams[0]["controller"] = "player"
+	(GameConfig.teams[0]["names"] as Array).resize(3)
+	(GameConfig.teams[0]["names"] as Array)[2] = "Player 3"
 	var level: Node = LevelScene.instantiate()
 	add_child(level)
 	for _i in 10:

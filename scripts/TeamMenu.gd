@@ -189,7 +189,9 @@ func _on_add_team_pressed() -> void:
 		return
 	var count := GameConfig.teams.size() + 1
 	var names: Array[String] = []
-	for i in range(1, GameConfig.MAX_TEAM_MEMBERS + 1):
+	# Issue #617 rework v2: a fresh team fields the default squad —
+	# two members (the level default is 3 teams × 2 mates).
+	for i in range(1, GameConfig.DEFAULT_TEAM_MEMBERS + 1):
 		names.append("Member %d" % i)
 	GameConfig.teams.append({
 		"label": "Team %d" % count,

@@ -105,9 +105,11 @@ class Issue521V2Driver extends Node:
 			and not TurnController.is_player_team(TurnController.TEAM_ENEMY))
 		ok = _check(ok, "two teams discovered (hero + one color)",
 			TurnController._teams.size() == 2)
-		# Regression: the classic configuration (hero = player) keeps the
-		# hero team human.
+		# Regression: an OPTED-IN hero team (issue #617 rework v2: the
+		# default set is ALL-COMPUTER — the hero opts in through the team
+		# configuration) stays player-controlled.
 		GameConfig.teams = GameConfig.default_teams()
+		GameConfig.teams[0]["controller"] = "player"
 		TurnController._scan_teams()
 		ok = _check(ok, "regression: human hero team stays player-controlled",
 			TurnController.is_player_team(TurnController.TEAM_PLAYER))
@@ -173,9 +175,13 @@ class Issue521V2Driver extends Node:
 				human_left = true
 		ok = _check(ok, "Level2 with two computers stages no human figure",
 			not human_left and figures == 3)
-		var cam: Camera2D = level2.get_node_or_null("Camera")
-		ok = _check(ok, "Level2 camera survives the swap as spectator view",
-			cam != null and cam.get_parent() == level2 and cam.enabled
+		var cam: Camera2D = get_tree().get_first_node_in_group("player_camera")
+		# Issue #617: the uniform staging hosts the shared camera ON A
+		# FIGURE (the #280 rescue semantics keep it alive across hosts) —
+		# the spectate view lives through the group membership.
+		ok = _check(ok, "Level2 camera survives as the shared spectate view",
+			cam != null and cam.enabled
+			and cam.get_parent() is CharacterBody2D
 			and cam.is_in_group("player_camera"))
 		ok = _check(ok, "TurnController sees a computer-only match",
 			not TurnController.is_player_team(TurnController.TEAM_PLAYER))

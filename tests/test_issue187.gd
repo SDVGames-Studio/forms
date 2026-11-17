@@ -45,16 +45,24 @@ func _ready() -> void:
 	# level loads.
 	GameConfig.teams = GameConfig.default_teams()
 	GameConfig.teams[0]["controller"] = "player"
+	# A THREE-member hero side — the Switch tool check needs a living
+	# member to hand control to after the victim dies (the #617 rework
+	# v2 default squad is two, one dies in this flow).
+	(GameConfig.teams[0]["names"] as Array).resize(3)
+	(GameConfig.teams[0]["names"] as Array)[2] = "Player 3"
 	var level: Node = load("res://scenes/levels/Level1.tscn").instantiate()
 	add_child(level)
 	for i in 30:
 		await get_tree().physics_frame
-	# Get to a player turn (skip any enemy turn quickly).
+	# Get to a player turn (skip any computer turn quickly — with the
+	# #617 rework v2 defaults a level fields SEVERAL computer teams,
+	# each with its own "enemy:<color>" id, not only the legacy one).
 	var waited := 0.0
 	while TurnController.active_team != "player" and waited < 20.0:
 		await get_tree().physics_frame
 		waited += 1.0 / 60.0
-		if TurnController.active_team == "enemy":
+		if TurnController.active_team != "player" \
+				and TurnController.active_team != "":
 			TurnController._end_turn()
 			for i in 5:
 				await get_tree().physics_frame
@@ -80,20 +88,23 @@ func _ready() -> void:
 	victim.take_damage(1000)
 	_check(victim.get("health") == 0, "victim health reached 0")
 
-	# The death must be noticed: the turn hands over to the enemy team.
+	# The death must be noticed: the turn hands over to a computer team.
 	waited = 0.0
-	while TurnController.active_team != "enemy" and waited < 3.0:
+	while TurnController.active_team == "player" and waited < 3.0:
 		await get_tree().physics_frame
 		waited += 1.0 / 60.0
-	_check(TurnController.active_team == "enemy",
-			"turn handed over to the enemy team after the death")
+	_check(TurnController.active_team != "player" \
+				and TurnController.active_team != "",
+			"turn handed over to a computer team after the death")
 
-	# Run through the enemy turn quickly until the next player turn.
+	# Run through the computer turn(s) quickly until the next player turn.
 	waited = 0.0
 	while TurnController.active_team != "player" and waited < 20.0:
 		await get_tree().physics_frame
 		waited += 1.0 / 60.0
-		if TurnController.active_team == "enemy" and not TurnController.game_over:
+		if TurnController.active_team != "player" \
+				and TurnController.active_team != "" \
+				and not TurnController.game_over:
 			TurnController._end_turn()
 			for i in 5:
 				await get_tree().physics_frame

@@ -188,6 +188,11 @@ class Driver extends Node:
 	func _test_custom_level() -> void:
 		GameConfig.team_size = 3
 		GameConfig.enemy_count = 2
+		# Issue #617 rework v2: the default team set is ALL-COMPUTER, so the
+		# hero this test asserts (a human staging the zoom camera) opts in
+		# explicitly — exactly like the level configuration menu does.
+		GameConfig.teams = GameConfig.default_teams()
+		GameConfig.teams[0]["controller"] = "player"
 		GameConfig.custom_level_name = TEST_STEM
 		var level: Node = load("res://scenes/levels/CustomLevel.tscn").instantiate()
 		add_child(level)
