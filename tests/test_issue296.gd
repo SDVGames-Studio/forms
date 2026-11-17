@@ -12,12 +12,12 @@ extends Node
 ## Exit code 0 = pass.
 
 const LEVELS := [
-	preload("res://scenes/levels/Level.tscn"),
+	preload("res://scenes/levels/Level1.tscn"),
 	preload("res://scenes/levels/Level2.tscn"),
 	preload("res://scenes/levels/Level3.tscn"),
 	preload("res://scenes/levels/Level4.tscn"),
 	preload("res://scenes/levels/Level5.tscn"),
-	preload("res://scenes/levels/LevelDuel.tscn"),
+	preload("res://scenes/levels/Level6.tscn"),
 ]
 ## Touching (gap 0) is allowed; only penetration beyond EPS fails.
 const EPS := 0.5

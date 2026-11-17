@@ -56,6 +56,12 @@ func _ready() -> void:
 	var ok := true
 	# Debug visuals (DebugHp label) must exist for the HUD set to be full.
 	GameConfig.debug_mode = true
+	# Issue #617: every team now defaults to the computer — this
+	# regression drives the HUMAN camera flow, so opt the hero team in
+	# as the player (the level configuration menu's choice) before the
+	# level loads.
+	GameConfig.teams = GameConfig.default_teams()
+	GameConfig.teams[0]["controller"] = "player"
 	var level: Node = load("res://scenes/levels/Level3.tscn").instantiate()
 	add_child(level)
 	for i in 30:

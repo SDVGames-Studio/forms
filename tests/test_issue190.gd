@@ -68,11 +68,11 @@ func _ready() -> void:
 
 	# --- One-color background: screen-covering, camera-independent (rework).
 	var level_paths := [
-		"res://scenes/levels/Level.tscn",
+		"res://scenes/levels/Level1.tscn",
 		"res://scenes/levels/Level2.tscn",
 		"res://scenes/levels/Level3.tscn",
 		"res://scenes/levels/Level4.tscn",
-		"res://scenes/levels/LevelDuel.tscn",
+		"res://scenes/levels/Level6.tscn",
 	]
 	for level_path in level_paths:
 		var level: Node = (load(level_path) as PackedScene).instantiate()

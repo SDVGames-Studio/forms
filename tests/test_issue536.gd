@@ -22,7 +22,7 @@ extends Node
 ## Run headless: godot --headless res://tests/test_issue536.tscn
 ## Exit code 0 = pass.
 
-const LevelScene := preload("res://scenes/levels/Level.tscn")
+const LevelScene := preload("res://scenes/levels/Level1.tscn")
 
 ## Weapon slot order (Weapon.gd): 0 = shotgun, 7 = pistol.
 const WEAPON_SLOT_SHOTGUN := 0
@@ -54,12 +54,17 @@ func _spark_near(level: Node, figure: Node2D) -> bool:
 
 func _ready() -> void:
 	await get_tree().physics_frame
+	# Issue #617: uniform staging — the old Player/Teammate* names are
+	# Team1mate* now, and the hero side must be opted in as the player
+	# (the level configuration menu's choice) for its weapon flow.
+	GameConfig.teams = GameConfig.default_teams()
+	GameConfig.teams[0]["controller"] = "player"
 	var level: Node = LevelScene.instantiate()
 	add_child(level)
 	for _i in 10:
 		await get_tree().physics_frame
-	var player := level.get_node("Player") as Node2D
-	var mate2 := level.get_node("Teammate2") as Node2D
+	var player := level.get_node("Team1mate1") as Node2D
+	var mate2 := level.get_node("Team1mate3") as Node2D
 	var gun := player.get_node("Weapon")
 	# Freeze the panel sync: Weapon._physics_process overwrites a
 	# CONTROLLED member's selected_weapon from the team panel every frame

@@ -42,7 +42,7 @@ extends Node2D
 ## exit 1 = harness failure (model not loadable, zero episodes, watchdog).
 ## Emits eval_completed(results) right before quitting (test hook).
 
-const LEVEL_SCENE: PackedScene = preload("res://scenes/levels/Level.tscn")
+const LEVEL_SCENE: PackedScene = preload("res://scenes/levels/Level1.tscn")
 const BotScript := preload("res://scripts/InferenceBot.gd")
 const RunSpeed := preload("res://addons/godot_native_rl/training/run_speed.gd")
 

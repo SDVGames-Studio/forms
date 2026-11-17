@@ -17,13 +17,13 @@ extends Node
 
 const TARGET_SCENE := "res://tests/test_issue614_target.tscn"
 const LEVEL_SCENES := [
-	"res://scenes/levels/Level.tscn",
+	"res://scenes/levels/Level1.tscn",
 	"res://scenes/levels/Level2.tscn",
 	"res://scenes/levels/Level3.tscn",
 	"res://scenes/levels/Level4.tscn",
 	"res://scenes/levels/Level5.tscn",
-	"res://scenes/levels/LevelDuel.tscn",
-	"res://scenes/levels/LevelDuelBig.tscn",
+	"res://scenes/levels/Level6.tscn",
+	"res://scenes/levels/Level7.tscn",
 	"res://scenes/levels/CustomLevel.tscn",
 ]
 
@@ -99,7 +99,7 @@ class Issue614Driver extends Node:
 
 		# The chain the Finish nodes used to encode now lives on the roots.
 		var chain := {
-			"res://scenes/levels/Level.tscn":
+			"res://scenes/levels/Level1.tscn":
 				"res://scenes/levels/Level2.tscn",
 			"res://scenes/levels/Level2.tscn": "res://scenes/Main.tscn",
 			"res://scenes/levels/Level3.tscn": "res://scenes/Main.tscn",

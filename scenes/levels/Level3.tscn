@@ -1,6 +1,4 @@
-[gd_scene load_steps=6 format=3 uid="uid://cev3lline3lvl"]
-
-[ext_resource type="Script" path="res://scripts/ZoomCamera.gd" id="4_zoomcam"]
+[gd_scene load_steps=5 format=3 uid="uid://cev3lline3lvl"]
 
 [ext_resource type="Script" path="res://scripts/LevelConfig.gd" id="9_lvlcfg"]
 
@@ -51,38 +49,32 @@ position = Vector2(1780, 288)
 script = ExtResource("11_destr")
 polygon = PackedVector2Array(-256.0, -0.0, -253.8, -33.4, -247.3, -66.3, -236.5, -98.0, -221.7, -128.0, -203.1, -155.8, -181.0, -181.0, -155.8, -203.1, -128.0, -221.7, -98.0, -236.5, -66.3, -247.3, -33.4, -253.8, 0.0, -256.0, 33.4, -253.8, 66.3, -247.3, 98.0, -236.5, 128.0, -221.7, 155.8, -203.1, 181.0, -181.0, 203.1, -155.8, 221.7, -128.0, 236.5, -98.0, 247.3, -66.3, 253.8, -33.4, 256.0, -0.0)
 
-[node name="Player" type="CharacterBody2D" parent="."]
+[node name="Team1mate1" type="CharacterBody2D" parent="."]
 script = ExtResource("2_char")
 position = Vector2(300, 252)
 display_name = "Player 1"
 
-[node name="Camera" type="Camera2D" parent="Player"]
-script = ExtResource("4_zoomcam")
-position_smoothing_enabled = true
-position_smoothing_speed = 8.0
-zoom = Vector2(0.5, 0.5)
-
-[node name="Teammate1" type="CharacterBody2D" parent="."]
+[node name="Team1mate2" type="CharacterBody2D" parent="."]
 script = ExtResource("2_char")
 position = Vector2(180, 252)
 display_name = "Player 2"
 
-[node name="Teammate2" type="CharacterBody2D" parent="."]
+[node name="Team1mate3" type="CharacterBody2D" parent="."]
 script = ExtResource("2_char")
 position = Vector2(420, 252)
 display_name = "Player 3"
 
-[node name="Npc" type="CharacterBody2D" parent="."]
+[node name="Team2mate1" type="CharacterBody2D" parent="."]
 script = ExtResource("2_char")
 position = Vector2(1250, 252)
 display_name = "Enemy 1"
 
-[node name="Npc2" type="CharacterBody2D" parent="."]
+[node name="Team2mate2" type="CharacterBody2D" parent="."]
 script = ExtResource("2_char")
 position = Vector2(1400, 252)
 display_name = "Enemy 2"
 
-[node name="Npc3" type="CharacterBody2D" parent="."]
+[node name="Team2mate3" type="CharacterBody2D" parent="."]
 script = ExtResource("2_char")
 position = Vector2(1480, 252)
 display_name = "Enemy 3"

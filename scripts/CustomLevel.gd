@@ -84,7 +84,7 @@ func _build(stem: String) -> void:
 	var pieces: Array = []
 	var spawns: Array = []
 	if level.is_empty():
-		# Fallback terrain: the plain floor slab of Level.tscn's world.
+		# Fallback terrain: the plain floor slab of Level1.tscn's world.
 		pieces.append({"kind": "indestructible",
 				"x": 0.0, "y": CANVAS_SIZE.y - 72.0,
 				"w": CANVAS_SIZE.x, "h": 448.0})

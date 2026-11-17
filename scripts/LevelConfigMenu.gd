@@ -139,7 +139,7 @@ func _ready() -> void:
 	_night_regime.button_pressed = GameConfig.night_regime
 	if GameConfig.level_path.is_empty():
 		# Opened directly (e.g. from the editor): fall back to level 1.
-		GameConfig.level_path = "res://scenes/levels/Level.tscn"
+		GameConfig.level_path = "res://scenes/levels/Level1.tscn"
 	_title.text = _title.text + " — " + GameConfig.level_path.get_file().get_basename()
 	_start_button.grab_focus()
 

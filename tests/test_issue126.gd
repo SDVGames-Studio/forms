@@ -9,7 +9,7 @@ extends Node
 func _ready() -> void:
 	var ok := true
 	# --- Spectator case: LevelDuel has no controlled member. ---
-	var duel: Node = load("res://scenes/levels/LevelDuel.tscn").instantiate()
+	var duel: Node = load("res://scenes/levels/Level6.tscn").instantiate()
 	add_child(duel)
 	for i in 30:
 		await get_tree().physics_frame

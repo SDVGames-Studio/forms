@@ -42,9 +42,9 @@ func _check_no_authored_props() -> bool:
 				" center_line_y=", has_line, " gravity_dir=", has_dir)
 		ok = ok and not has_line and not has_dir
 	# No shipped level scene stages the old properties anymore.
-	for level in ["scenes/levels/Level.tscn", "scenes/levels/Level2.tscn",
+	for level in ["scenes/levels/Level1.tscn", "scenes/levels/Level2.tscn",
 			"scenes/levels/Level3.tscn", "scenes/levels/Level4.tscn",
-			"scenes/levels/Level5.tscn", "scenes/levels/LevelDuel.tscn"]:
+			"scenes/levels/Level5.tscn", "scenes/levels/Level6.tscn"]:
 		var text := FileAccess.get_file_as_string("res://" + level)
 		var clean := not text.contains("center_line_y") \
 				and not text.contains("gravity_dir")

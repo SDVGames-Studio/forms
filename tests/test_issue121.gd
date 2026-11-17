@@ -12,7 +12,7 @@ var _blue_was_active := false
 
 
 func _ready() -> void:
-	var level: Node = load("res://scenes/levels/LevelDuel.tscn").instantiate()
+	var level: Node = load("res://scenes/levels/Level6.tscn").instantiate()
 	add_child(level)
 	# Let the scene settle (Npc._ready builds teams, roll picks a team).
 	for i in 30:
@@ -37,6 +37,11 @@ func _ready() -> void:
 		if TurnController.active_member == blue:
 			_blue_was_active = true
 	var over: bool = TurnController.game_over
+	# Issue #617: the win can land the same physics frame the fatal shot
+	# resolves — the loser's 0.25 s death tween needs a moment to free
+	# the corpse before the one-left audit.
+	for i in 60:
+		await get_tree().physics_frame
 	var one_left: bool = (is_instance_valid(blue) and not is_instance_valid(red)) \
 		or (is_instance_valid(red) and not is_instance_valid(blue))
 	var ai_played: bool = _blue_was_active
