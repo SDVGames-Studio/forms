@@ -65,8 +65,9 @@ func _ready() -> void:
 				first is Label and first.text == str(GameConfig.teams[rows - 1]["label"]))
 	_check("one row per configured team", rows == team_count)
 
-	# Default tier: 3 members play in the 1x4 grid — 3 filled squares
-	# wearing the team's shape/color, one free "+" square, big cells.
+	# Default tier: 2 members (#617 rework v2) play in the 1x4 grid —
+	# 2 filled squares wearing the team's shape/color, TWO free "+"
+	# squares, big cells.
 	var grid := _grid_of(menu, 0)
 	_check("team 0 carries a member grid", grid != null)
 	var members: Array = GameConfig.teams[0]["names"]
@@ -95,18 +96,26 @@ func _ready() -> void:
 				shape_cells += 1
 		_check("1x4 tier: grid holds 4 squares for %d members" % members.size(),
 			grid.get_child_count() == 4)
-		_check("one square per member, one free spot",
-			shape_cells == members.size() and plus_cells == 1)
+		_check("one square per member, two free spots",
+			shape_cells == members.size() and plus_cells == 2)
 		_check("shapes are centered in their squares", centered)
 		_check("1x4 cells keep the grid footprint",
 			absf(grid.get_child(0).custom_minimum_size.x - 31.5) < 0.01)
 
-	# Item 3: appending a member — the 4th member bumps the grid to 2x8
-	# (16 squares, smaller cells, same 132 px footprint).
+	# Item 3: appending members — the 3rd still fits the 1x4 tier; the
+	# 4th member bumps the grid to 2x8 (16 squares, smaller cells, the
+	# same 132 px footprint).
 	var count_before: int = members.size()
 	menu._add_member(0)
 	_check("add member appends a teammate",
 		GameConfig.teams[0]["names"].size() == count_before + 1)
+	grid = _grid_of(menu, 0)
+	if grid != null:
+		_check("3 members stay in the 1x4 tier",
+			grid.get_child_count() == 4)
+	menu._add_member(0)
+	_check("the 4th member joins too",
+		GameConfig.teams[0]["names"].size() == count_before + 2)
 	grid = _grid_of(menu, 0)
 	if grid != null:
 		_check("4th member bumps the grid to the 2x8 tier",
@@ -156,8 +165,8 @@ func _ready() -> void:
 		GameConfig.teams[1]["names"].size() == 64)
 
 	# Item 5: "+ Add team" pulls the next definition from the GAME's
-	# team set — with the default four-team set (issue #571) the fifth
-	# level team wraps to the FIRST team in a fresh, unused color.
+	# team set — with the default three-team set (#617 rework v2) the
+	# fourth level team wraps to the FIRST team in a fresh, unused color.
 	GameConfig.teams = GameConfig.default_teams()
 	menu._game_team_set = GameConfig.teams.duplicate(true)
 	menu._rebuild_team_rows()
@@ -166,9 +175,9 @@ func _ready() -> void:
 	for team in GameConfig.teams:
 		used.append(team["color"])
 	menu._on_add_team_pressed()
-	var added_ok := GameConfig.teams.size() == 5
+	var added_ok := GameConfig.teams.size() == 4
 	if added_ok:
-		var added: Dictionary = GameConfig.teams[4]
+		var added: Dictionary = GameConfig.teams[3]
 		_check("added team comes from the game's set",
 			str(added["label"]) == str(menu._game_team_set[0]["label"])
 			and str(added["shape"]) == str(menu._game_team_set[0]["shape"]))

@@ -70,10 +70,12 @@ func _ready() -> void:
 		_fail("regime 4 label is %s" % str(SpawnRegime.REGIME_LABELS[3]))
 		failed = true
 
-	# --- The classic default keeps a human hero team. ---
-	GameConfig.teams = []
+	# --- A human hero team enables the chooser (issue #617 rework v2:
+	# --- the DEFAULT set is all-computer, the hero opts in explicitly). ---
+	GameConfig.teams = GameConfig.default_teams()
+	GameConfig.teams[0]["controller"] = "player"
 	if GameConfig.team_controller(0) != "player":
-		_fail("empty team set: hero team is not human-played")
+		_fail("opted-in hero team is not human-played")
 		failed = true
 
 	# --- apply() spawns a chooser that pauses the tree. ---
