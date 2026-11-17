@@ -23,6 +23,13 @@ extends Node
 ## §2.4/§2.5/§2.7/§2.8 components fire at the right moments.
 
 const BotController := preload("res://scripts/BotController.gd")
+## Issue #614: the win celebration overlay (was the Finish area's
+## animation, issue #194) — played by _check_win when the real finish
+## condition hits: exactly one team left standing.
+const CELEBRATION_SCRIPT := preload("res://scripts/Celebration.gd")
+## Issue #614: where a finished level goes when it authored no chain
+## (LevelConfig.next_scene is empty) — back to the Main menu.
+const DEFAULT_NEXT_SCENE := "res://scenes/Main.tscn"
 
 ## Issue #192: default fallback; the configured value lives in
 ## GameConfig.turn_time (level configuration menu).
@@ -64,6 +71,10 @@ var active_team := ""
 var active_member: Node2D = null
 ## True once one team eliminated the other.
 var game_over := false
+## Issue #614: the win celebration fired for the current level —
+## _check_win can be re-entered (turn resets, watchdogs), and the
+## overlay + scene advance must happen exactly once per level.
+var _win_celebrated := false
 ## Issue #364: current ROUND — one full cycle through the turn order
 ## (every team acted once). From the second round on, one random item
 ## (first aid kit / weapon / tool bundle) may appear on a random SURFACE
@@ -375,6 +386,7 @@ func _on_level_changed() -> void:
 		active_team = ""
 		active_member = null
 		game_over = false
+		_win_celebrated = false
 		_switching = false
 		_shot_serial = 0
 		_after_shot_left = 0.0
@@ -528,6 +540,7 @@ func _next_alive_team() -> String:
 
 func _start_round() -> void:
 	game_over = false
+	_win_celebrated = false
 	_switching = false
 	# A fresh round must never inherit a wedged transition (issue #85).
 	_stall_wait = 0.0
@@ -864,8 +877,39 @@ func _check_win() -> void:
 		if is_instance_valid(camera):
 			camera.enabled = true
 	if _hint_label != null:
-		_hint_label.text = HINT_SPECTATE
+			_hint_label.text = HINT_SPECTATE
 	_update_controls_visibility()
+	# Issue #614: the Finish trigger area is GONE — the level's real
+	# finish (one team left standing) now plays the celebration overlay
+	# and then advances to the level's authored next scene (LevelConfig.
+	# next_scene, Main menu fallback). A DRAW (nobody left) keeps the
+	# plain spectate ending above — there is no winner to celebrate.
+	# The gate on current_scene keeps bot environments out: eval_match
+	# and the training scene instance their levels UNDER a driver scene,
+	# and their episodes must end on their own flow, not a scene change.
+	if alive_teams.size() == 1 and not _win_celebrated \
+				and get_tree().current_scene == _level:
+		_win_celebrated = true
+		_celebrate_and_advance()
+
+
+## Issue #614: the finish sequence that replaced the Finish trigger
+## area — celebration overlay first (the same animation the trigger
+## used, issue #194), then the level's next scene with its own music
+## (issue #463 — play_for_level stops on menu paths).
+func _celebrate_and_advance() -> void:
+	var next: String = String(_level.get("next_scene"))
+	if next.is_empty():
+		next = DEFAULT_NEXT_SCENE
+	var celebration: CanvasLayer = CELEBRATION_SCRIPT.new()
+	add_child(celebration)
+	await celebration.finished
+	# The player may quit to the menu while the overlay plays — the
+	# advance only fires while the finished level is still on screen.
+	if not is_instance_valid(_level) or get_tree().current_scene != _level:
+		return
+	MusicManager.play_for_level(next)
+	get_tree().change_scene_to_file(next)
 
 
 func _build_ui() -> void:

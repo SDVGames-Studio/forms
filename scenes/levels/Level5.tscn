@@ -1,8 +1,7 @@
-[gd_scene load_steps=11 format=3 uid="uid://blevel5arena2"]
+[gd_scene load_steps=9 format=3 uid="uid://blevel5arena2"]
 
 [ext_resource type="Script" path="res://scripts/Player.gd" id="1_player"]
 
-[ext_resource type="Script" path="res://scripts/LevelFinish.gd" id="2_finish"]
 
 [ext_resource type="Script" path="res://scripts/Npc.gd" id="3_npc"]
 [ext_resource type="Script" path="res://scripts/ZoomCamera.gd" id="4_zoomcam"]
@@ -16,11 +15,9 @@
 radius = 24
 height = 57.6
 
-[sub_resource type="RectangleShape2D" id="RectangleShape2D_finish"]
-size = Vector2(48, 160)
-
 [node name="Level5" type="Node2D" groups=["level"]]
 script = ExtResource("9_lvlcfg")
+next_scene = "res://scenes/Main.tscn"
 
 [node name="BackgroundLayer" type="CanvasLayer" parent="."]
 layer = -100
@@ -218,12 +215,4 @@ offset_top = -32.0
 offset_right = 32.0
 offset_bottom = 32.0
 color = Color(0.25, 0.45, 0.9, 1)
-
-[node name="Finish" type="Area2D" parent="."]
-position = Vector2(1280, -190)
-script = ExtResource("2_finish")
-next_scene = "res://scenes/Main.tscn"
-
-[node name="FinishShape" type="CollisionShape2D" parent="Finish"]
-shape = SubResource("RectangleShape2D_finish")
 

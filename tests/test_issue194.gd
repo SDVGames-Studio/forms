@@ -4,9 +4,10 @@ extends Node
 ## Asserts:
 ##   - the Celebration overlay builds a banner (Label) and confetti
 ##     (CPUParticles2D) when added to the tree;
-##   - it emits `finished` after `duration` seconds and frees itself;
-##   - LevelFinish exposes the celebration trigger (starts with the player,
-##   then advances to the next scene).
+##   - it emits `finished` after `duration` seconds and frees itself.
+##
+## Issue #614 removed the Finish trigger area — the celebration-on-win
+## wiring is covered by tests/test_issue614.gd.
 
 func _ready() -> void:
 	await get_tree().process_frame
@@ -37,21 +38,6 @@ func _ready() -> void:
 		failures.append("celebration must emit finished after duration")
 	if is_instance_valid(celebration) and celebration.get_tree() != null:
 		failures.append("celebration must free itself when finished")
-
-	# --- LevelFinish wiring: player entering the area triggers celebration,
-	# then the next scene loads.
-	var level_finish: Area2D = load("res://scripts/LevelFinish.gd").new()
-	level_finish.next_scene = "res://scenes/Main.tscn"
-	add_child(level_finish)
-	await get_tree().process_frame
-	var player: CharacterBody2D = load("res://scripts/Player.gd").new()
-	add_child(player)
-	await get_tree().process_frame
-	level_finish._on_body_entered(player)
-	await get_tree().process_frame
-	var overlays := _find_nodes(get_tree().root, "CanvasLayer")
-	if overlays.is_empty():
-		failures.append("level finish must spawn a celebration overlay")
 
 	if failures.is_empty():
 		print("ISSUE194 OK: simple celebration animation")
