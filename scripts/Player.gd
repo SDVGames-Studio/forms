@@ -1,5 +1,14 @@
-extends CharacterBody2D
+extends Character
 ## Playable figure for the simple level (issue #1).
+##
+## Issue #611: the controller-pattern refactor, slice 1 — every shared
+## mechanic (physics tick, gravity frame, health/bar/shield, damage and
+## death flow, controller API) moved into the unified Character base
+## (scripts/Character.gd). This script is now the figure's PLAYER-side
+## brain: it reads the input (the ONLY place Input is read for a human
+## figure) and turns it into Character API calls (move/aim/jump). The
+## scripted AI lives in Npc.gd, the RL policy reaches the same API
+## through BotController.gd.
 ##
 ## Left/right movement plus jump, driven by the move_left/move_right/jump
 ## actions (WASD and arrow keys, Space); gravity is applied while airborne.
@@ -11,36 +20,6 @@ extends CharacterBody2D
 ## key shortcuts (issue #215). All members share the same shape and color
 ## and show a name above the health bar.
 
-## Issue #108: all characteristics come from the shared CharacterStats —
-## enemy figures are the SAME class of character as player figures.
-const Stats := preload("res://scripts/CharacterStats.gd")
-const BotController := preload("res://scripts/BotController.gd")
-const SPEED := Stats.SPEED
-const JUMP_VELOCITY := Stats.JUMP_VELOCITY
-const GRAVITY := Stats.GRAVITY
-
-## Issue #293: gravity is no longer authored per figure — the level's
-## indestructible grounds are the ONLY gravity source (LevelTerrain), so
-## the old center_line_y/gravity_dir exports are gone.
-
-## Issue #40: non-controlled team members just stay where they are.
-
-signal health_changed(health: int, max_health: int)
-
-const MAX_HEALTH := Stats.MAX_HEALTH
-const BAR_WIDTH := Stats.BAR_WIDTH
-const BAR_HEIGHT := Stats.BAR_HEIGHT
-
-## Issue #33: name shown above the health bar.
-@export var display_name := "Player"
-
-## Issue #60: every member of a team wears the same team color — all
-## scene-authored body visuals are tinted with it in _ready.
-@export var team_color := Color(1, 0.84, 0.2, 1)
-
-## Issue #169: figure body shape: square, circle, triangle, star or ellipse.
-@export var team_shape := "square"
-
 ## Issue #521: which side this figure fights on. "player" (default) is
 ## the classic hero team; "enemy" stages a HUMAN-played figure among the
 ## enemy teams (one-device multiplayer: GameConfig.apply swaps a team's
@@ -49,99 +28,10 @@ const BAR_HEIGHT := Stats.BAR_HEIGHT
 ## and the camera all follow TurnController's active team.
 @export var team_side := "player"
 
-var health: int = MAX_HEALTH
-
-## Issue #170: energy shield — while true the figure takes no damage.
-## Set by the Shield tool; TurnController clears it at the start of the
-## team's next turn ("defends until its next turn begins").
-## Issue #255 rework: the shield blocks ONE attack — the block consumes
-## it. Identical logic in Npc.gd: every figure shields the same way,
-## player's or computer's.
-var shielded := false
-var _shield_rect: ColorRect
-
-## Issue #67: character's view (aim) angle in radians, 0 = horizontal.
-## Positive raises the view, negative lowers it. Controlled with the
-## view_up/view_down actions (W/S and Arrow Up/Down).
-const VIEW_SPEED := Stats.VIEW_SPEED
-const VIEW_MAX := Stats.VIEW_MAX
-var view_angle := 0.0
-
-## Issue #277: the gravity unit vector the last physics frame used — the
-## frame the aim/view lives in (see aim_dir). DOWN until the first tick
-## (the legacy default).
-var _aim_grav := Vector2.DOWN
-
-## Issue #277 rework / #518 rework: the walking/aiming tangent of the
-## CURRENT gravity frame — the CHARACTER'S LOCAL +X. The body children
-## are rotated to the gravity frame by FigurePose.align_to_gravity (angle
-## grav.angle() - PI/2) and the character camera (#289) renders exactly
-## that local frame as the screen frame — rotating Vector2.RIGHT by that
-## angle gives precisely the raw perpendicular (grav.y, -grav.x), so THIS
-## tangent is the character's own right hand. The owner directive for the
-## #518 rework: "each character has a local coordinate system, which used
-## by the character's cam, so use this local coordinate system to choose
-## where should a/d keys lead" — pressing D walks the character's local
-## right, which is ALWAYS screen-right in the character camera, flat
-## ground, a floor's underside or a disc rim alike. The previous rules
-## (continuity with the previous frame / the non-negative-world-x anchor)
-## pinned the basis to the WORLD x axis: under upward gravity the raw
-## tangent is (-1, 0), they flipped it to world +x, and with the camera
-## rotated 180° that world +x renders screen-LEFT — D walked left. The
-## tangent is now a pure function of gravity (no sign state, no hysteresis):
-## it rotates smoothly with the gravity around a disc rim by construction.
-var _aim_tangent := Vector2.RIGHT
-
-## Issue #67/#277: direction the character looks/aims in — the gravity
-## frame's surface tangent (facing sign applied) raised/lowered by
-## view_angle AWAY from the floor. Issue #270 rotated the figure body to
-## the level's real gravity (radial arenas included), but the aim kept the
-## world-vertical frame with only the legacy center-line flip — the weapon
-## then indicated a direction that didn't correspond to the character's
-## stance. With the real gravity vector, flat and center-line levels keep
-## EXACTLY the old formula (the tangent is the world x axis there); on
-## radial gravity the aim rotates with the figure. `dir` (the legacy
-## gravity sign) is kept for call compatibility only.
-func aim_dir(facing: float, _dir: float) -> Vector2:
-	return _aim_tangent * (cos(view_angle) * facing) \
-			- _aim_grav * sin(view_angle)
-
-## Issue #277: the current gravity frame — Weapon uses it to face along
-## the walking surface instead of the world x axis.
-func current_gravity() -> Vector2:
-	return _aim_grav
-
-## Issue #277 rework: the current frame's walking tangent — Weapon faces
-## along the same continuous axis the figure walks and aims on.
-func current_tangent() -> Vector2:
-	return _aim_tangent
-
-## Issue #518 rework: refresh the gravity frame right after a DISCRETE
-## position jump (teleport) instead of waiting for the next physics tick,
-## so same-frame consumers (aim, sight) see the destination's frame. The
-## tangent is the character's LOCAL +x (see _aim_tangent): with the owner's
-## #518 directive the teleport destination inherits the same local-frame
-## rule every other position uses — under upward gravity the local +x is
-## world (-1, 0), which the rotated character camera renders screen-RIGHT
-## (the previous world-x "screen-right" anchor was exactly the bug).
-func reanchor_gravity_frame() -> void:
-	var grav := Vector2.DOWN
-	if LevelTerrain.has_sources(self):
-		grav = LevelTerrain.gravity_vector(self)
-	_aim_grav = grav
-	_aim_tangent = Vector2(grav.y, -grav.x)
-	up_direction = -grav
-	FigurePose.align_to_gravity(self, grav)
-var _bar_fill: ColorRect
-var _camera: Camera2D
-
-## Issue #558: procedural idle/walk/jump animation driver — a purely
-## visual Node that bends the body visual from this figure's movement
-## state (see CharacterAnimator.gd). Never touches physics or input.
-var _animator: CharacterAnimator = null
-
 ## Issue #33: true for the member currently driven by player input.
 var controlled := false
+
+var _camera: Camera2D
 
 
 func _ready() -> void:
@@ -203,15 +93,6 @@ func apply_team_setup() -> void:
 	_apply_team_color()
 	_apply_team_shape()
 	_attach_animator()
-
-
-## Issue #60: tint every ColorRect visual authored in the scene (captured
-## before the health bar adds its own ColorRects) with the team color.
-func _apply_team_color() -> void:
-	for child in get_children():
-		var rect := child as ColorRect
-		if rect != null and rect.name != "Shield" and rect.name != "HealthBarBackground":
-			rect.color = team_color
 
 
 ## Issue #556: every team figure wears the modular expressive character
@@ -276,16 +157,6 @@ func _attach_animator() -> void:
 	_animator.setup(self, visual)
 
 
-## Issue #282: the held weapon/tool must render IN FRONT of the character
-## body. All body visuals (scene ColorRect, the modular character) stay BEFORE the
-## Weapon node in the child order — tree order decides which CanvasItem
-## draws on top among same-z siblings.
-func _keep_weapon_in_front() -> void:
-	var weapon := get_node_or_null("Weapon")
-	if weapon != null:
-		move_child(weapon, get_child_count() - 1)
-
-
 ## Issue #33: if no team member ended up controlled (fresh scene), the
 ## first one takes control.
 func _claim_control_if_none() -> void:
@@ -336,54 +207,6 @@ func set_controlled(value: bool) -> void:
 	_camera.enabled = true
 
 
-## Issue #6: apply damage and update the health bar.
-## Issue #151: health 0 means DEAD — flagged immediately so win checks
-## stop counting this figure before its death animation frees the node.
-var _dead := false
-
-
-func take_damage(amount: int, attacker: Node2D = null) -> void:
-	if _dead:
-		return
-	# Issue #170: the energy shield blocks all damage until next turn.
-	# Issue #255 rework: the shield blocks ONE attack — blocking consumes
-	# it (same rule as Npc.take_damage, no player/NPC difference).
-	if shielded:
-		set_shielded(false)
-		# Issue #252: action-log line — the shield absorbed the hit.
-		DebugInfo.log("%s's shield blocked %d damage" % [display_name, amount])
-		return
-	health = clampi(health - amount, 0, MAX_HEALTH)
-	# Issue #433: the REWARD_SPEC §2 combat components (proportional
-	# damage §2.1, kill bonus on the killing blow §2.2, friendly fire
-	# §2.6) are credited to the attacker's controller the moment the
-	# damage lands — after health is applied, so a killing blow is
-	# detectable; the training framework zeroes the property per step,
-	# the figures never manage it.
-	BotController.credit_combat_reward(attacker, self, amount)
-	_hit_flash()
-	# Issue #559: the hit shows on the FACE too — a short SURPRISED
-	# flinch (purely visual; the animator restores the resting face).
-	if _animator != null:
-		_animator.flash_expression("SURPRISED", 0.8)
-	# Issue #252: debug damage number + action-log line.
-	DebugInfo.show_damage(self, amount)
-	DebugInfo.log("%s takes %d damage (%d/%d)" % [display_name, amount, health, MAX_HEALTH])
-	# Issue #335: comics line near the figure — the victim cries out (or
-	# calls out an ALLY's betrayal) and a big hit makes the attacker
-	# gloat; identical logic in Npc.take_damage.
-	CharacterLines.on_damage_taken(self, amount, attacker)
-	if health == 0:
-		_dead = true
-		# Issue #433: REWARD_SPEC §2.3 — the controller that plays this
-		# figure takes the once-per-death penalty at the moment of death,
-		# whatever killed it.
-		BotController.notify_figure_died(self)
-		_die()
-	health_changed.emit(health, MAX_HEALTH)
-	_update_bar()
-
-
 ## Issue #252: attach the debug visuals (HP number, damage popup,
 ## centre-to-top arrow) — a no-op with the debug mode off.
 func _build_debug_visuals() -> void:
@@ -391,69 +214,11 @@ func _build_debug_visuals() -> void:
 	DebugInfo.update_hp(self, health, MAX_HEALTH)
 
 
-## Issue #186: player-team characters flash on damage exactly like NPCs
-## (Npc.take_damage) — blast visuals must not differ between teams.
-func _hit_flash() -> void:
-	var visual: Node = null
-	for child in get_children():
-		var rect := child as ColorRect
-		if rect != null and rect.name != "Shield" \
-				and rect.name != "HealthBarBackground" and rect.visible:
-			visual = rect
-			break
-		var shape := child as Node
-		# Issue #222: the scene's collision shape is named "PlayerShape" —
-		# it ends with "Shape" but is a CollisionShape2D, not a ShapeVisual,
-		# so it must never take the shape-visual branch (every hit on a
-		# player used to throw a script error and skip the flash).
-		if shape != null and shape.name.ends_with("Shape") and shape.visible \
-				and shape.has_method("set_shape_color"):
-			visual = shape
-			break
-	if visual == null:
-		return
-	if visual is ColorRect:
-		visual.color = Color(1.0, 0.6, 0.7, 1)
-		get_tree().create_timer(0.1).timeout.connect(
-			func() -> void:
-				if is_instance_valid(visual):
-					visual.color = team_color)
-	else:
-		visual.set_shape_color(Color(1.0, 0.6, 0.7, 1))
-		get_tree().create_timer(0.1).timeout.connect(
-			func() -> void:
-				if is_instance_valid(visual):
-					visual.set_shape_color(team_color))
-
-
-## Issue #181: a player-team member that reaches 0 HP must DISAPPEAR like
-## an NPC does (Npc._die) — shrink out, then free the node, so the corpse
-## never stays on the field and win checks / turn flow see it as gone.
-## Issue #409: the shrink-out tween is kept in a field so an episode
-## reset (BotController.reset) can cancel a death that is mid-animation.
-var death_tween: Tween
-
-func _die() -> void:
-	set_physics_process(false)
-	# Issue #252: action-log line — the figure left the field.
-	DebugInfo.log("%s died" % display_name)
-	# Issue #335: if this leaves exactly one teammate alive, the survivor
-	# is "left alone in the team" and speaks up.
-	CharacterLines.on_member_death(self)
-	# Issue #222: the shared camera must survive EVERY dying member — its
-	# host may die while someone else is controlled, or when the whole team
-	# is wiped at the end of the game. Reparent it to the level and keep it
-	# ENABLED: with nobody left controlled it becomes the free spectator
-	# camera (issue #126), so the view never freezes after the win and the
-	# field stays watchable.
-	if _camera != null and is_instance_valid(_camera) \
-			and _camera.get_parent() == self:
-		_camera.reparent(get_parent())
-		_camera.enabled = true
-	# Issue #187: a dying CONTROLLED member must not keep control — the
-	# camera would follow the shrinking corpse and, until the node is
-	# freed, switch/input logic would still see it as the active character.
-	# Hand control and the view to the first living teammate immediately.
+## Issue #187: a dying CONTROLLED member must not keep control — the
+## camera would follow the shrinking corpse and, until the node is
+## freed, switch/input logic would still see it as the active character.
+## Hand control and the view to the first living teammate immediately.
+func _on_dying() -> void:
 	if controlled:
 		controlled = false
 		var successor: Node = null
@@ -465,133 +230,20 @@ func _die() -> void:
 				break
 		if successor != null:
 				successor.set_controlled(true)
-	death_tween = create_tween()
-	death_tween.tween_property(self, "scale", Vector2.ZERO, 0.25)
-	death_tween.tween_callback(queue_free)
 
 
-func heal(amount: int) -> void:
-	# Issue #151: dead characters cannot be healed back.
-	if _dead:
-		return
-	health = clampi(health + amount, 0, MAX_HEALTH)
-	health_changed.emit(health, MAX_HEALTH)
-	_update_bar()
-
-
-## Issue #170: toggle the energy shield (and its visual bubble).
-func set_shielded(value: bool) -> void:
-	shielded = value
-	if shielded and _shield_rect == null:
-		_shield_rect = ColorRect.new()
-		_shield_rect.name = "Shield"
-		_shield_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		_shield_rect.offset_left = -BAR_WIDTH / 2.0 - 4.0
-		_shield_rect.offset_top = -BAR_HEIGHT - 40.0
-		_shield_rect.offset_right = BAR_WIDTH / 2.0 + 4.0
-		_shield_rect.offset_bottom = BAR_HEIGHT + 16.0
-		_shield_rect.color = Color(0.25, 0.4, 0.95, 0.35)
-		add_child(_shield_rect)
-	if _shield_rect != null:
-		_shield_rect.visible = shielded
-
-
-# Small bar above the player, built in code like the other visuals.
-# Issue #33: a name label sits above the bar.
-func _build_health_bar() -> void:
-	var name_label := Label.new()
-	name_label.name = "NameLabel"
-	name_label.text = display_name
-	name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	name_label.offset_left = -70.0
-	name_label.offset_top = -62.0
-	name_label.offset_right = 70.0
-	name_label.offset_bottom = -46.0
-	add_child(name_label)
-
-	var background := ColorRect.new()
-	# Issue #178: named so the team shape/color passes skip it.
-	background.name = "HealthBarBackground"
-	# Issue #598: the HP renders in front of everything except the
-	# character's line (Stats.LINE_Z) — overlapping bodies, terrain and
-	# projectiles (rings at z 50) can no longer cover the bar.
-	background.z_index = Stats.HP_Z
-	background.offset_left = -BAR_WIDTH / 2.0
-	background.offset_top = -44.0
-	background.offset_right = BAR_WIDTH / 2.0
-	background.offset_bottom = -44.0 + BAR_HEIGHT
-	background.color = Color(0.1, 0.1, 0.12, 0.85)
-	add_child(background)
-
-	_bar_fill = ColorRect.new()
-	_bar_fill.offset_left = 1.0
-	_bar_fill.offset_top = 1.0
-	_bar_fill.offset_bottom = -1.0
-	_bar_fill.color = Color(0.25, 0.75, 0.3, 1)
-	background.add_child(_bar_fill)
-	_update_bar()
-
-
-func _update_bar() -> void:
-	if _bar_fill == null:
-		return
-	# Issue #252: keep the debug HP number near the figure in sync.
-	DebugInfo.update_hp(self, health, MAX_HEALTH)
-	var inner_width := BAR_WIDTH - 2.0
-	var ratio := float(health) / float(MAX_HEALTH)
-	_bar_fill.offset_right = 1.0 + inner_width * ratio
-	# Turn more red as health drops.
-	_bar_fill.color = Color(0.75 - 0.5 * ratio, 0.25 + 0.5 * ratio, 0.3, 1)
-
-
-func _physics_process(delta: float) -> void:
-	# Issue #293: the gravity field is no longer configured separately
-	# from the terrain — the level's indestructible grounds are the ONLY
-	# gravity source (LevelTerrain): gravity always pulls toward the
-	# nearest ground surface, exactly what a player sees. Levels without
-	# any gravity source fall straight down. The old central-line/
-	# gravity_dir authored overrides are gone (the #277 center-line
-	# contract was the last consumer).
-	var grav := Vector2.DOWN
-	if LevelTerrain.has_sources(self):
-		grav = LevelTerrain.gravity_vector(self)
-	up_direction = -grav
-	# Issue #277: the aim/view lives in the CURRENT gravity frame.
-	_aim_grav = grav
-	# Issue #518 rework: the tangent is the CHARACTER'S LOCAL +x (see
-	# _aim_tangent) — the raw perpendicular of gravity, no sign flip. The
-	# character camera renders the local frame as the screen frame, so D
-	# (positive input along the tangent) always walks screen-right there;
-	# the old continuity/world-x anchor rules flipped it under upward
-	# gravity and D walked screen-left (the #518 report).
-	_aim_tangent = Vector2(grav.y, -grav.x)
-	# Issue #270: rotate the BODY visual/collision so the figure's bottom
-	# faces the ground under any gravity direction (radial arenas included);
-	# HUD, weapon and camera keep the world frame (FigurePose for details).
-	FigurePose.align_to_gravity(self, grav)
-	# Issue #311: the HUD text (name, health bar, debug HP) must live in the
-	# coordinate system the view CURRENTLY shows — with the character camera
-	# (#289) the view itself rotates, so world-aligned text would render
-	# tilted/upside-down on screen. No-op for the world-aligned static view.
-	HudPose.align_to_view(self)
-
-	if not is_on_floor():
-		velocity += grav * GRAVITY * delta
-
+## Issue #611: the PLAYER-side brain — the only place a human figure
+## reads Input. Every decision becomes a Character API call (jump/move/
+## aim); the shared tick (gravity frame, fall, move_and_slide) runs in
+## the base around this hook.
+func _control(delta: float) -> void:
 	# Issue #244: while the handover waits for effects (after a shot or
 	# when the turn timer ran out) the character is BLOCKED — no moving,
 	# jumping or aiming until the next turn begins.
 	if controlled and TurnController.is_player_team(TurnController.active_team) \
 				and not TurnController.is_input_frozen():
 		if Input.is_action_just_pressed("jump") and is_on_floor():
-			# Issue #202: JUMP_VELOCITY is negative, so grav * JUMP_VELOCITY
-			# points AWAY from the floor (up for grav = DOWN). The old
-			# inverted form pushed the figure INTO the floor and jump never
-			# lifted the character.
-			velocity = grav * JUMP_VELOCITY
-			# Issue #558: squash-before-takeoff impulse — purely visual.
-			if _animator != null:
-				_animator.notify_jump()
+			jump()
 
 		var direction := Input.get_axis("move_left", "move_right")
 		# Issue #104: any move or aim action locks character switching for
@@ -600,55 +252,46 @@ func _physics_process(delta: float) -> void:
 		if direction != 0.0 or view_axis != 0.0 \
 				or (Input.is_action_just_pressed("jump") and is_on_floor()):
 			TurnController.notify_member_action()
-		# Issue #359: charging the railgun slows the wielder to half speed
-		# (Weapon.move_speed_factor) while F is held and the charge builds.
-		var weapon := get_node_or_null("Weapon")
-		var speed := SPEED
-		if weapon != null and weapon.has_method("move_speed_factor"):
-			speed *= float(weapon.move_speed_factor())
-		if direction != 0.0:
-			# Issue #250 rework: walk along the SURFACE — the input maps onto
-			# the current gravity frame's tangent, not the world x axis. With
-			# world-x movement on the circular arena the figure launched off
-			# the curved slope and flew up and down ballistically; on flat
-			# levels the tangent IS the x axis, so nothing changes there. The
-			# tangent is the character's LOCAL +x (#518 rework, see
-			# _aim_tangent), so D walks the character's own right — screen-right
-			# in the character camera wherever gravity points, and it rotates
-			# smoothly around a disc rim by construction (no sign hysteresis).
-			velocity = _aim_tangent * direction * speed \
-					+ grav * velocity.dot(grav)
-		else:
-			velocity = grav * velocity.dot(grav)
+		# Issue #250 rework / #518 rework: the walk follows the gravity
+		# frame's tangent (the character's LOCAL +x) — Character.move().
+		move(direction)
 		# Issue #67: raise/lower the view with W/S / Arrow Up/Down.
-		view_angle = clampf(view_angle + view_axis * VIEW_SPEED * delta, -VIEW_MAX, VIEW_MAX)
+		aim(view_axis * VIEW_SPEED * delta)
 		# Issue #359: charging the railgun SHAKES the sight — a small random
 		# wobble piles onto the view angle every tick while the charge builds
 		# (Weapon.sight_shake), so a full charge is harder to aim precisely.
+		var weapon := get_node_or_null("Weapon")
 		if weapon != null and weapon.has_method("sight_shake"):
 			var shake := float(weapon.sight_shake())
 			if shake != 0.0:
-				view_angle = clampf(view_angle + shake, -VIEW_MAX, VIEW_MAX)
+				aim(shake)
 	else:
 		# Issue #316: a DRILLING wielder is the one frozen-input exception —
 		# the aim keys (W/S) still steer the running jackhammer (the drill
 		# direction follows the live aim, see Weapon._tick_jackhammer), and
-		# the drill's velocity must survive the clamp below: Weapon owns it
-		# until the drill ends. There is no cancel — the drill runs its full
-		# aimed time or stalls against indestructible ground.
+		# the drill's velocity must survive the stand clamp below: Weapon
+		# owns it until the drill ends. There is no cancel — the drill runs
+		# its full aimed time or stalls against indestructible ground.
 		var drill := get_node_or_null("Weapon")
 		if controlled and TurnController.is_player_team(TurnController.active_team) \
 					and drill != null and drill.has_method("is_drilling") \
 					and drill.is_drilling():
 			var steer := Input.get_axis("view_down", "view_up")
 			if steer != 0.0:
-				view_angle = clampf(view_angle + steer * VIEW_SPEED * delta,
-						-VIEW_MAX, VIEW_MAX)
+				aim(steer * VIEW_SPEED * delta)
 		else:
 			# Issue #40/#58: uncontrolled team member just stays put (no glide
 			# along the surface — only the component along gravity survives,
 			# which on flat levels is exactly the old velocity.y).
-			velocity = grav * velocity.dot(grav)
+			move(0.0)
 
-	move_and_slide()
 
+## Issue #359: charging the railgun slows the wielder to half speed
+## (Weapon.move_speed_factor) while F is held and the charge builds —
+## the base's walking speed hook.
+func _move_speed() -> float:
+	var weapon := get_node_or_null("Weapon")
+	var speed := float(SPEED)
+	if weapon != null and weapon.has_method("move_speed_factor"):
+		speed *= float(weapon.move_speed_factor())
+	return speed
