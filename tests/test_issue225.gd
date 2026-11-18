@@ -9,11 +9,11 @@ extends Node
 const ProjectileBodyScript := preload("res://scripts/ProjectileBody.gd")
 
 const LEVELS := {
-	"res://scenes/levels/Level.tscn": 2,
+	"res://scenes/levels/Level1.tscn": 2,
 	"res://scenes/levels/Level2.tscn": 2,
 	"res://scenes/levels/Level3.tscn": 1,
 	"res://scenes/levels/Level4.tscn": 2,
-	"res://scenes/levels/LevelDuel.tscn": 1,
+	"res://scenes/levels/Level6.tscn": 1,
 }
 
 

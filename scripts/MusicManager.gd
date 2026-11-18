@@ -12,20 +12,20 @@ extends Node
 
 const TRACKS := {
 	"res://scenes/Main.tscn": preload("res://assets/audio/music/menu.wav"),
-	"res://scenes/levels/Level.tscn": preload("res://assets/audio/music/level1.wav"),
+	"res://scenes/levels/Level1.tscn": preload("res://assets/audio/music/level1.wav"),
 	"res://scenes/levels/Level2.tscn": preload("res://assets/audio/music/level2.wav"),
 	"res://scenes/levels/Level3.tscn": preload("res://assets/audio/music/level3.wav"),
 	"res://scenes/levels/Level4.tscn": preload("res://assets/audio/music/level4.wav"),
 	"res://scenes/levels/Level5.tscn": preload("res://assets/audio/music/level5.wav"),
-	"res://scenes/levels/LevelDuel.tscn": preload("res://assets/audio/music/duel.wav"),
-	"res://scenes/levels/LevelDuelBig.tscn": preload("res://assets/audio/music/duel_big.wav"),
+	"res://scenes/levels/Level6.tscn": preload("res://assets/audio/music/duel.wav"),
+	"res://scenes/levels/Level7.tscn": preload("res://assets/audio/music/duel_big.wav"),
 }
 
 ## Level paths that have a track (tests cross-check the level list).
 const LEVEL_PATHS: Array[String] = [
-	"res://scenes/levels/Level.tscn", "res://scenes/levels/Level2.tscn", "res://scenes/levels/Level3.tscn",
+	"res://scenes/levels/Level1.tscn", "res://scenes/levels/Level2.tscn", "res://scenes/levels/Level3.tscn",
 	"res://scenes/levels/Level4.tscn", "res://scenes/levels/Level5.tscn",
-	"res://scenes/levels/LevelDuel.tscn", "res://scenes/levels/LevelDuelBig.tscn",
+	"res://scenes/levels/Level6.tscn", "res://scenes/levels/Level7.tscn",
 ]
 
 var _player: AudioStreamPlayer

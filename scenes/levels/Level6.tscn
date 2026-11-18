@@ -1,0 +1,47 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://scripts/LevelConfig.gd" id="9_lvlcfg"]
+
+[ext_resource type="Script" path="res://scripts/IndestructibleGround.gd" id="10_indestr"]
+
+[ext_resource type="Script" path="res://scripts/DestructibleGround.gd" id="11_destr"]
+
+[ext_resource type="Script" path="res://scripts/Character.gd" id="2_char"]
+
+[node name="Level6" type="Node2D" groups=["level"]]
+script = ExtResource("9_lvlcfg")
+
+[node name="BackgroundLayer" type="CanvasLayer" parent="."]
+layer = -100
+
+[node name="Background" type="ColorRect" parent="BackgroundLayer"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.09, 0.05, 0.16, 1)
+mouse_filter = 2
+
+[node name="Ground" type="StaticBody2D" parent="."]
+position = Vector2(576, 752)
+script = ExtResource("10_indestr")
+rect_size = Vector2(1152, 448)
+
+[node name="Soil" type="StaticBody2D" parent="."]
+position = Vector2(576, 498)
+script = ExtResource("11_destr")
+rect_size = Vector2(1152, 60)
+
+[node name="Team1mate1" type="CharacterBody2D" parent="."]
+script = ExtResource("2_char")
+position = Vector2(390, 480)
+display_name = "Player 1"
+team_color = Color(1, 0.84, 0.2, 1)
+
+[node name="Team2mate1" type="CharacterBody2D" parent="."]
+script = ExtResource("2_char")
+position = Vector2(760, 480)
+display_name = "Enemy 1"
+team_color = Color(0.75, 0.2, 0.45, 1)
+team_shape = "circle"

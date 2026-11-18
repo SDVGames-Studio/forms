@@ -2,7 +2,7 @@ extends Node
 ## Regression check for issue #403 — created items must never appear
 ## inside the indestructible ground. Overlapping masses are legal level
 ## authoring (issue #270 counts touching/overlapping masses as ONE
-## landmass; Level.tscn half-buries a disc in its main slab), and the
+## landmass; Level1.tscn half-buries a disc in its main slab), and the
 ## round drop used to draw ANY surface point — including disc arcs and
 ## top faces buried inside a neighbour mass — so items appeared buried
 ## inside the ground, unreachable and invisible.
@@ -44,7 +44,7 @@ func _clear_of_ground(pos: Vector2) -> bool:
 
 func _ready() -> void:
 	# 1) The bug arena: a wide slab with a disc half-embedded in it (the
-	# Level.tscn layout) and a second slab stacked on the first — three
+	# Level1.tscn layout) and a second slab stacked on the first — three
 	# legal landmasses whose buried surface stretches are exactly where
 	# created items used to appear inside the ground.
 	var arena := Node2D.new()

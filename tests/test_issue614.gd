@@ -1,0 +1,191 @@
+extends Node
+## Regression check for issue #614: the Finish trigger area is gone and
+## the level's real finish — exactly one team left standing — plays the
+## celebration overlay and advances to the level's next scene.
+##
+## Asserts:
+##   - no level scene references LevelFinish.gd / a "Finish" node /
+##     its collision subresource anymore;
+##   - LevelConfig (the level roots' script) exposes next_scene;
+##   - the campaign chain survived the move: Level -> Level2,
+##     Level2-5 -> Main;
+##   - the real win flow: one team alive -> celebration overlay ->
+##     scene advance to the level's authored next_scene.
+##
+## Run headless: godot --headless res://tests/test_issue614.tscn
+## Exit code 0 = pass.
+
+const TARGET_SCENE := "res://tests/test_issue614_target.tscn"
+const LEVEL_SCENES := [
+	"res://scenes/levels/Level1.tscn",
+	"res://scenes/levels/Level2.tscn",
+	"res://scenes/levels/Level3.tscn",
+	"res://scenes/levels/Level4.tscn",
+	"res://scenes/levels/Level5.tscn",
+	"res://scenes/levels/Level6.tscn",
+	"res://scenes/levels/Level7.tscn",
+	"res://scenes/levels/CustomLevel.tscn",
+]
+
+func _ready() -> void:
+	# The driver must survive the scene change it provokes, so it lives
+	# directly under /root — change_scene_to_file only frees current_scene
+	# (same pattern as tests/test_issue303.gd).
+	var driver := Issue614Driver.new()
+	driver.done.connect(func(ok: bool) -> void:
+		get_tree().quit(0 if ok else 1))
+	get_tree().root.add_child.call_deferred(driver)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	driver.run()
+
+
+class Issue614Driver extends Node:
+	signal done(ok: bool)
+
+	const TARGET_SCENE := "res://tests/test_issue614_target.tscn"
+
+	## Minimal stand-in for a level root: duck-typed next_scene, the same
+	## property TurnController._celebrate_and_advance reads.
+	class FakeLevel extends Node2D:
+		var next_scene := ""
+
+	## Minimal figure: health is all _alive() looks at.
+	class FakeFig extends Node2D:
+		var health := 100
+
+	func run() -> void:
+		var failures: Array[String] = []
+		_check_scenes(failures)
+		_check_chain(failures)
+		await _check_win_flow(failures)
+
+		if failures.is_empty():
+			print("ISSUE614 OK: finish removed, real-win celebration + advance")
+		else:
+			for f in failures:
+				print("ISSUE614 FAIL: " + f)
+		done.emit(failures.is_empty())
+
+	func _check_scenes(failures: Array[String]) -> void:
+		var dir := DirAccess.open("res://scenes/levels")
+		if dir == null:
+			failures.append("cannot open res://scenes/levels")
+			return
+		dir.list_dir_begin()
+		var name := dir.get_next()
+		while name != "":
+			if name.ends_with(".tscn"):
+				var path := "res://scenes/levels/" + name
+				var text := FileAccess.get_file_as_string(path)
+				if "LevelFinish" in text or 'name="Finish"' in text \
+						or "RectangleShape2D_finish" in text:
+					failures.append("%s still references the Finish trigger" % path)
+			name = dir.get_next()
+		# The trigger's script is gone from the project entirely.
+		if FileAccess.file_exists("res://scripts/LevelFinish.gd"):
+			failures.append("scripts/LevelFinish.gd must be deleted")
+
+	func _check_chain(failures: Array[String]) -> void:
+		var level_config := load("res://scripts/LevelConfig.gd")
+		var probe: Node2D = level_config.new()
+		var has_prop := false
+		for p in probe.get_property_list():
+			if p["name"] == "next_scene":
+				has_prop = true
+		if not has_prop:
+			failures.append("LevelConfig must expose next_scene")
+		probe.free()
+
+		# The chain the Finish nodes used to encode now lives on the roots.
+		var chain := {
+			"res://scenes/levels/Level1.tscn":
+				"res://scenes/levels/Level2.tscn",
+			"res://scenes/levels/Level2.tscn": "res://scenes/Main.tscn",
+			"res://scenes/levels/Level3.tscn": "res://scenes/Main.tscn",
+			"res://scenes/levels/Level4.tscn": "res://scenes/Main.tscn",
+			"res://scenes/levels/Level5.tscn": "res://scenes/Main.tscn",
+		}
+		for path in chain:
+			var text := FileAccess.get_file_as_string(path)
+			var expected := 'next_scene = "%s"' % chain[path]
+			if expected not in text:
+				failures.append("%s must author %s" % [path, expected])
+
+	func _check_win_flow(failures: Array[String]) -> void:
+		var tree := get_tree()
+		var old_current := tree.current_scene
+
+		# A standalone "level" with one living player figure: the enemy
+		# team died out, so the real finish condition is met.
+		var level := FakeLevel.new()
+		level.next_scene = TARGET_SCENE
+		level.name = "FakeLevel"
+		level.add_to_group("level")
+		var hero := FakeFig.new()
+		hero.add_to_group("player_team")
+		level.add_child(hero)
+		var foe := FakeFig.new()
+		foe.health = 0
+		foe.add_to_group("enemy_team")
+		level.add_child(foe)
+		tree.root.add_child(level)
+		# Let TurnController notice the level (its _process scans the
+		# "level" group) and build the HUD for the round roll.
+		for i in 5:
+			await tree.process_frame
+		TurnController._teams = ["player", "enemy"]
+		# The gate: only a scene-level level (current_scene) celebrates.
+		tree.current_scene = level
+		TurnController._check_win()
+
+		if not TurnController.game_over:
+			failures.append("one team alive must set game_over")
+		if not TurnController._win_celebrated:
+			failures.append("the win must launch the celebration flow")
+
+		# Celebration overlay (banner + confetti CanvasLayer) on the tree —
+		# its children appear a couple of frames after the win.
+		for i in 6:
+			await tree.process_frame
+		var overlay := _find_celebration(TurnController)
+		if overlay == null:
+			failures.append("the win must spawn the celebration overlay")
+
+		# ...then the advance to the authored next scene (celebration
+		# duration is 2 s; allow headless slack).
+		var advanced := false
+		for i in 400:
+			await tree.process_frame
+			# current_scene passes through null while the swap defers —
+			# wait for the NEW scene to be actually in place.
+			if tree.current_scene != null and tree.current_scene != level:
+				advanced = true
+				break
+		if not advanced:
+			failures.append("the win must advance to the next scene")
+		elif tree.current_scene.scene_file_path != TARGET_SCENE:
+			failures.append("advance target must be the authored next_scene, "
+				+ "got %s" % tree.current_scene.scene_file_path)
+
+		# Restore the test scene as current so teardown stays tidy.
+		if tree.current_scene != null and tree.current_scene != old_current:
+			tree.current_scene.queue_free()
+		if is_instance_valid(level):
+			level.queue_free()
+		tree.current_scene = old_current
+
+	func _find_celebration(root: Node) -> Node:
+		# The celebration overlay is the CanvasLayer carrying a confetti
+		# CPUParticles2D (the HUD layer has no particles).
+		var stack: Array[Node] = [root]
+		var candidate: Node = null
+		while not stack.is_empty():
+			var node: Node = stack.pop_back()
+			if node != root and node is CanvasLayer:
+				for child in node.get_children():
+					if child is CPUParticles2D:
+						candidate = node
+			for child in node.get_children():
+				stack.append(child)
+		return candidate

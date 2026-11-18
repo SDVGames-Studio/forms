@@ -54,7 +54,9 @@ extends Camera2D
 ## and zooms are the only thing that move the view.
 
 const ZOOM_STEP := 1.25
-const MIN_ZOOM := 0.25
+## Issue #619: the zoom-OUT limit went two times further (0.25 -> 0.125),
+## so the player can pull the view twice as far back. MAX_ZOOM is unchanged.
+const MIN_ZOOM := 0.125
 const MAX_ZOOM := 3.0
 
 ## Issue #289: camera types (#552 renamed both and added the third).
@@ -73,7 +75,10 @@ const ROTATION_SMOOTH := 6.0
 
 ## Issue #289: the active camera type — a static var, so every camera in
 ## the view (scene-authored plus fallbacks) shares one mode, like zoom.
-static var camera_mode := MODE_STATIC
+## Issue #617: every level now STARTS on the GLOBAL camera (the owner's
+## rework default — the free overview of the field); the switch button
+## and the C key cycle to the follow types as before.
+static var camera_mode := MODE_GLOBAL
 
 
 var _dragging := false

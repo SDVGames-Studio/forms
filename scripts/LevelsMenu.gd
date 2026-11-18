@@ -71,7 +71,7 @@ func _on_custom_level_pressed(stem: String) -> void:
 
 
 func _on_level1_pressed() -> void:
-	GameConfig.level_path = "res://scenes/levels/Level.tscn"
+	GameConfig.level_path = "res://scenes/levels/Level1.tscn"
 	get_tree().change_scene_to_file("res://scenes/menus/LevelConfigMenu.tscn")
 
 
@@ -113,12 +113,12 @@ func _unhandled_input(event: InputEvent) -> void:
 
 ## Issue #121: spectate a computer-vs-computer duel — no player team.
 func _on_duel_pressed() -> void:
-	MusicManager.play_for_level("res://scenes/levels/LevelDuel.tscn")
-	get_tree().change_scene_to_file("res://scenes/levels/LevelDuel.tscn")
+	MusicManager.play_for_level("res://scenes/levels/Level6.tscn")
+	get_tree().change_scene_to_file("res://scenes/levels/Level6.tscn")
 
 
 ## Issue #366: the same spectated computer-vs-computer duel, but with
 ## bigger teams — three AI figures per side on a wider battlefield.
 func _on_duel3_pressed() -> void:
-	MusicManager.play_for_level("res://scenes/levels/LevelDuelBig.tscn")
-	get_tree().change_scene_to_file("res://scenes/levels/LevelDuelBig.tscn")
+	MusicManager.play_for_level("res://scenes/levels/Level7.tscn")
+	get_tree().change_scene_to_file("res://scenes/levels/Level7.tscn")

@@ -45,6 +45,12 @@ var _pin := Vector2.ZERO
 
 func _ready() -> void:
 	var ok := true
+	# Issue #617: every team now defaults to the computer — this
+	# regression drives the HUMAN camera flow, so opt the hero team in
+	# as the player (the level configuration menu's choice) before the
+	# level loads.
+	GameConfig.teams = GameConfig.default_teams()
+	GameConfig.teams[0]["controller"] = "player"
 	var level: Node = load("res://scenes/levels/Level3.tscn").instantiate()
 	add_child(level)
 	for i in 30:
@@ -84,6 +90,22 @@ func _ready() -> void:
 	ok = ok and flipped
 
 	if setup_ok:
+		# Issue #617 rework v2: the defaults field THREE teams — pin the
+		# flow deterministically before charging: land on a PLAYER turn
+		# (skipping computer turns, whose "enemy:<color>" ids are not the
+		# legacy "enemy") and stretch the turn timer so no hand-over ends
+		# the charge window mid-check.
+		GameConfig.turn_time = 600.0
+		var turn_waited := 0
+		while TurnController.active_team != "player" and turn_waited < 1200:
+			_pin_member()
+			await get_tree().physics_frame
+			turn_waited += 1
+			if TurnController.active_team != "player" \
+					and TurnController.active_team != "":
+				TurnController._end_turn()
+				for i in 5:
+					await get_tree().physics_frame
 		# A charged weapon (grenade, index 2) and a live charge held for
 		# the whole check — the bar must be up from the next tick on and
 		# nothing is fired (the shoot action is never released). The level

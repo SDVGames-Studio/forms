@@ -2,8 +2,9 @@ extends Node
 ## Issue #521 (one-device multiplayer) checks:
 ##
 ## 1) CONFIG — every team carries a controller ("player"/"computer");
-##    legacy team sets without the key default by slot (first team
-##    human, the rest computer); the controller is found by team COLOR.
+##    every default (and every legacy team set without the key) plays
+##    the COMPUTER on every slot — issue #617 rework v2: the player
+##    opts a team in explicitly; the controller is found by team COLOR.
 ## 2) STAGING — GameConfig.apply deals the configured teams beyond the
 ##    first round-robin onto the kept enemy figures: each wears its
 ##    team's color/shape/name, and a team marked "player" has its
@@ -39,11 +40,11 @@ class Issue521Driver extends Node:
 
 		# --- 1) config: controller defaults + color lookup -----------
 		GameConfig.teams = GameConfig.default_teams()
-		ok = _check(ok, "hero team defaults to player",
-			GameConfig.team_controller(0) == "player")
+		ok = _check(ok, "first team defaults to computer",
+			GameConfig.team_controller(0) == "computer")
 		ok = _check(ok, "second team defaults to computer",
 			GameConfig.team_controller(1) == "computer")
-		# A legacy saved set (no controller key) sanitizes by slot.
+		# A legacy saved set (no controller key) sanitizes to computers.
 		var legacy: Array = [
 			{"label": "Old 1", "color": Color(1, 0.84, 0.2), "shape": "square",
 				"names": ["A", "B", "C"], "skill": 5, "friendly_fire": 0},
@@ -51,12 +52,13 @@ class Issue521Driver extends Node:
 				"names": ["D", "E", "F"], "skill": 5, "friendly_fire": 0},
 		]
 		GameConfig.teams = GameConfig._sanitize_teams(legacy)
-		ok = _check(ok, "legacy first team becomes player",
-			GameConfig.team_controller(0) == "player")
+		ok = _check(ok, "legacy first team becomes computer",
+			GameConfig.team_controller(0) == "computer")
 		ok = _check(ok, "legacy second team becomes computer",
 			GameConfig.team_controller(1) == "computer")
+		GameConfig.teams = GameConfig.default_teams()
 		ok = _check(ok, "controller found by color",
-			GameConfig.team_controller_for_color(Color(1, 0.84, 0.2)) == "player"
+			GameConfig.team_controller_for_color(Color(1, 0.84, 0.2)) == "computer"
 			and GameConfig.team_controller_for_color(Color(0.75, 0.2, 0.45)) == "computer")
 
 		# --- 2) staging: apply() deals the configured teams -----------

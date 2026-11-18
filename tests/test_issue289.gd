@@ -35,6 +35,15 @@ const EPS := 0.06
 
 func _ready() -> void:
 	var ok := true
+	# Issue #617: every team now defaults to the computer — this
+	# regression drives the HUMAN camera flow, so opt the hero team in
+	# as the player (the level configuration menu's choice) before the
+	# level loads.
+	GameConfig.teams = GameConfig.default_teams()
+	GameConfig.teams[0]["controller"] = "player"
+	# Pin the historic STATIC cycle start BEFORE the level builds its
+	# camera switch button (the label syncs at build time).
+	ZoomCameraScript.camera_mode = ZoomCameraScript.MODE_STATIC
 	var level: Node = load("res://scenes/levels/Level3.tscn").instantiate()
 	add_child(level)
 	for i in 30:
@@ -82,6 +91,24 @@ func _ready() -> void:
 			and member.current_gravity().dot(Vector2.UP) > 0.99
 	print("ISSUE289 frame_flipped=", frame_flipped)
 	ok = ok and frame_flipped
+
+	# Issue #617 rework v2: the defaults field THREE teams — pin the
+	# camera window deterministically: land on a PLAYER turn (skipping
+	# computer turns, whose "enemy:<color>" ids are not the legacy
+	# "enemy") and stretch the turn timer so no hand-over retargets the
+	# camera mid-ease (the ease needs the full 240-frame window).
+	GameConfig.turn_time = 600.0
+	var waited := 0.0
+	while TurnController.active_team != "player" and waited < 20.0:
+		await get_tree().physics_frame
+		waited += 1.0 / 60.0
+		if TurnController.active_team != "player" \
+				and TurnController.active_team != "":
+			TurnController._end_turn()
+			for i in 5:
+				await get_tree().physics_frame
+			waited = 0.0
+	TurnController.active_member = member
 
 	# --- 2. Static default: the view stays world-aligned anyway. ---
 	for i in 60:

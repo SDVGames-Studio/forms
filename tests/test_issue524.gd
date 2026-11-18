@@ -48,19 +48,23 @@ func _ready() -> void:
 		failures.append("default language must be English")
 
 	# --- Default teams: the classic two speak English; the #572
-	# red-star team speaks Russian, the #571 white-triangle team
-	# speaks French. Freshly added ones speak English.
+	# red-star team speaks Russian. Issue #617 rework v2 (owner
+	# 2026-11-17): the default set is THREE teams of TWO members each —
+	# the #571 French team left the defaults with the set's trim.
+	# Freshly added ones speak English.
 	GameConfig.teams = GameConfig.default_teams()
-	if GameConfig.teams.size() < 4:
-		failures.append("default set must hold 4 teams (issues #572/#571), got %d" % GameConfig.teams.size())
+	if GameConfig.teams.size() != 3:
+		failures.append("default set must hold 3 teams (#617 rework v2), got %d" % GameConfig.teams.size())
 	else:
 		for i in 2:
 			if str(GameConfig.teams[i].get("language", "")) != "English":
 				failures.append("default team %d must speak English" % i)
 		if str(GameConfig.teams[2].get("language", "")) != "Russian":
 			failures.append("default team 3 must speak Russian (issue #572)")
-		if str(GameConfig.teams[3].get("language", "")) != "French":
-			failures.append("default team 4 must speak French (issue #571)")
+		for team in GameConfig.teams:
+			if (team["names"] as Array).size() != 2 \
+					or str(team.get("controller", "")) != "computer":
+				failures.append("every default team is a 2-member computer team (#617 rework v2)")
 	var fresh: Dictionary = GameConfig._sanitize_teams([
 		{"label": "T", "color": Color(0.3, 0.8, 0.4), "shape": "circle",
 				"names": ["A"], "skill": 5, "friendly_fire": 0}])[0]

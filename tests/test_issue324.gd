@@ -21,7 +21,7 @@ const PRECISION := 5.0
 
 func _ready() -> void:
 	var ok := true
-	var level: Node = load("res://scenes/levels/Level.tscn").instantiate()
+	var level: Node = load("res://scenes/levels/Level1.tscn").instantiate()
 	add_child(level)
 	for i in 10:
 		await get_tree().physics_frame

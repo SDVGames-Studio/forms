@@ -52,13 +52,26 @@ func _key_event(code: int) -> InputEventKey:
 func _ready() -> void:
 	await get_tree().process_frame
 
-	var level: Node = load("res://scenes/levels/Level.tscn").instantiate()
+	# Issue #617: every team now defaults to the computer — this
+	# regression drives the HUMAN tool/camera flow, so opt the hero team
+	# in as the player (the level configuration menu's choice) before
+	# the level loads. A THREE-member hero side is staged — the switch
+	# CHAIN below needs a third member to hand control to (the #617
+	# rework v2 default squad is two).
+	GameConfig.teams = GameConfig.default_teams()
+	GameConfig.teams[0]["controller"] = "player"
+	(GameConfig.teams[0]["names"] as Array).resize(3)
+	(GameConfig.teams[0]["names"] as Array)[2] = "Player 3"
+	var level: Node = load("res://scenes/levels/Level1.tscn").instantiate()
 	add_child(level)
 	var waited := 0.0
+	# Skip computer turns quickly — the defaults field several computer
+	# teams with "enemy:<color>" ids, not only the legacy one.
 	while TurnController.active_team != "player" and waited < 20.0:
 		await get_tree().physics_frame
 		waited += 1.0 / 60.0
-		if TurnController.active_team == "enemy":
+		if TurnController.active_team != "player" \
+				and TurnController.active_team != "":
 			TurnController._end_turn()
 			for i in 5:
 				await get_tree().physics_frame

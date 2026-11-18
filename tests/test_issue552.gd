@@ -28,6 +28,15 @@ const EPS := 2.0
 
 func _ready() -> void:
 	var ok := true
+	# Issue #617: every team now defaults to the computer — this
+	# regression drives the HUMAN camera flow, so opt the hero team in
+	# as the player (the level configuration menu's choice) before the
+	# level loads.
+	GameConfig.teams = GameConfig.default_teams()
+	GameConfig.teams[0]["controller"] = "player"
+	# Pin the cycle's historic STATIC start BEFORE the level builds its
+	# camera switch button (the label syncs at build time).
+	ZoomCameraScript.camera_mode = ZoomCameraScript.MODE_STATIC
 	var level: Node = load("res://scenes/levels/Level3.tscn").instantiate()
 	add_child(level)
 	for i in 30:

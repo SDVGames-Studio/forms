@@ -1,7 +1,7 @@
 [gd_scene load_steps=4 format=3]
 
 [ext_resource type="Script" path="res://addons/godot_native_rl/sync.gd" id="1_sync"]
-[ext_resource type="PackedScene" uid="uid://ceagfc4lub4ch" path="res://scenes/levels/Level.tscn" id="2_level"]
+[ext_resource type="PackedScene" uid="uid://ceagfc4lub4ch" path="res://scenes/levels/Level1.tscn" id="2_level"]
 [ext_resource type="Script" path="res://scripts/InferenceBot.gd" id="3_ibot"]
 
 [node name="InferenceScene" type="Node2D"]

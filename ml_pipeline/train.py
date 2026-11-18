@@ -100,6 +100,13 @@ from godot_rl.wrappers.stable_baselines_wrapper import StableBaselinesGodotEnv
 
 from training_metrics import DEFAULT_METRICS_EVERY, TeamDeathmatchMetricsCallback
 
+# Issue #596: below this many total timesteps the run is a smoke/plumbing
+# check (the guide's own scale: "10k = plumbing check; 500k-1M smoke run")
+# — VecNormalize statistics cannot settle that fast, so the post-training
+# normalized-stats gate downgrades to a non-fatal warning instead of exiting
+# before final_model.zip is saved.
+SMOKE_RUN_TSTEPS = 10_000
+
 # Mirrors GodotEnv._set_platform_suffix: the suffix godot-rl appends to a
 # suffix-less --env_path per platform.
 _PLATFORM_SUFFIXES = {"linux": ".x86_64", "win32": ".exe", "darwin": ".app"}
@@ -160,10 +167,18 @@ def _obs_keys(obs) -> dict:
     return dict(obs) if isinstance(obs, dict) else {"obs": obs}
 
 
-def check_normalized_stats(norm_env: VecNormalize, sample_steps: int = 64) -> None:
+def check_normalized_stats(
+    norm_env: VecNormalize, sample_steps: int = 64, hard: bool = True
+) -> None:
     """Issue #468 Definition of Done: after training, a sample batch of
     observations normalized by VecNormalize must have a mean close to 0 and
-    a standard deviation close to 1 (checked per observation key)."""
+    a standard deviation close to 1 (checked per observation key).
+
+    Issue #596: with hard=False (smoke runs, --timesteps below SMOKE_RUN_TSTEPS)
+    the unsettled statistics are reported as a warning instead of aborting —
+    a 100-step plumbing check collects ~one rollout, far too little for the
+    running mean/var to settle, and the hard exit fired BEFORE final_model.zip
+    was saved, so smoke runs could never produce their deploy artifacts."""
     obs = _obs_keys(norm_env.reset())
     batch = {key: [value] for key, value in obs.items()}
     for _ in range(sample_steps):
@@ -178,11 +193,14 @@ def check_normalized_stats(norm_env: VecNormalize, sample_steps: int = 64) -> No
         mean, std = float(stacked.mean()), float(stacked.std())
         print(f"VECNORMALIZE {key}: mean={mean:+.4f} std={std:.4f}")
         if abs(mean) > 0.5 or abs(std - 1.0) > 0.5:
-            sys.exit(
+            message = (
                 f"train.py: normalized observations for '{key}' are not ~N(0, 1) "
                 f"(mean {mean:+.4f}, std {std:.4f}); the VecNormalize running "
                 f"statistics have not settled — train longer before deploying."
             )
+            if hard:
+                sys.exit(message)
+            print(f"WARNING (smoke run, non-fatal): {message}")
 
 
 def main() -> int:
@@ -192,7 +210,7 @@ def main() -> int:
     )
     parser.add_argument(
         "--env_path",
-        default="builds/training/forms_training.x86_64",
+        default="../builds/training/forms_training.x86_64",
         help="path to the exported training executable; the platform suffix is appended if missing",
     )
     parser.add_argument(
@@ -385,7 +403,9 @@ def main() -> int:
         # Definition of Done (issue #468): prove the normalization statistics
         # are sane before saving anything — a sample batch of normalized
         # observations must be ~N(0, 1).
-        check_normalized_stats(norm_env)
+        check_normalized_stats(
+            norm_env, hard=args.timesteps >= SMOKE_RUN_TSTEPS
+        )
     finally:
         env.close()
 

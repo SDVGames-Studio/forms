@@ -6,6 +6,11 @@
 # experiment directories with TensorBoard logs + final_model.zip (issue #466)
 /builds/
 /runs/
+ml_pipeline/runs/
+ml_pipeline/logs/
+/logs/
+# Training scripts:
+stable_baselines3_example.py
 
 # Godot editor/user artifacts
 *.tmp

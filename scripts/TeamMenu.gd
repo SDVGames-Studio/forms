@@ -44,6 +44,9 @@ var in_game := false
 @onready var _team_select: OptionButton = %TeamSelect
 @onready var _add_team_button: Button = %AddTeamButton
 @onready var _editing_label: Label = %EditingLabel
+## Issue #589: the selected team's NAME is editable in place — the
+## drop-down and the "Editing:" caption follow the edit live.
+@onready var _name_edit: LineEdit = %TeamNameEdit
 @onready var _shape_picker: HBoxContainer = %ShapePicker
 @onready var _color: ColorPickerButton = %TeamColorPicker
 ## Issue #524: per-team language picker (English/Spanish/Russian/
@@ -85,6 +88,8 @@ func _ready() -> void:
 	GameConfig.load_teams()
 	_add_team_button.pressed.connect(_on_add_team_pressed)
 	_team_select.item_selected.connect(_on_team_selected)
+	# Issue #589: renaming the selected team from the menu.
+	_name_edit.text_changed.connect(_on_team_name_changed)
 	_color.color_changed.connect(_on_color_changed)
 	for language in GameConfig.LANGUAGES:
 		_language.add_item(language)
@@ -135,6 +140,9 @@ func _refresh_all() -> void:
 func _sync_controls() -> void:
 	var team := _team()
 	_editing_label.text = "Editing: %s" % team["label"]
+	# Issue #589: the name field shows the team's current name (setting
+	# .text emits no text_changed, so this cannot echo back).
+	_name_edit.text = str(team["label"])
 	_color.color = team["color"]
 	# Issue #524: the team's language — sanitized against the supported
 	# set (an old/corrupt team.cfg value shows and saves as English).
@@ -162,12 +170,28 @@ func _on_team_selected(index: int) -> void:
 	_refresh_all()
 
 
+## Issue #589: a non-empty edit renames the selected team immediately
+## (an emptied or whitespace-only field keeps the previous name — the
+## same rule as the level-config rename, #537). The drop-down entry and
+## the "Editing:" caption follow without rebuilding the whole list.
+func _on_team_name_changed(text: String) -> void:
+	var cleaned := text.strip_edges()
+	if cleaned.is_empty():
+		return
+	var team := _team()
+	team["label"] = cleaned
+	_editing_label.text = "Editing: %s" % cleaned
+	_team_select.set_item_text(_selected, cleaned)
+
+
 func _on_add_team_pressed() -> void:
 	if GameConfig.teams.size() >= GameConfig.MAX_TEAMS:
 		return
 	var count := GameConfig.teams.size() + 1
 	var names: Array[String] = []
-	for i in range(1, GameConfig.MAX_TEAM_MEMBERS + 1):
+	# Issue #617 rework v2: a fresh team fields the default squad —
+	# two members (the level default is 3 teams × 2 mates).
+	for i in range(1, GameConfig.DEFAULT_TEAM_MEMBERS + 1):
 		names.append("Member %d" % i)
 	GameConfig.teams.append({
 		"label": "Team %d" % count,

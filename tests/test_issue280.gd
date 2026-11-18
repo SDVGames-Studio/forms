@@ -1,8 +1,10 @@
 extends Node
 ## Regression check for issue #280: "View is blocked after the match in
-## the Duel level". LevelDuel authors the shared camera as a CHILD of an
-## NPC figure (BlueAI) — and Npc._die() used to queue_free() the node
-## together with its children, so when the camera's host LOST the match
+## the Duel level". The level's shared camera is hosted by a FIGURE —
+## since the uniform #617 staging it is created at runtime by
+## GameConfig and parented onto the first live figure — and Npc._die()
+## used to queue_free() the node together with its children, so when
+## the camera's host LOST the match
 ## the camera was freed with it: after the win banner the view froze —
 ## no camera, no zoom, no drag-pan, no spectating (Player._die already
 ## rescued the camera for the player team, issue #222; Npc._die now
@@ -10,8 +12,8 @@ extends Node
 ##
 ## Checks:
 ##  1. The camera in the duel really is hosted by an NPC figure.
-##  2. Kill the host with take_damage(9999) → the match ends
-##     (game_over, WINS banner, spectate hint).
+##  2. The host is left a sliver of health → the enemy AI kills it
+##     → the match ends (game_over, WINS banner, spectate hint).
 ##  3. After the death animation frees the host, the camera is STILL
 ##     alive, enabled, parented to the LEVEL (not the freed corpse) and
 ##     is a spectator camera.
@@ -22,7 +24,21 @@ extends Node
 
 func _ready() -> void:
 	var ok := true
-	var level: Node = load("res://scenes/levels/LevelDuel.tscn").instantiate()
+	# Issue #617 rework v2: the DEFAULT level fields 3 teams × 2 mates —
+	# this regression wants the classic 1v1 duel (the camera's host
+	# loses the match), staged explicitly.
+	GameConfig.teams = [
+		{"label": "Blue", "color": Color(1, 0.84, 0.2), "shape": "square",
+			"names": ["Blue"], "skill": 5, "friendly_fire": 0,
+			"controller": "computer"},
+		{"label": "Red", "color": Color(0.75, 0.2, 0.45), "shape": "circle",
+			"names": ["Red"], "skill": 5, "friendly_fire": 0,
+			"controller": "computer"},
+	]
+	GameConfig.team_size = 1
+	GameConfig.enemy_count = 1
+	GameConfig.menu_team_sizes = false
+	var level: Node = load("res://scenes/levels/Level6.tscn").instantiate()
 	add_child(level)
 	for i in 30:
 		await get_tree().physics_frame
@@ -45,16 +61,19 @@ func _ready() -> void:
 		if TurnController.active_team != "":
 			break
 
-	# --- 2. Kill the camera's host — the match ends. ---
-	TurnController.active_team = TurnController.TEAM_PLAYER
-	TurnController.active_member = host
-	host.take_damage(9999)
+	# --- 2. The camera's host LOSES the match — the match ends. ---
+	# Under the uniform #617 staging both duel figures play as computers
+	# (the old scene authored Npc bodies directly), so a forced-state
+	# kill fights the real AI turn flow. Instead the host is left a
+	# sliver of health (like test_issue121) and the enemy AI kills it
+	# for real — the original #280 scenario: the host LOST the match.
+	host.take_damage(host.get("health") - 15)
 	var over := false
-	for i in 120:
+	var elapsed := 0.0
+	while elapsed < 120.0 and not TurnController.game_over:
 		await get_tree().physics_frame
-		if TurnController.game_over:
-			over = true
-			break
+		elapsed += 1.0 / 60.0
+	over = TurnController.game_over
 	# Let the 0.25 s death tween free the corpse.
 	for i in 30:
 		await get_tree().physics_frame

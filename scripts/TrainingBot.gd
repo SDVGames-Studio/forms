@@ -8,7 +8,7 @@ extends NcnnAIController2D
 ## reward shaping, gameplay actions) are layered on in follow-up issues.
 
 const MOVE_PER_STEP := 8.0
-## Level.tscn playfield extents (ground rect 1152x448 centered at y=752).
+## Level1.tscn playfield extents (ground rect 1152x448 centered at y=752).
 const ARENA_W := 1152.0
 const ARENA_H := 752.0
 

@@ -39,16 +39,30 @@ func _camera_ok() -> bool:
 
 
 func _ready() -> void:
-	var level: Node = load("res://scenes/levels/Level.tscn").instantiate()
+	# Issue #617: every team now defaults to the computer — this
+	# regression drives the HUMAN control flow, so opt the hero team in
+	# as the player (the level configuration menu's choice) before the
+	# level loads.
+	GameConfig.teams = GameConfig.default_teams()
+	GameConfig.teams[0]["controller"] = "player"
+	# A THREE-member hero side — the Switch tool check needs a living
+	# member to hand control to after the victim dies (the #617 rework
+	# v2 default squad is two, one dies in this flow).
+	(GameConfig.teams[0]["names"] as Array).resize(3)
+	(GameConfig.teams[0]["names"] as Array)[2] = "Player 3"
+	var level: Node = load("res://scenes/levels/Level1.tscn").instantiate()
 	add_child(level)
 	for i in 30:
 		await get_tree().physics_frame
-	# Get to a player turn (skip any enemy turn quickly).
+	# Get to a player turn (skip any computer turn quickly — with the
+	# #617 rework v2 defaults a level fields SEVERAL computer teams,
+	# each with its own "enemy:<color>" id, not only the legacy one).
 	var waited := 0.0
 	while TurnController.active_team != "player" and waited < 20.0:
 		await get_tree().physics_frame
 		waited += 1.0 / 60.0
-		if TurnController.active_team == "enemy":
+		if TurnController.active_team != "player" \
+				and TurnController.active_team != "":
 			TurnController._end_turn()
 			for i in 5:
 				await get_tree().physics_frame
@@ -74,20 +88,23 @@ func _ready() -> void:
 	victim.take_damage(1000)
 	_check(victim.get("health") == 0, "victim health reached 0")
 
-	# The death must be noticed: the turn hands over to the enemy team.
+	# The death must be noticed: the turn hands over to a computer team.
 	waited = 0.0
-	while TurnController.active_team != "enemy" and waited < 3.0:
+	while TurnController.active_team == "player" and waited < 3.0:
 		await get_tree().physics_frame
 		waited += 1.0 / 60.0
-	_check(TurnController.active_team == "enemy",
-			"turn handed over to the enemy team after the death")
+	_check(TurnController.active_team != "player" \
+				and TurnController.active_team != "",
+			"turn handed over to a computer team after the death")
 
-	# Run through the enemy turn quickly until the next player turn.
+	# Run through the computer turn(s) quickly until the next player turn.
 	waited = 0.0
 	while TurnController.active_team != "player" and waited < 20.0:
 		await get_tree().physics_frame
 		waited += 1.0 / 60.0
-		if TurnController.active_team == "enemy" and not TurnController.game_over:
+		if TurnController.active_team != "player" \
+				and TurnController.active_team != "" \
+				and not TurnController.game_over:
 			TurnController._end_turn()
 			for i in 5:
 				await get_tree().physics_frame
@@ -104,6 +121,10 @@ func _ready() -> void:
 	# 3: the Switch tool hands control over on the fresh turn.
 	var switch_ok := false
 	if ctrl != null and ToolInventory.use_tool(ToolInventory.TOOL_SWITCH):
+		# Issue #306 semantics: the Switch tool ARMS; the N/P keys move
+		# control while armed. Drive the armed switch directly (the N
+		# key's path) — the change must land on another living member.
+		TeamController.switch_next()
 		await get_tree().physics_frame
 		var am = TurnController.active_member
 		switch_ok = am != null and is_instance_valid(am) \

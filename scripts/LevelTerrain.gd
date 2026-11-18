@@ -92,6 +92,41 @@ static func gravity_at(tree: SceneTree, world_pos: Vector2) -> Vector2:
 	return best_dir
 
 
+## Issue #626: is `world_pos` inside one of the level's terrain
+## masses? Exact point-in-shape math on the same authored geometry
+## gravity_at reads (physics point queries are unreliable against the
+## ground bodies' concave decomposition shapes). SpawnRegime's settle
+## pass uses this to tell a figure buried IN a mass (the field points
+## at the escape face — move with it) from one grazing the surface
+## from outside (the field pulls onto the surface — move against it).
+static func contains(tree: SceneTree, world_pos: Vector2) -> bool:
+	for source in tree.get_nodes_in_group("gravity_source"):
+		var body := source as Node2D
+		var shape_node: Node2D = body.get_node_or_null("Shape")
+		if shape_node == null:
+			continue
+		var local := body.to_local(world_pos)
+		var circle_shape := shape_node as CollisionShape2D
+		var poly_shape := shape_node as CollisionPolygon2D
+		if circle_shape != null:
+			var circle := circle_shape.shape as CircleShape2D
+			if circle != null:
+				if local.length() <= circle.radius:
+					return true
+				continue
+			var rect_shape := circle_shape.shape as RectangleShape2D
+			if rect_shape != null:
+				if Rect2(-rect_shape.size / 2.0,
+						rect_shape.size).has_point(local):
+					return true
+			continue
+		if poly_shape != null:
+			if Geometry2D.is_point_in_polygon(
+					local - poly_shape.position, poly_shape.polygon):
+				return true
+	return false
+
+
 ## Closest point to `p` on the boundary of a closed polygon (convex in
 ## practice — every slab is a rounded rect). Iterating the edges is exact
 ## for any convex shape.

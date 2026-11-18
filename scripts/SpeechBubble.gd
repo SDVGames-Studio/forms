@@ -49,6 +49,11 @@ const BORDER := 3.0
 const BUMP := 9.0
 const TRAIL := [8.0, 6.0, 4.0]
 
+## Issue #598: the render-layer constant (LINE_Z) comes from the shared
+## CharacterStats, exactly like the figure stats — one source for the
+## line-vs-HP layer contract.
+const Stats := preload("res://scripts/CharacterStats.gd")
+
 var kind: int = Kind.SPEECH
 
 ## Issue #395: the speaker this balloon belongs to while the night
@@ -67,6 +72,14 @@ var _line := ""
 ## figure, whichever canvas the bubble sits in (on the figure by day, in
 ## the CharacterLinesLayer at night) — a new line replaces the old one.
 static var _live := {}
+
+
+func _init() -> void:
+	# Issue #598: the character's line renders in front of EVERYTHING —
+	# bodies, terrain, projectiles and the HP bar (Stats.HP_Z) alike.
+	# Whichever canvas the balloon ends up in (figure child by day,
+	# CharacterLinesLayer at night), z_index lifts it above the world.
+	z_index = Stats.LINE_Z
 
 
 ## Issue #335: pop `line` above `figure` — the one door characters speak
@@ -122,7 +135,7 @@ static func speak(figure: Node, line: String, bubble_kind: int = Kind.SPEECH) ->
 func _setup(line: String) -> void:
 	name = "SpeechBubble"
 	_line = line
-	var font := ThemeDB.fallback_font
+	var font := TextFonts.text_font()
 	var text_size := font.get_multiline_string_size(_line,
 			HORIZONTAL_ALIGNMENT_CENTER, MAX_TEXT_WIDTH, FONT_SIZE)
 	var width := text_size.x + PADDING.x * 2.0
@@ -280,7 +293,9 @@ func _draw_shout() -> void:
 func _draw_text() -> void:
 	# Issue #383: the thought cloud's text sits a little lower.
 	var extra_drop := THOUGHT_TEXT_DROP if kind == Kind.THOUGHT else 0.0
-	var font := ThemeDB.fallback_font
+	# Issue #590: draw through the Arabic-capable speech font — the bare
+	# fallback font has no Arabic glyphs (tofu symbols).
+	var font := TextFonts.text_font()
 	draw_multiline_string(font, Vector2(PADDING.x, PADDING.y + TEXT_DROP + extra_drop), _line,
 			HORIZONTAL_ALIGNMENT_CENTER, size.x - PADDING.x * 2.0,
 			FONT_SIZE, -1, TEXT_COLOR)

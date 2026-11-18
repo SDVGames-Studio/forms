@@ -52,7 +52,7 @@ func _ready() -> void:
 		},
 	]
 	GameConfig.save_teams()
-	GameConfig.level_path = "res://scenes/levels/Level.tscn"
+	GameConfig.level_path = "res://scenes/levels/Level1.tscn"
 
 	var menu: Node = (load("res://scenes/menus/LevelConfigMenu.tscn") as PackedScene).instantiate()
 	add_child(menu)

@@ -17,7 +17,7 @@ extends Node
 const CHAR_WIDTH := 64.0
 const MIN_GAP := 6.0 * CHAR_WIDTH
 const LEVELS := [
-	"res://scenes/levels/Level.tscn",
+	"res://scenes/levels/Level1.tscn",
 	"res://scenes/levels/Level2.tscn",
 	"res://scenes/levels/Level3.tscn",
 	"res://scenes/levels/Level4.tscn",

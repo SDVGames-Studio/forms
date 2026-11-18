@@ -14,6 +14,11 @@ func _ready() -> void:
 	var tc := TurnController
 	var failures: Array[String] = []
 
+	# Issue #617 rework v2: the DEFAULT team set is all-computer — this
+	# regression asserts the HUMAN hero flow, so it opts the first team
+	# in as player (the level configuration menu's choice).
+	GameConfig.teams = GameConfig.default_teams()
+	GameConfig.teams[0]["controller"] = "player"
 	var player: CharacterBody2D = load("res://scripts/Player.gd").new()
 	add_child(player)
 	var red: CharacterBody2D = load("res://scripts/Npc.gd").new()

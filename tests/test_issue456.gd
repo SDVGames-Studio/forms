@@ -14,7 +14,13 @@ extends Node
 
 func _ready() -> void:
 	var ok := true
-	var level: Node = load("res://scenes/levels/Level.tscn").instantiate()
+	# Issue #617: every team now defaults to the computer — this
+	# regression drives the HUMAN tool/camera flow, so opt the hero team
+	# in as the player (the level configuration menu's choice) before
+	# the level loads.
+	GameConfig.teams = GameConfig.default_teams()
+	GameConfig.teams[0]["controller"] = "player"
+	var level: Node = load("res://scenes/levels/Level1.tscn").instantiate()
 	add_child(level)
 	for i in 60:
 		await get_tree().physics_frame

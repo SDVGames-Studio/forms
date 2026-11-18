@@ -23,6 +23,13 @@ extends Node
 ## §2.4/§2.5/§2.7/§2.8 components fire at the right moments.
 
 const BotController := preload("res://scripts/BotController.gd")
+## Issue #614: the win celebration overlay (was the Finish area's
+## animation, issue #194) — played by _check_win when the real finish
+## condition hits: exactly one team left standing.
+const CELEBRATION_SCRIPT := preload("res://scripts/Celebration.gd")
+## Issue #614: where a finished level goes when it authored no chain
+## (LevelConfig.next_scene is empty) — back to the Main menu.
+const DEFAULT_NEXT_SCENE := "res://scenes/Main.tscn"
 
 ## Issue #192: default fallback; the configured value lives in
 ## GameConfig.turn_time (level configuration menu).
@@ -64,6 +71,10 @@ var active_team := ""
 var active_member: Node2D = null
 ## True once one team eliminated the other.
 var game_over := false
+## Issue #614: the win celebration fired for the current level —
+## _check_win can be re-entered (turn resets, watchdogs), and the
+## overlay + scene advance must happen exactly once per level.
+var _win_celebrated := false
 ## Issue #364: current ROUND — one full cycle through the turn order
 ## (every team acted once). From the second round on, one random item
 ## (first aid kit / weapon / tool bundle) may appear on a random SURFACE
@@ -98,6 +109,16 @@ var _human_teams := {}
 ## CONFIGURED controller — with every team played by the computer the
 ## whole match is AI vs AI and nobody receives input.
 var _hero_is_human := true
+## Issue #617: endgame safety for the first-team roll. _scan_teams
+## rebuilds the team list from the ALIVE figures, so a team that dies
+## before the first turn begins (spawn hazards, a mid-roll kill)
+## shrinks the list below two — the roll's "scene still loading"
+## branch would then retry forever and _check_win()'s own <2 guard
+## would refuse to end the match. _saw_enemy_team distinguishes a
+## genuinely not-yet-staged level from a match whose enemy side is
+## already gone: the first ends the game instead of wedging it.
+var _saw_enemy_team := false
+var _enemy_team_wiped := false
 ## Issue #343: per-team member rotation — the member that acted a team's
 ## last turn is remembered (team id -> figure) so the team's NEXT turn
 ## begins with the NEXT member, never the same figure twice in a row.
@@ -211,7 +232,7 @@ func _process(delta: float) -> void:
 	# still be flying. queue_free()d members count as dead too (issue #85).
 	if active_member != null:
 		var hp = active_member.get("health") if is_instance_valid(active_member) else 0
-		if not (hp is int) or hp <= 0:
+		if hp == null or float(hp) <= 0.0:
 			_hand_over()
 			return
 	_turn_left = maxf(0.0, _turn_left - delta)
@@ -375,6 +396,7 @@ func _on_level_changed() -> void:
 		active_team = ""
 		active_member = null
 		game_over = false
+		_win_celebrated = false
 		_switching = false
 		_shot_serial = 0
 		_after_shot_left = 0.0
@@ -389,6 +411,17 @@ func _on_level_changed() -> void:
 		_turn_order = []
 		_last_active = {}
 		return
+	_start_round()
+
+
+func reset_game() -> void:
+	game_over = false
+	_switching = false
+	active_team = ""
+	active_member = null
+	_stall_wait = 0.0
+	_roll_wait = 0.0
+	_switch_wait = 0.0
 	_start_round()
 
 
@@ -434,6 +467,15 @@ func _scan_teams() -> void:
 			seen[c] = true
 			enemy_colors.append(c)
 	var single := enemy_colors.size() == 1
+	# Issue #617: remember whether an enemy side was ever seen alive —
+	# a later scan finding NONE (after one was seen) means it died
+	# before play began: the match must END, not wait for a staging that
+	# already happened.
+	if enemy_colors.is_empty():
+		if _saw_enemy_team:
+			_enemy_team_wiped = true
+	else:
+		_saw_enemy_team = true
 	for c in enemy_colors:
 		var id := TEAM_ENEMY if single else "enemy:%s" % c.to_html()
 		_color_to_id[c] = id
@@ -480,7 +522,13 @@ func _next_member(team: String, members: Array) -> Node:
 				controllable.append(member)
 		if not controllable.is_empty():
 			members = controllable
-	var last: Node = _last_active.get(team)
+	# Issue #597: a remembered member that has since DIED and been freed
+	# aborts this whole turn-start path when the dangling reference is
+	# assigned into the typed `Node` variable — "Trying to assign invalid
+	# previously freed instance" — leaving the turn started but broken
+	# (the crash-class wedges of the #597 report). Keep the read untyped
+	# and validity-check before it is used.
+	var last = _last_active.get(team)
 	var index := -1
 	if last != null and is_instance_valid(last):
 		index = members.find(last)
@@ -511,7 +559,10 @@ func _next_alive_team() -> String:
 
 func _start_round() -> void:
 	game_over = false
+	_win_celebrated = false
 	_switching = false
+	_saw_enemy_team = false
+	_enemy_team_wiped = false
 	# A fresh round must never inherit a wedged transition (issue #85).
 	_stall_wait = 0.0
 	# Issue #364: a fresh game starts at round 1 — items drop from round 2.
@@ -597,6 +648,23 @@ func _finish_roll() -> void:
 	# the roll is done; the flag itself must never block recovery.
 	if active_team != "" or _level == null or game_over:
 		return
+
+	# Если нашли меньше 2 команд, значит сцена еще не прогрузилась (боты не добавились в дерево)
+	if _teams.size() < 2:
+		_scan_teams()
+		if _teams.size() < 2:
+			# Issue #617: the enemy side was SEEN alive before and is gone
+			# now — it died during the roll. This is the END of the match,
+			# not a slow load: end it (the surviving team wins, or a draw
+			# when nobody is left) instead of retrying forever.
+			if _enemy_team_wiped:
+				_check_win()
+				return
+			# Ждем 0.1 секунды и пробуем снова
+			_roll_wait = 0.0
+			get_tree().create_timer(0.1).timeout.connect(_finish_roll)
+			return
+
 	_roll_wait = 0.0
 	_turn_index = 0
 	var first: String = _turn_order[0] if not _turn_order.is_empty() \
@@ -753,7 +821,7 @@ func _alive(group: String) -> Array:
 		if not is_instance_valid(member):
 			continue
 		var hp = member.get("health")
-		if hp is int and hp > 0:
+		if hp != null and float(hp) > 0.0:
 			result.append(member)
 	return result
 
@@ -796,6 +864,12 @@ func _team_name(team: String) -> String:
 
 
 func _check_win() -> void:
+	# Issue #617: the <2 guard means "enemies not staged YET" — except
+	# when an enemy side was already seen alive and has since died (the
+	# _enemy_team_wiped endgame path): then the match must end.
+	if _teams.size() < 2 and not _enemy_team_wiped:
+		return
+
 	# Issue #191: the game ends when at most one TEAM (by id) is alive.
 	var alive_teams: Array[String] = []
 	for id in _teams:
@@ -834,8 +908,39 @@ func _check_win() -> void:
 		if is_instance_valid(camera):
 			camera.enabled = true
 	if _hint_label != null:
-		_hint_label.text = HINT_SPECTATE
+			_hint_label.text = HINT_SPECTATE
 	_update_controls_visibility()
+	# Issue #614: the Finish trigger area is GONE — the level's real
+	# finish (one team left standing) now plays the celebration overlay
+	# and then advances to the level's authored next scene (LevelConfig.
+	# next_scene, Main menu fallback). A DRAW (nobody left) keeps the
+	# plain spectate ending above — there is no winner to celebrate.
+	# The gate on current_scene keeps bot environments out: eval_match
+	# and the training scene instance their levels UNDER a driver scene,
+	# and their episodes must end on their own flow, not a scene change.
+	if alive_teams.size() == 1 and not _win_celebrated \
+				and get_tree().current_scene == _level:
+		_win_celebrated = true
+		_celebrate_and_advance()
+
+
+## Issue #614: the finish sequence that replaced the Finish trigger
+## area — celebration overlay first (the same animation the trigger
+## used, issue #194), then the level's next scene with its own music
+## (issue #463 — play_for_level stops on menu paths).
+func _celebrate_and_advance() -> void:
+	var next: String = String(_level.get("next_scene"))
+	if next.is_empty():
+		next = DEFAULT_NEXT_SCENE
+	var celebration: CanvasLayer = CELEBRATION_SCRIPT.new()
+	add_child(celebration)
+	await celebration.finished
+	# The player may quit to the menu while the overlay plays — the
+	# advance only fires while the finished level is still on screen.
+	if not is_instance_valid(_level) or get_tree().current_scene != _level:
+		return
+	MusicManager.play_for_level(next)
+	get_tree().change_scene_to_file(next)
 
 
 func _build_ui() -> void:

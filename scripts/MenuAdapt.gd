@@ -94,27 +94,99 @@ static func _apply_at(root: Control, layout: MarginContainer,
 	if columns != null:
 		columns.add_theme_constant_override("separation",
 			separation(width))
+	# Nav buttons only exist on the screens with a Nav column
+	# (TeamMenu/HotkeysMenu use their own grids — untouched). Issue #622:
+	# the pass also descends into a ScrollContainer directly under Nav
+	# (LevelsMenu wraps its list) so those buttons adapt too.
+	var nav := layout.get_node_or_null("Columns/Nav") as VBoxContainer
+	if nav != null:
+		var button_width := nav_width(width)
+		for child in nav.get_children():
+			_apply_nav_width(child, button_width)
 	var brand := layout.get_node_or_null(
 		"Columns/Brand") as VBoxContainer
 	if brand != null:
+		# Issue #622: the title must FIT. The authored font size is the
+		# maximum (never enlarged past the scene's design); the size then
+		# steps down until the text fits the width budget left for the
+		# brand column by the margins, the column gap and the other
+		# columns' minimum widths.
 		var title := brand.get_node_or_null("Title") as Label
 		if title != null:
 			title.add_theme_font_size_override("font_size",
-				title_size(width))
+				_fitting_title_size(title, columns, width, margin))
 		var subtitle := brand.get_node_or_null("Subtitle") as Control
 		if subtitle != null:
 			subtitle.visible = not compact(width)
 		var rule := brand.get_node_or_null("AccentRule") as Control
 		if rule != null:
 			rule.visible = not compact(width)
-	# Nav buttons only exist on the screens with a Nav column
-	# (TeamMenu/HotkeysMenu use their own grids — untouched).
-	var nav := layout.get_node_or_null("Columns/Nav") as VBoxContainer
-	if nav != null:
-		var button_width := nav_width(width)
-		for child in nav.get_children():
+
+
+## Issue #622: resize one nav child to the adapted button width —
+## Buttons directly, and a ScrollContainer's content recursively
+## (the wrapped list's buttons adapt like the loose ones).
+static func _apply_nav_width(child: Control, button_width: int) -> void:
+	if child is Button or child is OptionButton or child is CheckButton:
+		child.custom_minimum_size = Vector2(button_width,
+			child.custom_minimum_size.y)
+	elif child is ScrollContainer:
+		for grandchild in child.get_children():
+			_apply_nav_width(grandchild, button_width)
+	elif child is BoxContainer:
+		for grandchild in child.get_children():
+			_apply_nav_width(grandchild, button_width)
+
+
+## Issue #622: the largest title size that both respects the width
+## class cap (and the scene's authored size — the adaptation never
+## ENLARGES a title past its authored design) and fits the brand
+## column's width budget. The title also clips as a last-resort
+## guardrail (a pathological screen can never push items off-screen
+## again). Floor: 32 px.
+static func _fitting_title_size(title: Label, columns: BoxContainer,
+		width: float, margin: int) -> int:
+	title.clip_text = true
+	var cap := title_size(width)
+	var authored := _authored_title_size(title)
+	if authored > 0:
+		cap = mini(cap, authored)
+	# Below the compact boundary the M4 spec table is authoritative
+	# (that fixed design is what test_menu_adaptation asserts); the
+	# #622 budget fit guards the REAL canvas classes.
+	if width < 800.0:
+		return cap
+	var budget := width - 2.0 * margin
+	if columns != null:
+		var sep: float = columns.get_theme_constant("separation")
+		var others := columns.get_child_count() - 1
+		budget -= sep * others
+		for child in columns.get_children():
+			if child == title.get_parent():
+				continue
 			var control := child as Control
-			if control is Button or control is OptionButton \
-					or control is CheckButton:
-				control.custom_minimum_size = Vector2(button_width,
-					control.custom_minimum_size.y)
+			if control != null:
+				budget -= control.get_combined_minimum_size().x
+	var font := title.get_theme_default_font()
+	if font == null:
+		return cap
+	for size in [96, 72, 56, 48, 40, 32]:
+		if size > cap:
+			continue
+		if font.get_string_size(title.text,
+				HORIZONTAL_ALIGNMENT_LEFT, -1, size).x <= budget:
+			return size
+	return 32
+
+
+## The title's AUTHORED font size, snapshotted once — later adaptation
+## passes must not read their own override as the authored design.
+## -1 = no authored override.
+static func _authored_title_size(title: Label) -> int:
+	if title.has_meta("menu_adapt_title_authored"):
+		return int(title.get_meta("menu_adapt_title_authored"))
+	var authored := -1
+	if title.has_theme_font_size_override("font_size"):
+		authored = maxi(1, title.get_theme_font_size("font_size"))
+	title.set_meta("menu_adapt_title_authored", authored)
+	return authored

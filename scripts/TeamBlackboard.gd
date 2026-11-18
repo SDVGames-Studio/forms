@@ -84,9 +84,15 @@ static func update_team(team_id: String, allies: Array, enemies: Array) -> void:
 ## with only its team id, holding no reference to any other bot.
 static func get_focus_target(team_id: String) -> Node2D:
 	var focus = _record(team_id).get(FOCUS_TARGET)
-	if focus is Node2D and is_instance_valid(focus):
-		return focus
-	return null
+	# Issue #597: a freed focus target (the figure died since the board's
+	# last update) made `focus is Node2D` itself a script error — "Left
+	# operand of 'is' is a previously freed instance" — that aborted
+	# Npc._nearest_opponent on EVERY physics frame of every bot reading
+	# the board, an error storm that read as a crash mid-match. Validity
+	# is checked BEFORE the type test; the cast is safe afterwards.
+	if focus == null or not is_instance_valid(focus):
+		return null
+	return focus as Node2D
 
 
 ## Issue #446: average HP over the team's LIVING allies (0.0 with none).

@@ -12,7 +12,22 @@ var _blue_was_active := false
 
 
 func _ready() -> void:
-	var level: Node = load("res://scenes/levels/LevelDuel.tscn").instantiate()
+	# Issue #617 rework v2: the DEFAULT level now fields 3 teams × 2
+	# mates — this regression wants the classic 1v1 spectate duel, so
+	# it stages it explicitly (two one-member computer teams, classic
+	# counts) instead of riding the defaults.
+	GameConfig.teams = [
+		{"label": "Blue", "color": Color(1, 0.84, 0.2), "shape": "square",
+			"names": ["Blue"], "skill": 5, "friendly_fire": 0,
+			"controller": "computer"},
+		{"label": "Red", "color": Color(0.75, 0.2, 0.45), "shape": "circle",
+			"names": ["Red"], "skill": 5, "friendly_fire": 0,
+			"controller": "computer"},
+	]
+	GameConfig.team_size = 1
+	GameConfig.enemy_count = 1
+	GameConfig.menu_team_sizes = false
+	var level: Node = load("res://scenes/levels/Level6.tscn").instantiate()
 	add_child(level)
 	# Let the scene settle (Npc._ready builds teams, roll picks a team).
 	for i in 30:
@@ -37,6 +52,11 @@ func _ready() -> void:
 		if TurnController.active_member == blue:
 			_blue_was_active = true
 	var over: bool = TurnController.game_over
+	# Issue #617: the win can land the same physics frame the fatal shot
+	# resolves — the loser's 0.25 s death tween needs a moment to free
+	# the corpse before the one-left audit.
+	for i in 60:
+		await get_tree().physics_frame
 	var one_left: bool = (is_instance_valid(blue) and not is_instance_valid(red)) \
 		or (is_instance_valid(red) and not is_instance_valid(blue))
 	var ai_played: bool = _blue_was_active

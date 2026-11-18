@@ -1,0 +1,80 @@
+[gd_scene load_steps=5 format=3 uid="uid://ceagfc4lub4ch"]
+
+[ext_resource type="Script" path="res://scripts/LevelConfig.gd" id="9_lvlcfg"]
+
+[ext_resource type="Script" path="res://scripts/IndestructibleGround.gd" id="10_indestr"]
+
+[ext_resource type="Script" path="res://scripts/DestructibleGround.gd" id="11_destr"]
+
+[ext_resource type="Script" path="res://scripts/Character.gd" id="2_char"]
+
+[node name="Level1" type="Node2D" groups=["level"]]
+script = ExtResource("9_lvlcfg")
+next_scene = "res://scenes/levels/Level2.tscn"
+
+[node name="BackgroundLayer" type="CanvasLayer" parent="."]
+layer = -100
+
+[node name="Background" type="ColorRect" parent="BackgroundLayer"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.1, 0.12, 0.2, 1)
+mouse_filter = 2
+
+[node name="Ground" type="StaticBody2D" parent="."]
+position = Vector2(576, 752)
+script = ExtResource("10_indestr")
+rect_size = Vector2(1152, 448)
+
+[node name="SoilLayer" type="StaticBody2D" parent="."]
+position = Vector2(670, 432)
+script = ExtResource("11_destr")
+rect_size = Vector2(660, 192)
+
+[node name="TrapezoidHill" type="StaticBody2D" parent="."]
+position = Vector2(760, 336)
+script = ExtResource("11_destr")
+polygon = PackedVector2Array(-120, 0, 120, 0, 60, -256, -60, -256)
+
+[node name="TriangleHill" type="StaticBody2D" parent="."]
+position = Vector2(120, 420)
+script = ExtResource("11_destr")
+polygon = PackedVector2Array(-100, 0, 100, 0, 0, -340)
+
+[node name="SoilPlatform" type="StaticBody2D" parent="."]
+position = Vector2(950, 400)
+script = ExtResource("11_destr")
+rect_size = Vector2(240, 40)
+
+[node name="Hill" type="StaticBody2D" parent="."]
+position = Vector2(120, 620)
+script = ExtResource("10_indestr")
+radius = 200.0
+
+[node name="Team1mate1" type="CharacterBody2D" parent="."]
+script = ExtResource("2_char")
+position = Vector2(500, 300)
+display_name = "Player 1"
+
+[node name="Team1mate2" type="CharacterBody2D" parent="."]
+script = ExtResource("2_char")
+position = Vector2(370, 300)
+display_name = "Player 2"
+
+[node name="Team1mate3" type="CharacterBody2D" parent="."]
+script = ExtResource("2_char")
+position = Vector2(610, 300)
+display_name = "Player 3"
+
+[node name="Team2mate1" type="CharacterBody2D" parent="."]
+script = ExtResource("2_char")
+position = Vector2(920, 300)
+display_name = "Enemy 1"
+
+[node name="Team2mate2" type="CharacterBody2D" parent="."]
+script = ExtResource("2_char")
+position = Vector2(1020, 480)
+display_name = "Enemy 2"

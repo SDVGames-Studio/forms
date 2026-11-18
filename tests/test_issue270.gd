@@ -17,12 +17,12 @@ extends Node
 ## Exit code 0 = pass.
 
 const LEVELS := [
-	preload("res://scenes/levels/Level.tscn"),
+	preload("res://scenes/levels/Level1.tscn"),
 	preload("res://scenes/levels/Level2.tscn"),
 	preload("res://scenes/levels/Level3.tscn"),
 	preload("res://scenes/levels/Level4.tscn"),
 	preload("res://scenes/levels/Level5.tscn"),
-	preload("res://scenes/levels/LevelDuel.tscn"),
+	preload("res://scenes/levels/Level6.tscn"),
 ]
 const Terrain := preload("res://scripts/LevelTerrain.gd")
 
@@ -42,7 +42,7 @@ func _ready() -> void:
 		await get_tree().physics_frame
 		await get_tree().physics_frame
 		ok = _check_level(level) and ok
-		if level.scene_file_path.ends_with("Level.tscn"):
+		if level.scene_file_path.ends_with("Level1.tscn"):
 			ok = _check_gravity(level) and ok
 		level.queue_free()
 		await get_tree().physics_frame

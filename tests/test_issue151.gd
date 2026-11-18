@@ -20,12 +20,19 @@ func _ready() -> void:
 	tc._build_ui()  # ensure the win banner exists even without a level scene
 	var failures: Array[String] = []
 
+	# Issue #617 rework v2: the DEFAULT set is all-computer — this test
+	# asserts the HUMAN hero flow, so it opts the first team in as player
+	# (exactly like the level configuration menu) and scans the teams it
+	# stages by hand.
+	GameConfig.teams = GameConfig.default_teams()
+	GameConfig.teams[0]["controller"] = "player"
 	var player: CharacterBody2D = load("res://scripts/Player.gd").new()
 	add_child(player)
 	var enemy: CharacterBody2D = load("res://scripts/Npc.gd").new()
 	add_child(enemy)
 	await get_tree().process_frame
 
+	tc._scan_teams()
 	# Both teams alive -> game keeps running.
 	tc._check_win()
 	if tc.game_over:
