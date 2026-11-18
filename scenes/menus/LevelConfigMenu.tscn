@@ -67,7 +67,7 @@ size_flags_horizontal = 3
 
 [node name="Nav" type="VBoxContainer" parent="Layout/Columns"]
 layout_mode = 2
-size_flags_vertical = 4
+size_flags_vertical = 3
 theme_override_constants/separation = 14
 
 [node name="Form" type="PanelContainer" parent="Layout/Columns/Nav"]
@@ -129,6 +129,7 @@ theme_override_font_sizes/font_size = 20
 
 [node name="TeamsPanel" type="PanelContainer" parent="Layout/Columns/Nav"]
 layout_mode = 2
+size_flags_vertical = 3
 theme_override_styles/panel = SubResource("StyleBox_teams_panel")
 
 [node name="TeamsBox" type="VBoxContainer" parent="Layout/Columns/Nav/TeamsPanel"]
