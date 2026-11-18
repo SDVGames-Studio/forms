@@ -19,6 +19,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
+      - name: Download Godot Native RL Windows binaries
+        run: |
+          set -e
+          curl -L --retry 3 -o /tmp/godot-native-rl.zip \
+            "https://github.com/minigraphx/godot-native-rl/releases/download/v0.4.0/godot-native-rl-addon-v0.4.0.zip"
+          unzip -o /tmp/godot-native-rl.zip -d /tmp/godot-native-rl
+          cp /tmp/godot-native-rl/addons/godot_native_rl/bin/libncnn_runner.windows.*.dll \
+             addons/godot_native_rl/bin/
+
       - name: Install Godot and export templates
         run: |
           set -e
