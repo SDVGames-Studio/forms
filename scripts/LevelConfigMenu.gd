@@ -383,9 +383,9 @@ func _rebuild_team_rows() -> void:
 		if i == _rename_team_index:
 			var edit := LineEdit.new()
 			edit.text = str(team["label"])
-			edit.custom_minimum_size = Vector2(64, 0)
+			edit.custom_minimum_size = Vector2(52, 0)
 			edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-			edit.add_theme_font_size_override("font_size", 16)
+			edit.add_theme_font_size_override("font_size", 14)
 			edit.select_all()
 			edit.text_submitted.connect(func(_text: String) -> void:
 				_commit_team_rename(i, edit.text))
@@ -396,8 +396,8 @@ func _rebuild_team_rows() -> void:
 		else:
 			var label := Label.new()
 			label.text = str(team["label"])
-			label.custom_minimum_size = Vector2(64, 0)
-			label.add_theme_font_size_override("font_size", 18)
+			label.custom_minimum_size = Vector2(52, 0)
+			label.add_theme_font_size_override("font_size", 15)
 			label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 			label.clip_text = true
 			label.mouse_filter = Control.MOUSE_FILTER_STOP
@@ -416,7 +416,7 @@ func _rebuild_team_rows() -> void:
 		var color: Color = team["color"] if team.get("color") is Color else Color(1, 1, 1)
 		var swatch := ColorRect.new()
 		swatch.color = color
-		swatch.custom_minimum_size = Vector2(38, 38)
+		swatch.custom_minimum_size = Vector2(30, 30)
 		# Same size and vertical CENTER in every row — a 2x8-tier row is
 		# taller, and a stretched swatch sat larger than in other rows.
 		swatch.size_flags_vertical = Control.SIZE_SHRINK_CENTER
@@ -428,8 +428,9 @@ func _rebuild_team_rows() -> void:
 		row.add_child(swatch)
 		row.add_child(_build_member_grid(team, i))
 		var controller := OptionButton.new()
-		controller.custom_minimum_size = Vector2(0, 40)
-		controller.add_theme_font_size_override("font_size", 16)
+		controller.custom_minimum_size = Vector2(0, 34)
+		controller.add_theme_font_size_override("font_size", 14)
+		controller.clip_text = true
 		if _lan:
 			# Issue #649: in the LAN lobby the per-team choice is WHO
 			# drives the team — the computer, the host, or one of the
@@ -456,8 +457,8 @@ func _rebuild_team_rows() -> void:
 		row.add_child(controller)
 		var remove := Button.new()
 		remove.text = "Remove"
-		remove.custom_minimum_size = Vector2(0, 40)
-		remove.add_theme_font_size_override("font_size", 16)
+		remove.custom_minimum_size = Vector2(0, 34)
+		remove.add_theme_font_size_override("font_size", 14)
 		# Issue #649: only the host may drop teams in the LAN lobby.
 		remove.disabled = GameConfig.teams.size() <= 2 or (_lan and not _lan_host)
 		remove.pressed.connect(func() -> void: _on_remove_team_pressed(i))
