@@ -65,6 +65,13 @@ var _hover := Vector2(-1000, -1000)
 ## Issue #632: vertices clicked so far for the multi-click shapes
 ## ("loop" / "curve") — cleared when the piece is placed.
 var _pending := PackedVector2Array()
+## Issue #633: the level's optional ground PICTURE — a background
+## image chosen in the editor (kept as its PNG bytes so level files
+## can embed it) that fills every ground piece; the kind-colored
+## outline keeps indestructible/destructible readable.
+var _pic: Texture2D = null
+var _pic_name := ""
+var _pic_png := PackedByteArray()
 
 
 func _ready() -> void:
@@ -119,6 +126,33 @@ func set_spawns(spawns: Array) -> void:
 
 func get_spawns() -> Array:
 	return _spawns.duplicate(true)
+
+
+## Issue #633: the ground picture (level-wide, both ground kinds).
+func set_ground_picture(tex: Texture2D, pic_name: String,
+		png: PackedByteArray) -> void:
+	_pic = tex
+	_pic_name = pic_name
+	_pic_png = png
+	queue_redraw()
+
+
+func clear_ground_picture() -> void:
+	_pic = null
+	_pic_name = ""
+	_pic_png = PackedByteArray()
+	queue_redraw()
+
+
+## The current ground picture as {texture, name, png}; empty when none.
+func get_ground_picture() -> Dictionary:
+	if _pic == null:
+		return {}
+	return {"texture": _pic, "name": _pic_name, "png": _pic_png}
+
+
+func has_ground_picture() -> bool:
+	return _pic != null
 
 
 func clear_all() -> void:
@@ -287,25 +321,76 @@ func _draw_piece(piece: Dictionary) -> void:
 			var rect: Rect2 = piece["rect"]
 			var center := rect.get_center()
 			var radius := minf(rect.size.x, rect.size.y) * 0.5
-			draw_circle(center, radius, Color(color, 0.85))
+			if _pic != null:
+				var disc := _disc_points(center, radius)
+				draw_polygon(disc, _fill(disc.size()),
+					_bounds_uvs(disc), _pic)
+			else:
+				draw_circle(center, radius, Color(color, 0.85))
 			draw_arc(center, radius, 0.0, TAU, 48, color, 2.0)
 		"tri":
 			var pts := triangle_polygon(piece["rect"])
-			draw_colored_polygon(pts, Color(color, 0.85))
-			_draw_outline(pts, color)
+			_draw_shape_fill(pts, color)
 		"loop":
 			var loop_pts: PackedVector2Array = piece["points"]
-			draw_colored_polygon(loop_pts, Color(color, 0.85))
-			_draw_outline(loop_pts, color)
+			_draw_shape_fill(loop_pts, color)
 		"curve":
 			var strip := curve_strip_polygon(
-				piece["points"], CURVE_THICKNESS)
-			draw_colored_polygon(strip, Color(color, 0.85))
-			_draw_outline(strip, color)
+					piece["points"], CURVE_THICKNESS)
+			_draw_shape_fill(strip, color)
 		_:
 			var rect: Rect2 = piece["rect"]
-			draw_rect(rect, Color(color, 0.85))
+			if _pic != null:
+				draw_texture_rect(_pic, rect, false)
+			else:
+				draw_rect(rect, Color(color, 0.85))
 			draw_rect(rect, color, false, 2.0)
+
+
+## Issue #633: polygon piece fill — the ground picture stretched over
+## the polygon bounds, or the translucent kind color; the kind-colored
+## outline stays in both cases.
+func _draw_shape_fill(pts: PackedVector2Array, color: Color) -> void:
+	if _pic != null:
+		draw_polygon(pts, _fill(pts.size()), _bounds_uvs(pts), _pic)
+	else:
+		draw_colored_polygon(pts, Color(color, 0.85))
+	_draw_outline(pts, color)
+
+
+## A regular polygon disc — the picture fill's geometry for circles.
+static func _disc_points(center: Vector2, radius: float) \
+		-> PackedVector2Array:
+	var pts := PackedVector2Array()
+	const SEGMENTS := 48
+	for i in SEGMENTS:
+		var a := TAU * float(i) / float(SEGMENTS)
+		pts.append(center + Vector2(cos(a), sin(a)) * radius)
+	return pts
+
+
+## White per-vertex colors for a textured draw_polygon.
+static func _fill(count: int) -> PackedColorArray:
+	var colors := PackedColorArray()
+	for i in count:
+		colors.append(Color.WHITE)
+	return colors
+
+
+## UVs mapping `points` onto a texture stretched over their bounding
+## box (zero-size axes collapse so nothing divides by zero).
+static func _bounds_uvs(points: PackedVector2Array) \
+		-> PackedVector2Array:
+	var aabb := Rect2(points[0], Vector2.ZERO)
+	for p in points:
+		aabb = aabb.expand(p)
+	var span := Vector2(
+		aabb.size.x if aabb.size.x > 0.001 else 1.0,
+		aabb.size.y if aabb.size.y > 0.001 else 1.0)
+	var uvs := PackedVector2Array()
+	for p in points:
+		uvs.append((p - aabb.position) / span)
+	return uvs
 
 
 func _draw_outline(pts: PackedVector2Array, color: Color) -> void:

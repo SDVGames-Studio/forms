@@ -242,6 +242,20 @@ layout_mode = 2
 theme_override_font_sizes/font_size = 16
 text = "DOWNLOAD"
 
+[node name="PictureButton" type="Button" parent="Layout/MainBox/FileOps"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(150, 44)
+layout_mode = 2
+theme_override_font_sizes/font_size = 16
+text = "GROUND PIC…"
+
+[node name="NoPictureButton" type="Button" parent="Layout/MainBox/FileOps"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(110, 44)
+layout_mode = 2
+theme_override_font_sizes/font_size = 16
+text = "NO PIC"
+
 [node name="StatusText" type="Label" parent="Layout/MainBox"]
 unique_name_in_owner = true
 layout_mode = 2
@@ -262,3 +276,10 @@ title = "Download the Level File"
 file_mode = 4
 access = 2
 filters = PackedStringArray("*.json ; Forms level")
+
+[node name="PictureDialog" type="FileDialog" parent="."]
+unique_name_in_owner = true
+title = "Choose the Ground Picture"
+file_mode = 0
+access = 2
+filters = PackedStringArray("*.png ; Picture", "*.jpg, *.jpeg ; Picture", "*.webp ; Picture", "*.bmp ; Picture")

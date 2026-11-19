@@ -36,6 +36,9 @@ const LEVELS_DIR := "user://levels"
 const FORMAT := "forms-level/1"
 const NAME_CHARS := \
 	"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_- "
+## Issue #633: the longest side an embedded ground picture may keep —
+## larger images are downscaled so level files stay share-sized.
+const MAX_PICTURE_SIDE := 1152
 
 @onready var _indestructible_tool: Button = %IndestructibleTool
 @onready var _destructible_tool: Button = %DestructibleTool
@@ -55,6 +58,9 @@ const NAME_CHARS := \
 @onready var _download_button: Button = %DownloadButton
 @onready var _open_dialog: FileDialog = %OpenDialog
 @onready var _save_dialog: FileDialog = %SaveDialog
+@onready var _picture_button: Button = %PictureButton
+@onready var _no_picture_button: Button = %NoPictureButton
+@onready var _picture_dialog: FileDialog = %PictureDialog
 @onready var _clear_button: Button = %ClearButton
 @onready var _back_button: Button = %BackButton
 @onready var _status_text: Label = %StatusText
@@ -97,6 +103,9 @@ func _ready() -> void:
 	_download_button.pressed.connect(_on_download_pressed)
 	_open_dialog.file_selected.connect(_on_open_dialog_selected)
 	_save_dialog.file_selected.connect(_on_save_dialog_selected)
+	_picture_button.pressed.connect(_on_picture_pressed)
+	_no_picture_button.pressed.connect(_on_no_picture_pressed)
+	_picture_dialog.file_selected.connect(_on_picture_selected)
 	_clear_button.pressed.connect(_on_clear_pressed)
 	_back_button.pressed.connect(_on_back_pressed)
 	_indestructible_tool.set_pressed_no_signal(true)
@@ -171,12 +180,21 @@ func _serialize_level(name: String) -> Dictionary:
 	for spawn in _canvas.get_spawns():
 		var pos: Vector2 = spawn
 		spawns.append({"x": pos.x, "y": pos.y})
-	return {
+	var level := {
 		"format": FORMAT,
 		"name": name,
 		"pieces": pieces,
 		"spawns": spawns,
 	}
+	# Issue #633: the ground picture travels INSIDE the level file, so
+	# downloads/loads keep it without side-car files.
+	var picture: Dictionary = _canvas.get_ground_picture()
+	if not picture.is_empty():
+		level["picture"] = {
+			"name": picture["name"],
+			"png": Marshalls.raw_to_base64(picture["png"]),
+		}
+	return level
 
 
 ## Write the current level to `path` as JSON. Returns true on success.
@@ -242,6 +260,49 @@ func _on_save_dialog_selected(path: String) -> void:
 		_set_status("downloaded %s" % path)
 
 
+## Issue #633: choose the ground PICTURE — any image the user picks is
+## decoded, downscaled to MAX_PICTURE_SIDE and embedded (as PNG) with
+## the level. It fills every ground piece of BOTH kinds on the canvas
+## and in the playable level; the kind-colored outlines stay.
+func _on_picture_pressed() -> void:
+	_picture_dialog.popup_centered(Vector2i(900, 600))
+
+
+func _on_picture_selected(path: String) -> void:
+	var image := Image.new()
+	var err := ERR_FILE_UNRECOGNIZED
+	var bytes := FileAccess.get_file_as_bytes(path)
+	match path.get_extension().to_lower():
+		"jpg", "jpeg":
+			err = image.load_jpg_from_buffer(bytes)
+		"webp":
+			err = image.load_webp_from_buffer(bytes)
+		"bmp":
+			err = image.load_bmp_from_buffer(bytes)
+		_:
+			err = image.load_png_from_buffer(bytes)
+	if err != OK or image.is_empty():
+		_set_status("cannot read picture %s" % path.get_file())
+		return
+	var longest := maxi(image.get_width(), image.get_height())
+	if longest > MAX_PICTURE_SIDE:
+		var factor := MAX_PICTURE_SIDE / float(longest)
+		image.resize(maxi(1, int(image.get_width() * factor)),
+				maxi(1, int(image.get_height() * factor)),
+			Image.INTERPOLATE_LANCZOS)
+	_canvas.set_ground_picture(ImageTexture.create_from_image(image),
+		path.get_file(), image.save_png_to_buffer())
+	_set_status("ground picture %s (%dx%d)" % [path.get_file(),
+		image.get_width(), image.get_height()])
+
+
+## Issue #633: drop the picture — ground pieces get their flat colors
+## back on the canvas and in the playable level.
+func _on_no_picture_pressed() -> void:
+	_canvas.clear_ground_picture()
+	_set_status("ground picture cleared")
+
+
 ## Load any forms level file (user://levels entry or a path from the
 ## user's filesystem). Returns true when the canvas changed.
 func _load_from_path(path: String) -> bool:
@@ -303,6 +364,7 @@ func _load_from_path(path: String) -> bool:
 			float((raw as Dictionary).get("y", 0.0))))
 	_canvas.set_pieces(pieces)
 	_canvas.set_spawns(spawns)
+	_load_ground_picture(level)
 	_current_path = path
 	var loaded_name := str(level.get("name", ""))
 	_loaded_name = loaded_name if not loaded_name.is_empty() \
@@ -310,9 +372,28 @@ func _load_from_path(path: String) -> bool:
 	_file_name_edit.text = _loaded_name
 	_refresh_file_list(path.get_file().get_basename()
 		if path.begins_with(LEVELS_DIR) else "")
-	_set_status("loaded %s (%d pieces, %d spawns)" % [
-		path.get_file(), pieces.size(), spawns.size()])
+	_set_status("loaded %s (%d pieces, %d spawns%s)" % [
+		path.get_file(), pieces.size(), spawns.size(),
+		", picture" if _canvas.has_ground_picture() else ""])
 	return true
+
+
+## Issue #633: restore the level file's embedded ground picture onto
+## the canvas; a missing/broken one quietly falls back to flat colors.
+func _load_ground_picture(level: Dictionary) -> void:
+	var raw = level.get("picture", {})
+	if typeof(raw) == TYPE_DICTIONARY:
+		var b64 := str((raw as Dictionary).get("png", ""))
+		if not b64.is_empty():
+			var image := Image.new()
+			if image.load_png_from_buffer(
+					Marshalls.base64_to_raw(b64)) == OK:
+				_canvas.set_ground_picture(
+					ImageTexture.create_from_image(image),
+					str((raw as Dictionary).get("name", "picture")),
+					Marshalls.base64_to_raw(b64))
+				return
+	_canvas.clear_ground_picture()
 
 
 func _on_load_pressed() -> void:

@@ -4,7 +4,9 @@ extends Node
 ## #632 palette in their own group, canvas with the
 ## LevelEditorCanvas script, shared theme), tool and shape button
 ## wiring, a full save -> clear -> load JSON round-trip through
-## user://levels/ (rectangles AND every #632 shape), a CustomLevel
+## user://levels/ (rectangles AND every #632 shape), the issue #633
+## ground PICTURE (embeds in the JSON, round-trips, fills the built
+## ground and survives destructible carving), a CustomLevel
 ## build of all the shapes into playable ground, and BACK navigation
 ## to the main menu.
 ##
@@ -30,7 +32,7 @@ class LevelEditorDriver extends Node:
 	signal done(ok: bool)
 
 	## A level file authored with every #632 shape — the input for the
-	## CustomLevel build check.
+	## CustomLevel build check (issue #633: with an embedded picture).
 	func _write_shapes_level(path: String) -> void:
 		var file := FileAccess.open(path, FileAccess.WRITE)
 		file.store_string(JSON.stringify({
@@ -62,8 +64,15 @@ class LevelEditorDriver extends Node:
 			],
 			"spawns": [{"x": 200.0, "y": 200.0}, {"x": 400.0, "y": 200.0},
 				{"x": 600.0, "y": 200.0}, {"x": 800.0, "y": 200.0}],
+			"picture": {"name": "tiny.png", "png": _tiny_picture_b64()},
 		}, "  "))
 		file.close()
+
+	## Issue #633: an 8x8 PNG (base64) standing in for a chosen picture.
+	func _tiny_picture_b64() -> String:
+		var image := Image.create_empty(8, 8, false, Image.FORMAT_RGBA8)
+		image.fill(Color(0.8, 0.4, 0.2, 1.0))
+		return Marshalls.raw_to_base64(image.save_png_to_buffer())
 
 	## Emits are received by an alive node (this driver), so quit always
 	## lands — see _ready.
@@ -72,6 +81,7 @@ class LevelEditorDriver extends Node:
 
 	const TEST_NAME := "issue464_roundtrip"
 	const TEST_SHAPES := "issue632_shapes"
+	const TEST_PIC := "issue633_picture"
 	const SHAPE_TOOLS := {
 		"rect": "%RectTool", "tri": "%TriangleTool",
 		"circle": "%CircleTool", "loop": "%LoopTool",
@@ -89,7 +99,8 @@ class LevelEditorDriver extends Node:
 				"SpawnTool", "EraseTool", "RectTool", "TriangleTool",
 				"CircleTool", "LoopTool", "CurveTool", "EditorCanvas",
 				"FileNameEdit", "SaveButton", "LoadButton", "FileSelect",
-				"ClearButton", "BackButton", "StatusText"]:
+				"ClearButton", "BackButton", "StatusText",
+				"PictureButton", "NoPictureButton", "PictureDialog"]:
 			var found: Node = editor.get_node_or_null("%" + unique)
 			print("LEVELEDITOR node ", unique, " ok=", found != null)
 			ok = ok and found != null
@@ -168,7 +179,8 @@ class LevelEditorDriver extends Node:
 			var level: Dictionary = parsed
 			json_ok = str(level.get("format", "")) == "forms-level/1" \
 				and (level.get("pieces") as Array).size() == 2 \
-				and (level.get("spawns") as Array).size() == 3
+				and (level.get("spawns") as Array).size() == 3 \
+				and not level.has("picture")
 		print("LEVELEDITOR json=", json_ok)
 		ok = ok and json_ok
 
@@ -271,6 +283,56 @@ class LevelEditorDriver extends Node:
 		editor_s.queue_free()
 		DirAccess.remove_absolute(shapes_path)
 
+		# --- Issue #633: the ground picture embeds and round-trips. ---
+		var editor_p: Node = load("res://scenes/menus/LevelEditor.tscn").instantiate()
+		add_child(editor_p)
+		await get_tree().process_frame
+		var canvas_p: Control = editor_p.get_node("%EditorCanvas") as Control
+		var pic_bytes := Marshalls.base64_to_raw(_tiny_picture_b64())
+		var pic_image := Image.new()
+		pic_image.load_png_from_buffer(pic_bytes)
+		canvas_p.set_ground_picture(
+			ImageTexture.create_from_image(pic_image), "tiny.png", pic_bytes)
+		canvas_p.set_pieces([{"kind": "destructible", "shape": "rect",
+			"rect": Rect2(Vector2(256, 448), Vector2(256, 128))}])
+		(editor_p.get_node("%FileNameEdit") as LineEdit).text = TEST_PIC
+		(editor_p.get_node("%SaveButton") as Button).pressed.emit()
+		await get_tree().process_frame
+		var pic_path := "user://levels/%s.json" % TEST_PIC
+		var pic_json := false
+		var parsed_p = JSON.parse_string(
+			FileAccess.get_file_as_string(pic_path))
+		if typeof(parsed_p) == TYPE_DICTIONARY:
+			var lvlp: Dictionary = parsed_p
+			var pcp = lvlp.get("picture", {})
+			pic_json = typeof(pcp) == TYPE_DICTIONARY \
+				and str((pcp as Dictionary).get("name", "")) == "tiny.png" \
+				and str((pcp as Dictionary).get("png", "")).length() > 32
+		print("LEVELEDITOR picture_json=", pic_json)
+		ok = ok and pic_json
+		(editor_p.get_node("%NoPictureButton") as Button).pressed.emit()
+		await get_tree().process_frame
+		var no_pic: bool = not canvas_p.has_ground_picture()
+		var select_p: OptionButton = editor_p.get_node("%FileSelect")
+		var sel_p := -1
+		for i in select_p.item_count:
+			if select_p.get_item_text(i) == TEST_PIC:
+				sel_p = i
+		select_p.select(sel_p)
+		(editor_p.get_node("%LoadButton") as Button).pressed.emit()
+		await get_tree().process_frame
+		var restored: Dictionary = canvas_p.get_ground_picture()
+		var picture_roundtrip: bool = no_pic \
+			and canvas_p.has_ground_picture() \
+			and restored.get("name", "") == "tiny.png" \
+			and (restored.get("png", PackedByteArray()) \
+				as PackedByteArray) == pic_bytes \
+			and restored.get("texture", null) is Texture2D
+		print("LEVELEDITOR picture_roundtrip=", picture_roundtrip)
+		ok = ok and picture_roundtrip
+		editor_p.queue_free()
+		DirAccess.remove_absolute(pic_path)
+
 		# --- Issue #632: the shapes build PLAYABLE ground (CustomLevel).
 		_write_shapes_level("user://levels/%s.json" % TEST_SHAPES)
 		GameConfig.team_size = 3
@@ -303,6 +365,34 @@ class LevelEditorDriver extends Node:
 				"indestructible_ground").size() >= 4
 		print("LEVELEDITOR shapes_build=", built)
 		ok = ok and built
+
+		# --- Issue #633: every built ground carries the picture. ---
+		var pic_built := true
+		for g in get_tree().get_nodes_in_group("destructible_ground") \
+				+ get_tree().get_nodes_in_group("indestructible_ground"):
+			pic_built = pic_built and g.get("picture") is Texture2D
+		print("LEVELEDITOR picture_build=", pic_built)
+		ok = ok and pic_built
+
+		# --- Issue #633: a blast carves a pictured chunk — the surviving
+		# pieces keep the picture (world-continuous mapping). ---
+		var chunk: Node = null
+		for g in get_tree().get_nodes_in_group("destructible_ground"):
+			if g.get("picture") is Texture2D:
+				chunk = g
+			break
+		var carve_pic := false
+		if chunk != null:
+			chunk.apply_blast(chunk.global_position, 60.0)
+			await get_tree().process_frame
+			var carved_pic := 0
+			for g in get_tree().get_nodes_in_group("destructible_ground"):
+				if g.get("picture") is Texture2D:
+					carved_pic += 1
+			carve_pic = carved_pic >= 2
+		print("LEVELEDITOR picture_carve=", carve_pic)
+		ok = ok and carve_pic
+
 		level.queue_free()
 		await get_tree().process_frame
 		GameConfig.custom_level_name = ""

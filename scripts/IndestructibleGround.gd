@@ -48,6 +48,12 @@ const MIN_CORNER := 3.0 * Stats.BODY_SIZE
 ## slabs (#270).
 @export var polygon: PackedVector2Array
 
+## Issue #633: the optional ground PICTURE (a background image
+## chosen in the level editor, embedded in the level file) — drawn
+## as the fill of every ground form instead of the flat color; the
+## editor applies it to BOTH ground kinds. Null keeps the flat color.
+@export var picture: Texture2D
+
 ## Effective slab geometry after the issue #270 guards (slab mode only):
 ## the real size, the local y offset of the slab's centre (the thickness
 ## guard extends downward, keeping the authored top face) and the corner
@@ -94,12 +100,62 @@ func _ready() -> void:
 
 func _draw() -> void:
 	if radius > 0.0:
-		draw_circle(Vector2.ZERO, radius, COLOR)
+		if picture != null:
+			# Issue #633: the disc maps the picture over its square bounds.
+			var disc := _disc_polygon(radius)
+			draw_polygon(disc, _fill(disc.size()),
+				_bounds_uvs(disc), picture)
+		else:
+			draw_circle(Vector2.ZERO, radius, COLOR)
 	elif polygon.size() >= 3:
-		draw_colored_polygon(polygon, COLOR)
+		if picture != null:
+			draw_polygon(polygon, _fill(polygon.size()),
+				_bounds_uvs(polygon), picture)
+		else:
+			draw_colored_polygon(polygon, COLOR)
 	else:
-		draw_colored_polygon(rounded_rect_polygon(_eff_size, _corner,
-				_eff_offset), COLOR)
+		var slab := rounded_rect_polygon(_eff_size, _corner,
+				_eff_offset)
+		if picture != null:
+			draw_polygon(slab, _fill(slab.size()),
+				_bounds_uvs(slab), picture)
+		else:
+			draw_colored_polygon(slab, COLOR)
+
+
+## A regular polygon disc of `radius` — the picture fill's geometry.
+func _disc_polygon(radius: float) -> PackedVector2Array:
+	var pts := PackedVector2Array()
+	const SEGMENTS := 48
+	for i in SEGMENTS:
+		var a := TAU * float(i) / float(SEGMENTS)
+		pts.append(Vector2(cos(a), sin(a)) * radius)
+	return pts
+
+
+## White per-vertex colors for a textured draw_polygon.
+static func _fill(count: int) -> PackedColorArray:
+	var colors := PackedColorArray()
+	for i in count:
+		colors.append(Color.WHITE)
+	return colors
+
+
+## UVs mapping `points` onto a texture, stretched over the points'
+## bounding box (zero-size axes collapse to 0.5 so nothing divides
+## by zero).
+static func _bounds_uvs(points: PackedVector2Array) \
+		-> PackedVector2Array:
+	var aabb := Rect2(points[0], Vector2.ZERO)
+	for p in points:
+		aabb = aabb.expand(p)
+	var span := Vector2(
+			aabb.size.x if aabb.size.x > 0.001 else 1.0,
+			aabb.size.y if aabb.size.y > 0.001 else 1.0)
+	var uvs := PackedVector2Array()
+	for p in points:
+		uvs.append((p - aabb.position) / span)
+	return uvs
 
 
 ## Effective slab size / corner radius / centre offset after the issue
