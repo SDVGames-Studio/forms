@@ -13,6 +13,20 @@ const SPEED := 320.0
 const JUMP_VELOCITY := -560.0
 const GRAVITY := 1200.0
 
+## Issue #641: the walkable-surface rule — a figure moves on any surface
+## whose angle with the gravity vector (measured at the current point) is
+## under 135°: floors, slopes, vertical walls and overhangs up to 45° past
+## vertical; only steeper overhangs and flat ceilings stay unwalkable.
+## Expressed the way CharacterBody2D consumes it — the largest angle
+## between a surface normal and the frame's up that still counts as floor.
+const FLOOR_MAX_ANGLE := PI * 0.75
+
+## Issue #641: floor glue for walking DOWN an incline — at SPEED one
+## physics tick (60 Hz) covers ~5.3 px, so the default 1 px snap cannot
+## follow a steep surface and the figure would bounce between floor and
+## free fall downhill. 20 px keeps it attached on slopes up to ~75°.
+const FLOOR_SNAP_LENGTH := 20.0
+
 ## View/aim (issue #67/#66: both teams aim the same way).
 const VIEW_SPEED := 2.2
 const VIEW_MAX := 1.2
