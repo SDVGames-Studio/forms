@@ -132,14 +132,24 @@ is `CharacterStats.MAX_HEALTH = 100`; the [0, 1] damage fraction is
 | Frequency | per episode (terminal step only) |
 | Rationale | anchors credit assignment to the objective; the only terminal-only component — exempt from the steady-state budget in §3 |
 
+### 2.10 `weapon_saved` — conservation (upkeep)
+
+| Field | Value |
+|---|---|
+| Triggering event | the agent's own turn ends while the team's budget still holds ≥ 1 use of a scarce weapon (today: the railgun — `RAILGUN_USES = 1`; every other weapon carries five uses (`USES_PER_ITEM`) or is infinite (spear), so none is scarce) |
+| Magnitude | **+0.01** per still-unspent scarce weapon |
+| Sign | positive |
+| Frequency | per turn (own turn end) |
+| Rationale | keeps the scarce weapon's option value alive: the upkeep prices the railgun's opportunity cost, so burning it for chip damage turns net-negative across the episode while a decisive shot (§2.1 + §2.2 pay up to +0.80) always outruns hoarding — conservation, never never-firing (issue #654) |
+
 ## 3. Total expected per-step magnitude (normalization target for #436)
 
 | Situation | Sum |
 |---|---|
-| Quiet step (own turn, no combat events) | +0.02×hp survival ± 0.10·ΔΦ positioning → **\|r\| ≤ 0.12**, typically ≈ 0.02–0.06 |
-| Best non-terminal combat step | +0.30 damage cap + 0.50 kill + 0.02 + 0.10 = **+0.92** |
-| Worst non-terminal step | −0.30 friendly-fire floor − 0.05 idle − 0.05 danger = **−0.40**; with own death **−0.90** |
-| Terminal step | ±0.50 outcome on top of the above (e.g. −0.50 death − 0.50 loss = −1.00; +0.50 win + 0.50 kill ≤ +1.50) |
+| Quiet step (own turn, no combat events) | +0.02×hp survival ± 0.10·ΔΦ positioning, plus up to **+0.01** weapon_saved at the turn-end step → **\|r\| ≤ 0.13**, typically ≈ 0.02–0.06 |
+| Best non-terminal combat step | +0.30 damage cap + 0.50 kill + 0.02 + 0.10 + 0.01 weapon_saved = **+0.93** |
+| Worst non-terminal step | −0.30 friendly-fire floor − 0.05 idle − 0.05 danger, +0.01 weapon_saved if the scarce weapon is still held = **−0.40…−0.39**; with own death **−0.90** |
+| Terminal step | ±0.50 outcome on top of the above (e.g. −0.50 death − 0.50 loss = −1.00; +0.50 win + 0.50 kill + 0.01 ≤ +1.51) — terminal clipping to ±1.0 (#436) unchanged |
 
 Target for #436: **every non-terminal per-step reward is already inside
 [−1, +1] by construction** — no clipping needed outside terminal steps;
@@ -161,6 +171,7 @@ change.
 | `friendly_fire` | `event_bonus("friendly_fire", …)` | same attribution path, own-side victim (#433) |
 | `idling` | `event_bonus("idle_turn", -0.05)` | signal at turn end after command audit (#434) |
 | `danger_tile_turn_end` | `event_bonus("danger_tile_turn_end", -0.05)` | signal at turn end from the #434 tile set (TurnController → BotController) |
+| `weapon_saved` | `event_bonus("weapon_saved", 0.01)` | signal at own-turn end while the scarce weapon budget is unspent (#654; BotController reads the WeaponInventory team ledger) |
 | `episode_outcome` | `event_bonus("episode_won"/"episode_lost", ±0.5)` | signals from the episode-end handler |
 
 The four combat signals (`damage_dealt`, `enemy_killed`, `own_figure_died`,
@@ -171,7 +182,8 @@ signals/value functions are declared and emitted since #434; the
 → notify_episode_outcome → game_over()). Recipes built from this
 spec are validated against the manifest by `RewardRecipe.validate()`:
 an unemitted signal fails loud, so the spec and the code cannot drift
-apart silently.
+apart silently. The conservation signal (`weapon_saved`) is declared
+and emitted since #654.
 
 ## 5. Phase 3 review — observability & choosability (DoD)
 
@@ -190,6 +202,7 @@ an unchoosable action is noise).
 | `idling` | yes — enemy slots non-zero ⇒ "visible enemy" is derivable from obs exactly as the mask computes it | yes — `move` 0 hold / `action` 0 `IDLE` / `skip turn` 5 are always legal |
 | `danger_tile_turn_end` | **gap** — enemy positions/velocities (idx 4–23) bound the line-of-fire band, but the danger-tile set itself is env-side (#434) | yes — movement + skip turn end the turn on a chosen tile |
 | `episode_outcome` | yes — team HP distribution across all slots | n/a (termination) |
+| `weapon_saved` | **gap** — the 50-float vector carries no weapon-budget channel; the policy's proxy is its own fire history (it knows whether it fired the railgun this episode) | yes — attack index 7 (`FIRE_WEAPON_7`, the railgun slot) is always mask-legal with a visible enemy; cheaper kills (spear, shotgun) are legal too, so conserving is a real choice |
 
 **Two flagged gaps** (both already scoped to #434, recorded here so the
 review is honest): a cover/occlusion channel and a danger-tile channel

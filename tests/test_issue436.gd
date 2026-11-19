@@ -31,12 +31,14 @@ const DMG_40 := 0.15 * 0.40    # §2.1 for 40 damage
 const KILL := 0.50             # §2.2 flat
 const IDLE := -0.05            # §2.7
 const DANGER := -0.05          # §2.8
+const SAVED := 0.01            # §2.10 (#654): railgun unspent at turn end
 ## Step 1 of the representative run: survival + 40 damage − idle −
-## danger (open ground, ΔΦ = 0 shapes nothing).
-const STEP1_NET := SURVIVAL_FULL + DMG_40 + IDLE + DANGER
+## danger + weapon_saved (open ground, ΔΦ = 0 shapes nothing).
+const STEP1_NET := SURVIVAL_FULL + DMG_40 + IDLE + DANGER + SAVED
 ## Step 2: survival + the killing blow (+0.50, no damage tick under it,
-## §2.2) + the shaped Φ swing 0 → 1 when the last enemy drops.
-const STEP2_NET := SURVIVAL_FULL + KILL + 0.10
+## §2.2) + the shaped Φ swing 0 → 1 when the last enemy drops, + the
+## §2.10 upkeep (the railgun is still unspent).
+const STEP2_NET := SURVIVAL_FULL + KILL + 0.10 + SAVED
 
 
 ## Minimal figure stand-in with the real take_damage wiring (the #433
@@ -196,9 +198,9 @@ func _ready() -> void:
 	var terminal: Node2D = Bot.new()
 	terminal.position = Vector2(70000, 0)
 	add_child(terminal)
-	terminal.reward = 0.92 + 0.50  # best non-terminal step + win outcome
+	terminal.reward = 0.93 + 0.50  # §3's best non-terminal step (incl. §2.10) + win outcome
 	ok = _expect(is_equal_approx(terminal.get_reward(), 1.0),
-			"terminal +1.42 clips to +1.0, got %s" % terminal.get_reward()) and ok
+			"terminal +1.43 clips to +1.0, got %s" % terminal.get_reward()) and ok
 	terminal.reward = -0.90 - 0.50  # worst non-terminal step + loss outcome
 	ok = _expect(is_equal_approx(terminal.get_reward(), -1.0),
 			"terminal −1.40 clips to −1.0, got %s" % terminal.get_reward()) and ok

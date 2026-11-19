@@ -29,8 +29,10 @@ const Bot := preload("res://scripts/BotController.gd")
 const SURVIVAL_FULL := 0.02    # §2.4 at hp 100/100
 const FF_20 := -0.10 * 0.20    # §2.6 for 20 damage
 ## One open-ground idle turn: +0.02 survival − 0.05 idle − 0.05 danger
+## + 0.01 weapon_saved (§2.10 upkeep while the team's railgun is
+## unspent — every test figure is player_team, #654)
 ## (ΔΦ = 0 shapes nothing; the enemy is in reach with a clear line).
-const IDLE_TURN_NET := SURVIVAL_FULL - 0.05 - 0.05
+const IDLE_TURN_NET := SURVIVAL_FULL - 0.05 - 0.05 + 0.01
 
 
 ## Minimal figure stand-in with the real take_damage wiring (the #433
@@ -156,14 +158,15 @@ func _ready() -> void:
 	ok = _expect(danger_fired.n == 3, "danger_tile_turn_end emitted 3×, got %d" % danger_fired.n) and ok
 
 	# Negative control: a turn ended in COVER (the wall occludes the
-	# fire line, Φ = 1) pays neither turn-end penalty — only survival.
+	# fire line, Φ = 1) pays neither turn-end penalty — survival plus the
+	# §2.10 weapon_saved upkeep.
 	ok = _expect(is_equal_approx(cover_bot.get_tile_quality(), 1.0),
 			"cover Φ = 1 behind the wall, got %s" % cover_bot.get_tile_quality()) and ok
 	cover_bot.set_action({"move": 1, "action": 0})  # movement, not idling
 	cover_bot.on_own_turn_started()
 	cover_bot.on_own_turn_ended()
-	ok = _expect(is_equal_approx(cover_bot.reward, SURVIVAL_FULL),
-			"covered moving turn pays only survival %.2f, got %s" % [SURVIVAL_FULL, cover_bot.reward]) and ok
+	ok = _expect(is_equal_approx(cover_bot.reward, SURVIVAL_FULL + 0.01),
+			"covered moving turn pays survival + weapon_saved %.2f, got %s" % [SURVIVAL_FULL + 0.01, cover_bot.reward]) and ok
 
 	# --- §4: manifest + real signal emission --------------------------
 	var affordances: Dictionary = idle_bot.get_reward_affordances()
