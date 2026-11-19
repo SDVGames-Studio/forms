@@ -20,7 +20,7 @@ Two controllers implement the contract today:
 
 | Controller | Scene | Flat length |
 |---|---|---|
-| `BotController.gd` | battlefield levels (`Level*.tscn`) | **50** |
+| `BotController.gd` | battlefield levels (`Level*.tscn`) | **54** |
 | `TrainingBot.gd` | `training_scene.tscn` | **2** |
 
 ## Normalization policy (issue #420)
@@ -41,9 +41,11 @@ both controllers, reconstructs each full vector from world state using
 only the formulas in this file — the same construction a Python-side
 wrapper performs — and compares field by field (structure, key set,
 data types, lengths, order, and values); the sampled vectors are printed
-on pass.
+on pass. Issue #658 adds `tests/test_issue658.gd`: it drops a real
+StaticBody2D wall between two figures and asserts the enemy `los` slot
+flips 1.0 → 0.0 → 1.0 as the wall appears and disappears.
 
-## 1. `BotController.gd` — battlefield observation (50 floats)
+## 1. `BotController.gd` — battlefield observation (54 floats)
 
 **Frame (issue #419):** every positional and velocity value is expressed
 in the **agent's local frame** — the controlled figure's own coordinate
@@ -58,17 +60,18 @@ With `rotation == 0` the local frame equals the world frame (issue #381
 behavior). When no figure is bound, the controller node itself is the
 frame.
 
-Layout: `own (4) + enemies (4×5) + allies (4×5) + cooldowns (2) + team (4) = 50`,
+Layout: `own (4) + enemies (4×6) + allies (4×5) + cooldowns (2) + team (4) = 54`,
 flattened in exactly this key order: `"own"`, `"enemies"`, `"allies"`,
-`"cooldowns"`, `"team"`.
+`"cooldowns"`, `"team"`. Issue #658 appends a line-of-sight float to
+every enemy slot — ally slots keep the five classic values.
 
 | Indices | Group | Values |
 |---|---|---|
 | 0–3 | own | `hp_frac`, `shield`, `vel_x`, `vel_y` |
-| 4–23 | enemies (4 slots, nearest first) | `rel_x`, `rel_y`, `hp_frac`, `vel_x`, `vel_y` per slot |
-| 24–43 | allies (4 slots, nearest first) | same 5 values per slot |
-| 44–45 | cooldowns | `fire_frac`, `jump_frac` |
-| 46–49 | team (issue #447) | `focus_x`, `focus_y`, `team_hp`, `ally_enemy_ratio` |
+| 4–27 | enemies (4 slots, nearest first) | `rel_x`, `rel_y`, `hp_frac`, `vel_x`, `vel_y`, `los` per slot (issue #658) |
+| 28–47 | allies (4 slots, nearest first) | `rel_x`, `rel_y`, `hp_frac`, `vel_x`, `vel_y` per slot |
+| 48–49 | cooldowns | `fire_frac`, `jump_frac` |
+| 50–53 | team (issue #447) | `focus_x`, `focus_y`, `team_hp`, `ally_enemy_ratio` |
 
 ### Per-value normalization (all values pre-normalized; no raw stats leave the controller)
 
@@ -81,9 +84,10 @@ flattened in exactly this key order: `"own"`, `"enemies"`, `"allies"`,
 | `vel_x`, `vel_y` | `clampf(v_local / 320.0, -1, 1)`, `v_local = velocity.rotated(-frame.global_rotation)` (`CharacterStats.SPEED = 320.0`); applies to the `own` block too | [-1, 1] |
 | `fire_frac` | `clampf(_cooldown_left / 2.0, 0, 1)` (`FIRE_CD_MAX`, Npc.gd easy AI fire pause) | [0, 1] |
 | `jump_frac` | `clampf(_jump_left / 1.0, 0, 1)` (`JUMP_CD_MAX`, Npc.gd jump cooldown) | [0, 1] |
-| `focus_x`, `focus_y` (idx 46–47, issue #447) | `clampf(local.x / 576.0, -1, 1)`, `clampf(local.y / 376.0, -1, 1)` — `local` = `frame.to_local(focus.global_position)` of the **TeamBlackboard shared focus target** (issue #446: the living enemy nearest the ally centroid, retained while alive); `(0.0, 0.0)` while the board holds no living focus target | [-1, 1] |
-| `team_hp` (idx 48, issue #447) | `clampf(TeamBlackboard team HP average / 100, 0, 1)` — the average raw HP over the team's **living** allies (issue #446), fraction of `CharacterStats.MAX_HEALTH = 100`; `0.0` before the board's first refresh | [0, 1] |
-| `ally_enemy_ratio` (idx 49, issue #447) | `living_allies / (living_allies + living_enemies)` from the board's counts; `0.5` when both are `0` (an even, empty match stays neutral) | [0, 1] |
+| `focus_x`, `focus_y` (idx 50–51, issue #447) | `clampf(local.x / 576.0, -1, 1)`, `clampf(local.y / 376.0, -1, 1)` — `local` = `frame.to_local(focus.global_position)` of the **TeamBlackboard shared focus target** (issue #446: the living enemy nearest the ally centroid, retained while alive); `(0.0, 0.0)` while the board holds no living focus target | [-1, 1] |
+| `team_hp` (idx 52, issue #447) | `clampf(TeamBlackboard team HP average / 100, 0, 1)` — the average raw HP over the team's **living** allies (issue #446), fraction of `CharacterStats.MAX_HEALTH = 100`; `0.0` before the board's first refresh | [0, 1] |
+| `ally_enemy_ratio` (idx 53, issue #447) | `living_allies / (living_allies + living_enemies)` from the board's counts; `0.5` when both are `0` (an even, empty match stays neutral) | [0, 1] |
+| `los` (enemy slot index 9 of each 6-wide enemy block, issue #658) | `1.0` (Visible) when a physics ray from the observing figure's center to the enemy's center hits NO world geometry, `0.0` (Occluded) when terrain or a border catches it first — ray `collision_mask = 1 \| 8` (layer 1 = destructible + indestructible ground, layer 8 = borders) with EVERY figure RID excluded, so figures never occlude each other, only walls do; `1.0` when no physics world is available | {0, 1} |
 
 Position divisors 576.0 / 376.0 are the Level.tscn arena half-extents
 (playable column 1152×752), so a figure on the opposite side of the arena
@@ -96,16 +100,19 @@ maps to ≈[-1, 1] before clamping.
   own when no figure is bound). The nearest-first sort still uses plain
   world-space distance, which is frame-independent.
 - **Enemy/ally slots**: `OBS_SLOTS = 4` each, sorted nearest-first by
-  squared distance (ties broken by node name). Unused slots are padded
-  with five `0.0`s — the length is constant whatever happens on the
-  battlefield. The own figure never appears in the allies block.
+  squared distance (ties broken by node name). Unused ENEMY slots pad
+  with six `0.0`s and unused ALLY slots with five `0.0`s — the length is
+  constant whatever happens on the battlefield. The own figure never
+  appears in the allies block.
 - **Sides**: the controller fights for the side its figure is NOT in —
   a `player_team` figure observes `enemy_team` figures as enemies, and
   vice versa. Without a bound figure the default enemy-side view is
   `player_team`.
-- **Visibility**: every alive figure (`health > 0`) counts; Forms has no
-  fog or line-of-sight occlusion. `Player.gd` has no cooldown stat, so
-  its cooldown slots read 0.
+- **Visibility**: every alive figure (`health > 0`) counts as present;
+  issue #658 adds wall occlusion — the trailing `los` float of each
+  enemy slot reads `0.0` while terrain stands between the agents and
+  flips to `1.0` the moment the wall is gone (figures never occlude).
+  `Player.gd` has no cooldown stat, so its cooldown slots read 0.
 - **No-figure fallback** (all figures down/dead): the vector stays
   well-formed — `own = [1.0, 0.0, 0.0, 0.0]` (fully-healed stationary
   bot), `cooldowns = [0.0, 0.0]`, `team = [0.0, 0.0, 1.0, 0.5]` (no focus

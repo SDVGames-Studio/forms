@@ -53,10 +53,18 @@ static var _last_reset_frame: int = -1
 ## Issue #381: fixed observation layout. OBS_SLOTS enemies and OBS_SLOTS
 ## allies are reported every step — nearest first, missing figures pad
 ## with zeros — so the flat vector length never changes
-## (4 + 4*5 + 4*5 + 2 + 4 = 50 floats), whatever happens on the
-## battlefield. The trailing 4 are the issue #447 team block.
+## (4 + 4*6 + 4*5 + 2 + 4 = 54 floats), whatever happens on the
+## battlefield. Issue #658 appends a line-of-sight float to every ENEMY
+## slot (allies keep 5 features); the trailing 4 are the issue #447 team
+## block.
 const OBS_SLOTS := 4
 const FEATURES_PER_FIGURE := 5
+
+## Issue #658: world geometry that can occlude line of sight — layer 1 =
+## terrain (destructible + indestructible ground), layer 8 = borders.
+## Figures ride layers 2/8 but join the ray exclude list, so a figure
+## NEVER blocks another figure's LoS — only walls do.
+const LOS_MASK := 1 | 8
 
 ## Issue #381: normalization scales — the Level1.tscn arena half-extents
 ## (playable column 1152x752, same convention as TrainingBot.gd), so a
@@ -94,7 +102,8 @@ func get_obs() -> Dictionary:
 ## Issue #381: named observation groups, each a float Array with every
 ## value already normalized:
 ##   "own"       [hp_frac, shield, vel_x, vel_y]                 (4)
-##   "enemies"   OBS_SLOTS x [rel_x, rel_y, hp, vel_x, vel_y]   (20)
+##   "enemies"   OBS_SLOTS x [rel_x, rel_y, hp, vel_x, vel_y,
+##                            los]                              (24)
 ##   "allies"    OBS_SLOTS x [rel_x, rel_y, hp, vel_x, vel_y]   (20)
 ##   "cooldowns" [fire_frac, jump_frac]                          (2)
 ##   "team"      [focus_x, focus_y, team_hp, ally_enemy_ratio]   (4)
@@ -102,7 +111,9 @@ func get_obs() -> Dictionary:
 ## LOCAL frame (local +X = the figure's facing direction); see
 ## _local_position() / _local_velocity(). Forms has no AP stat, so the shield flag (issue #221: it blocks one
 ## hit) fills the protection slot next to HP. Every alive figure in the
-## level counts as visible — Forms has no fog or line-of-sight occlusion.
+## level counts as present; issue #658 adds per-enemy line of sight
+## (_los_visible below) — a world-geometry wall between the agents
+## occludes that enemy slot, figures themselves never do.
 func _collect_obs_parts() -> Dictionary:
 	var figure := _resolve_figure()
 	var origin: Vector2 = figure.global_position if figure != null else global_position
@@ -113,8 +124,8 @@ func _collect_obs_parts() -> Dictionary:
 	var frame: Node2D = figure if figure != null else self
 	return {
 		"own": _own_features(figure, frame),
-		"enemies": _team_features(_enemy_group(figure), origin, figure, frame),
-		"allies": _team_features(_ally_group(figure), origin, figure, frame),
+		"enemies": _team_features(_enemy_group(figure), origin, figure, frame, true),
+		"allies": _team_features(_ally_group(figure), origin, figure, frame, false),
 		"cooldowns": _cooldown_features(figure),
 		"team": _team_blackboard_features(figure, frame),
 	}
@@ -175,7 +186,11 @@ func _ally_group(figure: Node2D) -> String:
 ## `origin` stays a WORLD-space point — it only feeds the nearest-first
 ## sort (distance is frame-independent); the reported features go through
 ## the agent-local `frame` (issue #419).
-func _team_features(group_name: String, origin: Vector2, exclude: Node2D, frame: Node2D) -> Array:
+## Issue #658: `with_los` appends the line-of-sight float to every
+## reported slot — true for enemies, false for allies — and missing
+## slots pad to the same per-group width (six 0.0s vs five).
+func _team_features(group_name: String, origin: Vector2, exclude: Node2D,
+		frame: Node2D, with_los: bool) -> Array:
 	var rows: Array = []
 	var figs: Array = []
 	if is_inside_tree():
@@ -189,9 +204,9 @@ func _team_features(group_name: String, origin: Vector2, exclude: Node2D, frame:
 			return da < db)
 	for i in OBS_SLOTS:
 		if i < figs.size():
-			rows.append_array(_figure_features(figs[i], frame))
+			rows.append_array(_figure_features(figs[i], frame, with_los))
 		else:
-			for _j in FEATURES_PER_FIGURE:
+			for _j in FEATURES_PER_FIGURE + (1 if with_los else 0):
 				rows.append(0.0)
 	return rows
 
@@ -201,10 +216,49 @@ func _team_features(group_name: String, origin: Vector2, exclude: Node2D, frame:
 ## the arena half-extents, HP as a [0, 1] fraction, velocity by the shared
 ## run speed; all clamped to [-1, 1]. An enemy straight ahead reads
 ## rel_x > 0 at any agent rotation.
-func _figure_features(fig: Node2D, frame: Node2D) -> Array:
+## Issue #658: enemy slots append `los` — 1.0 (Visible) when a clear
+## world-geometry ray reaches the figure, 0.0 (Occluded) when a wall
+## stands in between; see _los_visible below.
+func _figure_features(fig: Node2D, frame: Node2D, with_los: bool) -> Array:
 	var rel := _norm_rel(_local_position(fig, frame))
 	var vel := _norm_vel(_local_velocity(fig.get("velocity"), frame))
-	return [rel.x, rel.y, _hp_frac(fig), vel.x, vel.y]
+	var rows := [rel.x, rel.y, _hp_frac(fig), vel.x, vel.y]
+	if with_los:
+		rows.append(_los_visible(frame, fig))
+	return rows
+
+## Issue #658: line of sight from the observing `frame` to `fig` — one
+## physics ray query against world geometry only (LOS_MASK = layers 1|8:
+## terrain + borders). Every figure RID joins the exclude list, so
+## figures never occlude each other: the flag answers exactly "is there
+## a WALL between us". 1.0 = Visible (ray reaches the enemy unobstructed
+## or no physics world is available), 0.0 = Occluded (terrain/border
+## caught the ray first). This is the wall-detection half of the
+## observation — the bots finally know whether shooting makes sense.
+func _los_visible(frame: Node2D, fig: Node2D) -> float:
+	if not is_inside_tree():
+		return 1.0
+	var params := PhysicsRayQueryParameters2D.create(
+		frame.global_position, fig.global_position, LOS_MASK, _figure_rids())
+	params.collide_with_bodies = true
+	params.collide_with_areas = false
+	var hit := get_world_2d().direct_space_state.intersect_ray(params)
+	return 0.0 if not hit.is_empty() else 1.0
+
+## Issue #658: RIDs of every living-field figure (both teams) — the ray
+## exclude list that keeps characters transparent to line-of-sight
+## queries. Figures ride layers 2/8 but exclusion is by object, so a
+## player body on layer 8 blocks exactly like it moves: never.
+func _figure_rids() -> Array[RID]:
+	var rids: Array[RID] = []
+	if not is_inside_tree():
+		return rids
+	for group in ["player_team", "enemy_team"]:
+		for fig in get_tree().get_nodes_in_group(group):
+			var body := fig as CollisionObject2D
+			if body != null:
+				rids.append(body.get_rid())
+	return rids
 
 ## Issue #419: world → agent-local transforms. The frame's local +X is its
 ## facing direction; positions go through Godot's to_local() (the inverse

@@ -192,7 +192,7 @@ Every rewarded event must be **observable** in `OBSERVATION_SPEC.md`
 penalized behavior must be **choosable** in `ACTION_SPEC.md` (punishing
 an unchoosable action is noise).
 
-| Component | Observable? (50-float `BotController` vector; team block since #447) | Choosable? |
+| Component | Observable? (54-float `BotController` vector; team block since #447, enemy LoS since #658) | Choosable? |
 |---|---|---|
 | `damage_dealt` / `enemy_killed` | yes — enemy slots report `hp_frac` (idx 4–23), drops are visible | yes — `attack` 1–7 (7 weapon slots), `target` 1–3, `ATTACK_ENEMY_A/B` |
 | `own_figure_died` | yes — `own.hp_frac` (idx 0) → 0, then the no-figure fallback vector | indirect — the agent avoids it via movement and cover; that is the point |
@@ -202,7 +202,7 @@ an unchoosable action is noise).
 | `idling` | yes — enemy slots non-zero ⇒ "visible enemy" is derivable from obs exactly as the mask computes it | yes — `move` 0 hold / `action` 0 `IDLE` / `skip turn` 5 are always legal |
 | `danger_tile_turn_end` | **gap** — enemy positions/velocities (idx 4–23) bound the line-of-fire band, but the danger-tile set itself is env-side (#434) | yes — movement + skip turn end the turn on a chosen tile |
 | `episode_outcome` | yes — team HP distribution across all slots | n/a (termination) |
-| `weapon_saved` | **gap** — the 50-float vector carries no weapon-budget channel; the policy's proxy is its own fire history (it knows whether it fired the railgun this episode) | yes — attack index 7 (`FIRE_WEAPON_7`, the railgun slot) is always mask-legal with a visible enemy; cheaper kills (spear, shotgun) are legal too, so conserving is a real choice |
+| `weapon_saved` | **gap** — the 54-float vector carries no weapon-budget channel; the policy's proxy is its own fire history (it knows whether it fired the railgun this episode) | yes — attack index 7 (`FIRE_WEAPON_7`, the railgun slot) is always mask-legal with a visible enemy; cheaper kills (spear, shotgun) are legal too, so conserving is a real choice |
 
 **Two flagged gaps** (both already scoped to #434, recorded here so the
 review is honest): a cover/occlusion channel and a danger-tile channel

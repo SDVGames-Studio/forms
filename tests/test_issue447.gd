@@ -1,10 +1,10 @@
 extends Node
 ## Regression check for issue #447: the battlefield observation vector
-## carries a trailing TEAM block (indices 46-49) sourced from the
+## carries a trailing TEAM block (indices 50-53) sourced from the
 ## TeamBlackboard (issue #446) — the shared focus target's relative
 ## position in the agent's local frame, the team-average HP fraction,
 ## and the living ally-to-enemy ratio. Pins the issue's Definition of
-## Done: the total dimension is 50, and the team fields CHANGE when the
+## Done: the total dimension is 54 (issue #658 los slots included), and the team fields CHANGE when the
 ## focus target changes or the team HP changes.
 ##
 ## Run headless: godot --headless res://tests/test_issue447.tscn
@@ -17,7 +17,7 @@ const BotControllerScript := preload("res://scripts/BotController.gd")
 const SPEC_HALF_W := 576.0        # focus_x divisor (arena half width)
 const SPEC_HALF_H := 376.0        # focus_y divisor (arena half height)
 const SPEC_MAX_HP := 100.0        # team_hp divisor
-const SPEC_SIZE := 50             # 4 + 4*5 + 4*5 + 2 + 4 (team block)
+const SPEC_SIZE := 54             # 4 + 4*6 + 4*5 + 2 + 4 (los + team block)
 
 ## Minimal figure stand-in: alive, teamable, positionable. Carries the
 ## `shielded` flag like every real figure (Player/Npc) — BotController's
@@ -82,7 +82,7 @@ func _expect(value, expected: float, label: String) -> void:
 	if not is_equal_approx(float(value), expected):
 		failures.append("%s must be %s, got %s" % [label, str(expected), str(value)])
 
-## The flat vector is 50 floats, all GDScript floats, and an EMPTY board
+## The flat vector is 54 floats, all GDScript floats, and an EMPTY board
 ## (episode start, before the first turn refresh) reads the documented
 ## neutral team block [0, 0, 0, 0.5] while a figure is still bound.
 func _check_dimension_and_empty_board() -> void:
@@ -93,10 +93,10 @@ func _check_dimension_and_empty_board() -> void:
 	for i in flat.size():
 		if typeof(flat[i]) != TYPE_FLOAT:
 			failures.append("obs[%d] must be a float, got %s" % [i, type_string(typeof(flat[i]))])
-	_expect(flat[46], 0.0, "empty board focus_x")
-	_expect(flat[47], 0.0, "empty board focus_y")
-	_expect(flat[48], 0.0, "empty board team_hp")
-	_expect(flat[49], 0.5, "empty board ally_enemy_ratio")
+	_expect(flat[50], 0.0, "empty board focus_x")
+	_expect(flat[51], 0.0, "empty board focus_y")
+	_expect(flat[52], 0.0, "empty board team_hp")
+	_expect(flat[53], 0.5, "empty board ally_enemy_ratio")
 
 ## Board refreshed for the acting team (exactly what TurnController does
 ## once per turn): focus = the living enemy nearest the ally centroid
@@ -107,10 +107,10 @@ func _check_team_block_values() -> void:
 	# Ally centroid is (500, 440): enemy_a (700, 400) is nearer than
 	# enemy_b (1200, 300), so the team focuses enemy_a — 300 px straight
 	# ahead of me (rotation 0: local frame = world frame).
-	_expect(flat[46], 300.0 / SPEC_HALF_W, "team focus_x = 300/576")
-	_expect(flat[47], 0.0 / SPEC_HALF_H, "team focus_y = 0")
-	_expect(flat[48], (80.0 + 60.0) / 2.0 / SPEC_MAX_HP, "team_hp = avg(80,60)/100")
-	_expect(flat[49], 2.0 / 4.0, "ally ratio = 2/(2+2)")
+	_expect(flat[50], 300.0 / SPEC_HALF_W, "team focus_x = 300/576")
+	_expect(flat[51], 0.0 / SPEC_HALF_H, "team focus_y = 0")
+	_expect(flat[52], (80.0 + 60.0) / 2.0 / SPEC_MAX_HP, "team_hp = avg(80,60)/100")
+	_expect(flat[53], 2.0 / 4.0, "ally ratio = 2/(2+2)")
 
 ## DoD: the team fields CHANGE when the focus target changes — enemy_a
 ## dies, the board reassigns the focus to enemy_b (far right and above),
@@ -120,11 +120,11 @@ func _check_focus_change_moves_fields() -> void:
 	enemy_a.health = -1
 	TeamBlackboard.update_team("player", [me, ally], [enemy_b])
 	var flat := _obs()
-	if is_equal_approx(float(flat[46]), float(before[46])) \
-			and is_equal_approx(float(flat[47]), float(before[47])):
+	if is_equal_approx(float(flat[50]), float(before[50])) \
+			and is_equal_approx(float(flat[51]), float(before[51])):
 		failures.append("focus slots must CHANGE when the focus target changes")
-	_expect(flat[46], 1.0, "new focus_x clamps to 1.0 (800/576)")
-	_expect(flat[47], -100.0 / SPEC_HALF_H, "new focus_y = -100/376")
+	_expect(flat[50], 1.0, "new focus_x clamps to 1.0 (800/576)")
+	_expect(flat[51], -100.0 / SPEC_HALF_H, "new focus_y = -100/376")
 
 ## DoD: the team fields CHANGE when the team HP changes — the ally drops
 ## to 20 HP and the team-average fraction follows avg(80,20)/100 = 0.5.
@@ -133,18 +133,18 @@ func _check_hp_change_moves_field() -> void:
 	ally.health = 20
 	TeamBlackboard.update_team("player", [me, ally], [enemy_b])
 	var flat := _obs()
-	if is_equal_approx(float(flat[48]), float(before[48])):
+	if is_equal_approx(float(flat[52]), float(before[52])):
 		failures.append("team_hp must CHANGE when the team HP changes")
-	_expect(flat[48], (80.0 + 20.0) / 2.0 / SPEC_MAX_HP, "team_hp = avg(80,20)/100")
+	_expect(flat[52], (80.0 + 20.0) / 2.0 / SPEC_MAX_HP, "team_hp = avg(80,20)/100")
 
 ## The ratio tracks the living counts: 1 ally vs 3 enemies -> 0.25.
 func _check_ratio_change() -> void:
 	ally.health = -1
 	TeamBlackboard.update_team("player", [me], [enemy_b, enemy_c, enemy_d])
 	var flat := _obs()
-	_expect(flat[49], 1.0 / 4.0, "ally ratio = 1/(1+3) after the ally dies")
+	_expect(flat[53], 1.0 / 4.0, "ally ratio = 1/(1+3) after the ally dies")
 
-## Every figure gone: the whole vector stays well-formed (50 floats) and
+## Every figure gone: the whole vector stays well-formed (54 floats) and
 ## the team block falls back to the documented neutral [0, 0, 1, 0.5].
 func _check_no_figure_fallback() -> void:
 	for fig in [me, ally, enemy_a, enemy_b, enemy_c, enemy_d]:
@@ -154,14 +154,14 @@ func _check_no_figure_fallback() -> void:
 		failures.append("no-figure fallback must keep %d floats, got %d" % [SPEC_SIZE, flat.size()])
 		return
 	_expect(flat[0], 1.0, "no-figure fallback own hp_frac")
-	_expect(flat[46], 0.0, "no-figure fallback focus_x")
-	_expect(flat[47], 0.0, "no-figure fallback focus_y")
-	_expect(flat[48], 1.0, "no-figure fallback team_hp")
-	_expect(flat[49], 0.5, "no-figure fallback ally ratio")
+	_expect(flat[50], 0.0, "no-figure fallback focus_x")
+	_expect(flat[51], 0.0, "no-figure fallback focus_y")
+	_expect(flat[52], 1.0, "no-figure fallback team_hp")
+	_expect(flat[53], 0.5, "no-figure fallback ally ratio")
 
 func _report() -> void:
 	if failures.is_empty():
-		print("ISSUE447 OK: 50-float vector with blackboard team block; focus/HP/ratio fields track the board and change with it")
+		print("ISSUE447 OK: 54-float vector with blackboard team block; focus/HP/ratio fields track the board and change with it")
 	else:
 		for f in failures:
 			print("ISSUE447 FAIL: " + f)
