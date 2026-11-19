@@ -2,7 +2,7 @@ extends Node
 ## Regression check for issue #421: OBSERVATION_SPEC.md must match the
 ## implemented get_obs() output exactly — structure (the dictionary holds
 ## exactly one "obs" key), data types (every element a GDScript float),
-## lengths (50 battlefield / 2 scaffold), order, and per-value formulas.
+## lengths (54 battlefield / 2 scaffold), order, and per-value formulas.
 ## The test drives a running episode for BOTH controllers, captures a
 ## sample observation, and reconstructs the identical vector from world
 ## state using ONLY the formulas documented in OBSERVATION_SPEC.md — the
@@ -88,7 +88,7 @@ func _spec_sorted(candidates: Array, origin: Vector2) -> Array:
 		return da < db)
 	return figs
 
-func _spec_team_block(figs: Array, frame: Node2D) -> Array:
+func _spec_team_block(figs: Array, frame: Node2D, with_los: bool) -> Array:
 	var rows: Array = []
 	for i in SPEC_SLOTS:
 		if i < figs.size():
@@ -96,13 +96,21 @@ func _spec_team_block(figs: Array, frame: Node2D) -> Array:
 			var rel := _spec_rel(frame, f)
 			var vel := _spec_vel(frame, f.velocity)
 			rows.append_array([rel.x, rel.y, _spec_hp(f), vel.x, vel.y])
+			# Issue #658: enemy slots carry the los flag. This test scene holds
+			# NO world geometry (no terrain/border bodies), so the spec ray
+			# from the agent to any living enemy hits nothing — los reads 1.0
+			# (Visible) for every populated enemy slot.
+			if with_los:
+				rows.append(1.0)
 		else:
 			rows.append_array([0.0, 0.0, 0.0, 0.0, 0.0])
+			if with_los:
+				rows.append(0.0)
 	return rows
 
 func _spec_battlefield_vector() -> Array:
-	# own (4) + enemies (4x5) + allies (4x5) + cooldowns (2) + team (4)
-	# = 50, in the spec's exact key order.
+	# own (4) + enemies (4x6, los included — issue #658) + allies (4x5)
+	# + cooldowns (2) + team (4) = 54, in the spec's exact key order.
 	var frame: Node2D = player
 	var enemies := _spec_sorted([enemy_a, enemy_b], frame.global_position)
 	var allies := _spec_sorted([ally_a], frame.global_position)
@@ -113,8 +121,8 @@ func _spec_battlefield_vector() -> Array:
 		vel.x,
 		vel.y,
 	]
-	rows.append_array(_spec_team_block(enemies, frame))
-	rows.append_array(_spec_team_block(allies, frame))
+	rows.append_array(_spec_team_block(enemies, frame, true))
+	rows.append_array(_spec_team_block(allies, frame, false))
 	rows.append(clampf(player._cooldown_left / SPEC_FIRE_CD, 0.0, 1.0))
 	rows.append(clampf(player._jump_left / SPEC_JUMP_CD, 0.0, 1.0))
 	rows.append_array(_spec_blackboard_team_block(frame))
@@ -166,7 +174,7 @@ func _compare_field_by_field(label: String, flat: Array, expected: Array) -> voi
 			failures.append("%s: obs[%d]=%s does not match the spec value %s"
 				% [label, i, str(flat[i]), str(expected[i])])
 
-## ---- battlefield episode (BotController.gd, 50 floats) ----
+## ---- battlefield episode (BotController.gd, 54 floats) ----
 
 func _check_battlefield_episode() -> void:
 	TeamBlackboard.reset_blackboard()
@@ -215,7 +223,7 @@ func _check_battlefield_episode() -> void:
 
 func _sample_battlefield(label: String) -> void:
 	var obs: Dictionary = bot.get_obs()
-	var flat := _structure_check(label, obs, 50)
+	var flat := _structure_check(label, obs, 54)
 	if flat.is_empty():
 		return
 	_compare_field_by_field(label, flat, _spec_battlefield_vector())

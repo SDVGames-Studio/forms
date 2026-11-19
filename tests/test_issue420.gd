@@ -5,7 +5,7 @@ extends Node
 ## in [-1, 1], fraction/flag slots (HP, shield, cooldowns, arena position
 ## fractions) in [0, 1], booleans as exactly 0.0/1.0. Raw world
 ## coordinates or unscaled HP values must never leave a controller.
-## Sweeps BOTH game controllers: BotController.gd (50-float battlefield
+## Sweeps BOTH game controllers: BotController.gd (54-float battlefield
 ## vector, team block since #447) and TrainingBot.gd (2-float scaffold
 ## vector, including off-arena drift).
 ##
@@ -16,8 +16,8 @@ const BotControllerScript := preload("res://scripts/BotController.gd")
 const TrainingBotScript := preload("res://scripts/TrainingBot.gd")
 
 # Layout mirrors BotController.gd (issue #381 + #447):
-# 4 + 4*5 + 4*5 + 2 + 4 = 50.
-const EXPECTED_SIZE := 50
+# 4 + 4*6 + 4*5 + 2 + 4 = 54 (issue #658 adds enemy los).
+const EXPECTED_SIZE := 54
 
 class StubFigure extends CharacterBody2D:
 	var health := 100
@@ -66,7 +66,8 @@ func _figure(side: String, at: Vector2) -> StubFigure:
 	return fig
 
 ## Documented per-slot ranges (OBSERVATION_SPEC.md): one [min, max] pair
-## per flat index — own (hp, shield, vel, vel), 8 x figure blocks
+## per flat index — own (hp, shield, vel, vel), 4 x enemy blocks
+## (rel, rel, hp, vel, vel, los — issue #658), 4 x ally blocks
 ## (rel, rel, hp, vel, vel), cooldowns (fire, jump), team (focus rel x/y,
 ## team hp, ally ratio — issue #447). Signed slots are [-1, 1],
 ## fraction/flag slots are [0, 1].
@@ -78,7 +79,10 @@ func _unsigned_range() -> Array:
 
 func _battlefield_ranges() -> Array:
 	var ranges: Array = [_unsigned_range(), _unsigned_range(), _signed_range(), _signed_range()]
-	for _block in 8:
+	# Issue #658: enemy blocks carry a 6th value — the los flag (unsigned).
+	for _block in 4:
+		ranges.append_array([_signed_range(), _signed_range(), _unsigned_range(), _signed_range(), _signed_range(), _unsigned_range()])
+	for _block in 4:
 		ranges.append_array([_signed_range(), _signed_range(), _unsigned_range(), _signed_range(), _signed_range()])
 	ranges.append_array([_unsigned_range(), _unsigned_range()])
 	# Issue #447 team block: focus rel x/y are signed, team hp fraction and
@@ -104,7 +108,7 @@ func _expect(value, expected: float, label: String) -> void:
 
 func _check_normal_state() -> void:
 	# A sane mid-battle state: everything inside the arena, sub-max speeds,
-	# mid cooldowns, one shield up — all 50 values in bounds.
+	# mid cooldowns, one shield up — all 54 values in bounds.
 	player.health = 80
 	player.shielded = true
 	player.velocity = Vector2(160, -40)
@@ -138,18 +142,18 @@ func _check_extreme_state() -> void:
 	_expect(flat[6], 1.0, "extreme: enemy hp_frac must clamp to 1.0")
 	_expect(flat[7], 1.0, "extreme: enemy vel_x must clamp to 1.0")
 	_expect(flat[8], -1.0, "extreme: enemy vel_y must clamp to -1.0")
-	_expect(flat[44], 1.0, "extreme: fire cooldown fraction must clamp to 1.0")
-	_expect(flat[45], 1.0, "extreme: jump cooldown fraction must clamp to 1.0")
+	_expect(flat[48], 1.0, "extreme: fire cooldown fraction must clamp to 1.0")
+	_expect(flat[49], 1.0, "extreme: jump cooldown fraction must clamp to 1.0")
 	# The dead (health <= 0) figure must not leak a negative hp_frac.
 	_expect(flat[6], 1.0, "extreme: nearest visible enemy slot stays in bounds with a dead figure nearby")
 	# Issue #447: the team block must clamp the same way with an extreme
 	# board — a focus target far outside the arena, team HP over max.
 	TeamBlackboard.update_team("player", [player], [enemy])
 	flat = bot.get_obs()["obs"]
-	_expect(flat[46], 1.0, "extreme: team focus_x must clamp to 1.0")
-	_expect(flat[47], -1.0, "extreme: team focus_y must clamp to -1.0")
-	_expect(flat[48], 1.0, "extreme: team_hp must clamp to 1.0 (avg 250/100)")
-	_expect(flat[49], 0.5, "extreme: ally ratio must be 1/(1+1)")
+	_expect(flat[50], 1.0, "extreme: team focus_x must clamp to 1.0")
+	_expect(flat[51], -1.0, "extreme: team focus_y must clamp to -1.0")
+	_expect(flat[52], 1.0, "extreme: team_hp must clamp to 1.0 (avg 250/100)")
+	_expect(flat[53], 0.5, "extreme: ally ratio must be 1/(1+1)")
 	TeamBlackboard.reset_blackboard()
 
 func _check_shield_flag_exact() -> void:
@@ -183,10 +187,10 @@ func _check_no_figure_fallback() -> void:
 	var fallback := [1.0, 0.0, 0.0, 0.0]
 	for i in 4:
 		_expect(flat[i], fallback[i], "no-figure fallback own[%d]" % i)
-	_expect(flat[46], 0.0, "no-figure fallback team focus_x")
-	_expect(flat[47], 0.0, "no-figure fallback team focus_y")
-	_expect(flat[48], 1.0, "no-figure fallback team_hp")
-	_expect(flat[49], 0.5, "no-figure fallback ally ratio")
+	_expect(flat[50], 0.0, "no-figure fallback team focus_x")
+	_expect(flat[51], 0.0, "no-figure fallback team focus_y")
+	_expect(flat[52], 1.0, "no-figure fallback team_hp")
+	_expect(flat[53], 0.5, "no-figure fallback ally ratio")
 
 func _training_bot(at: Vector2) -> Node2D:
 	var tb := Node2D.new()

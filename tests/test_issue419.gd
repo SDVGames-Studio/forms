@@ -13,9 +13,9 @@ extends Node
 
 const BotControllerScript := preload("res://scripts/BotController.gd")
 
-# Layout mirrors BotController.gd (issue #381 + #447):
-# 4 + 4*5 + 4*5 + 2 + 4 = 50.
-const EXPECTED_SIZE := 50
+# Layout mirrors BotController.gd (issue #381 + #447 + #658):
+# 4 + 4*6 + 4*5 + 2 + 4 = 54 (enemy slots carry the #658 los float).
+const EXPECTED_SIZE := 54
 const NORM_HALF_W := 576.0
 const VEL_NORM := 320.0
 
@@ -69,7 +69,7 @@ func _check_enemy_ahead_is_positive_forward() -> void:
 	player.rotation = PI / 2.0
 	enemy.velocity = Vector2.ZERO
 	var enemies: Array = bot.call("_collect_obs_parts")["enemies"]
-	if enemies.size() == 20:
+	if enemies.size() == 24:
 		if float(enemies[0]) <= 0.0:
 			failures.append("enemy straight ahead must report rel_x > 0, got %s" % str(enemies[0]))
 		if not is_equal_approx(float(enemies[0]), 300.0 / NORM_HALF_W):
@@ -81,7 +81,7 @@ func _check_enemy_behind_is_negative_forward() -> void:
 	player.rotation = PI / 2.0
 	enemy.global_position = Vector2(500, 200)
 	var enemies: Array = bot.call("_collect_obs_parts")["enemies"]
-	if enemies.size() == 20:
+	if enemies.size() == 24:
 		if float(enemies[0]) >= 0.0:
 			failures.append("enemy straight behind must report rel_x < 0, got %s" % str(enemies[0]))
 		if not is_equal_approx(float(enemies[0]), -300.0 / NORM_HALF_W):
@@ -95,14 +95,14 @@ func _check_velocity_rotation() -> void:
 	player.rotation = PI / 2.0
 	enemy.velocity = Vector2(0, 160)
 	var enemies: Array = bot.call("_collect_obs_parts")["enemies"]
-	if enemies.size() == 20:
+	if enemies.size() == 24:
 		if not is_equal_approx(float(enemies[3]), 0.5):
 			failures.append("forward enemy vel_x must be 0.5 (160/320), got %s" % str(enemies[3]))
 		if not is_zero_approx(float(enemies[4])):
 			failures.append("forward enemy vel_y must be 0, got %s" % str(enemies[4]))
 	enemy.velocity = Vector2(160, 0)
 	enemies = bot.call("_collect_obs_parts")["enemies"]
-	if enemies.size() == 20:
+	if enemies.size() == 24:
 		if not is_zero_approx(float(enemies[3])):
 			failures.append("lateral enemy vel_x must be 0, got %s" % str(enemies[3]))
 		if not is_equal_approx(float(enemies[4]), -0.5):
@@ -151,7 +151,7 @@ func _check_zero_rotation_matches_world_frame() -> void:
 	enemy.global_position = Vector2(1068, 500)
 	enemy.velocity = Vector2(320, 0)
 	var enemies: Array = bot.call("_collect_obs_parts")["enemies"]
-	if enemies.size() == 20:
+	if enemies.size() == 24:
 		if not is_equal_approx(float(enemies[0]), 568.0 / NORM_HALF_W):
 			failures.append("rotation-0 rel_x must equal the world frame %f, got %s" % [568.0 / NORM_HALF_W, str(enemies[0])])
 		if not is_zero_approx(float(enemies[1])):
@@ -161,7 +161,7 @@ func _check_zero_rotation_matches_world_frame() -> void:
 
 func _report() -> void:
 	if failures.is_empty():
-		print("ISSUE419 OK: observations are agent-local (facing = +X), rotation-invariant, 50-float layout intact")
+		print("ISSUE419 OK: observations are agent-local (facing = +X), rotation-invariant, 54-float layout intact")
 	else:
 		for f in failures:
 			print("ISSUE419 FAIL: " + f)

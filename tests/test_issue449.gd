@@ -25,8 +25,8 @@ const BotControllerScript := preload("res://scripts/BotController.gd")
 # values, copied — not read from BotController — so drift fails here too).
 const SPEC_HALF_W := 576.0        # focus_x divisor (arena half width)
 const SPEC_HALF_H := 376.0        # focus_y divisor (arena half height)
-const SPEC_TEAM_START := 46       # team block: [focus_x, focus_y, hp, ratio]
-const SPEC_SIZE := 50
+const SPEC_TEAM_START := 50       # team block: [focus_x, focus_y, hp, ratio] (issue #658 shifted it past the los slots)
+const SPEC_SIZE := 54
 
 ## Minimal figure stand-in: alive, teamable, positionable (the same
 ## convention as tests/test_issue446.gd — HP and position are all the
