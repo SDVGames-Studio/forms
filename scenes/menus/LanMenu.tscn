@@ -69,6 +69,13 @@ custom_minimum_size = Vector2(340, 64)
 layout_mode = 2
 text = "NEXT"
 
+[node name="NicknameEdit" type="LineEdit" parent="Layout/Columns/Nav"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(340, 48)
+layout_mode = 2
+max_length = 16
+placeholder_text = "NICKNAME"
+
 [node name="HostButton" type="Button" parent="Layout/Columns/Nav"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(340, 64)
