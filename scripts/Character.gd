@@ -145,6 +145,16 @@ func reanchor_gravity_frame() -> void:
 	FigurePose.align_to_gravity(self, grav)
 
 
+## Issue #641: the walkable-surface rule from Stats — a surface whose
+## angle with the gravity vector is under 135° counts as FLOOR, not wall,
+## so a figure walks up and down steep inclines (and jumps off them)
+## instead of grinding to a halt against the engine's default 45° limit.
+## The snap length keeps it glued to the surface while descending.
+func _enter_tree() -> void:
+	floor_max_angle = Stats.FLOOR_MAX_ANGLE
+	floor_snap_length = Stats.FLOOR_SNAP_LENGTH
+
+
 ## Issue #611: the shared figure tick — the gravity frame refresh, the
 ## fall acceleration and the slide live HERE, once, for every figure.
 ## What the figure DOES with them comes from the controller side via

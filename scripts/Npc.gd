@@ -73,6 +73,10 @@ var _shape_visual: Control
 ## once a second and otherwise stays grounded, aims and shoots.
 const JUMP_COOLDOWN := 1.0
 var _jump_left := 0.0
+## Issue #641: how long the AI has kept pushing while the achieved motion
+## along the walking tangent stayed collapsed — a vertical wall counts as
+## floor now, so is_on_wall() can't be the blocked trigger anymore.
+var _blocked_time := 0.0
 var _flank_slot := 0.0  # Per-instance offset so team members spread out.
 ## Issue #221: per-turn AI state — a tool already spent this turn's
 ## action, the "nothing useful left" watchdog and the last position used
@@ -366,10 +370,25 @@ func _control(delta: float) -> void:
 	# over once nothing useful is left.
 	if _tool_used and not _wants_retreat(distance):
 		direction = 0.0
+	# Issue #641: the achieved motion along the walking tangent BEFORE this
+	# tick's move() overwrites the velocity with fresh intent — pressing
+	# into a vertical wall zeroes it (the wall is floor for the physics
+	# now, and the slide response projects the speed into the surface),
+	# while a walkable incline keeps a cos-component of SPEED.
+	var achieved_tangent_speed := absf(velocity.dot(_aim_tangent))
+
 	# Issue #250 rework: walk in the gravity frame's tangent (see above) —
 	# the AI keeps its world-x heuristics, but the step itself follows the
 	# surface instead of launching the figure off it.
 	move(clampf(direction, -1.0, 1.0))
+
+	# Issue #641: blocked = still pushing while the achieved tangent speed
+	# stays collapsed for a beat — the perpendicular wall is floor for the
+	# physics now, so is_on_wall() alone would never wake the wall jump.
+	if direction != 0.0 and achieved_tangent_speed < _move_speed() * 0.1:
+		_blocked_time += delta
+	else:
+		_blocked_time = 0.0
 
 	# Jump when blocked or when the target is clearly above us.
 	# Issue #277 rework 2 ("the character is flying, but it must be
@@ -385,7 +404,7 @@ func _control(delta: float) -> void:
 	var target_above := (_target.global_position - global_position) \
 				.dot(_aim_grav) < -80.0
 	if _jump_left <= 0.0 and is_on_floor() \
-				and (is_on_wall() or target_above):
+				and (is_on_wall() or _blocked_time > 0.25 or target_above):
 		# Issue #202: jump must point AWAY from the floor — Character.jump.
 		if jump():
 			_jump_left = JUMP_COOLDOWN
