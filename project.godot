@@ -20,6 +20,7 @@ run/main_scene.training="res://scenes/testing/training_scene.tscn"
 [autoload]
 
 InGameMenu="*res://scripts/InGameMenu.gd"
+LanSession="*res://scripts/LanSession.gd"
 TeamController="*res://scripts/TeamController.gd"
 WeaponInventory="*res://scripts/WeaponInventory.gd"
 ToolInventory="*res://scripts/ToolInventory.gd"

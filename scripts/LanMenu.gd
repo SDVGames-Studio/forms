@@ -1,29 +1,27 @@
 extends Control
-## LAN multiplayer lobby (issue #551, step 1 of the owner's allowed
-## step-wise delivery): one player HOSTS a game, the other CONNECTS to
-## the host's address on the local network. The screen establishes and
-## shows the ENet connection between the two players; turning that
-## connection into a synchronized shared match is the next step.
+## LAN multiplayer lobby (issue #551, reworked by issue #649): one
+## player HOSTS a game, the others type the host's address and
+## CONNECT — and everyone fills a NICKNAME first (issue #649): the
+## nickname rides the connection into the shared lobby.
 ##
-## Host: starts a server on the port below and shows this machine's LAN
-## addresses to type on the other device. Join: type the host address,
-## CONNECT. Back/Esc (issue #303) always closes the connection first —
-## no peer outlives this screen.
+## The ENet peer and the player roster now live in the LanSession
+## autoload (issue #649), so the connection OUTLIVES this screen: the
+## host's NEXT — and every connected player, automatically on
+## connect — moves into the SAME level setup menu
+## (LevelConfigMenu), the shared lobby where the host builds the
+## match and assigns each team to the computer, themselves, or one of
+## the connected players by nickname. Turning the connection into a
+## synchronized shared match (figures moving over the wire) is the
+## next step.
 ##
-## Issue #551 rework (owner follow-up 2026-11-16): once HOST GAME
-## starts, the host's setup controls (HOST GAME, host address, port,
-## CONNECT) disappear and a NEXT button appears, taking the host into
-## the usual level flow — LevelConfigMenu (the level drop-down picks
-## the map there since issue #643) → START runs
-## the game. The ENet connection still does not drive a synchronized
-## shared match — that remains the next step.
+## Back/Esc (issue #303) always closes the connection first — no peer
+## outlives the game.
 
 const DEFAULT_PORT := 24565
-## Room for a comfortable local lobby (host + 7 joiners).
-const MAX_CLIENTS := 7
 
 @onready var _host_button: Button = %HostButton
 @onready var _next_button: Button = %NextButton
+@onready var _nickname_edit: LineEdit = %NicknameEdit
 @onready var _address_edit: LineEdit = %AddressEdit
 @onready var _port_edit: LineEdit = %PortEdit
 @onready var _connect_button: Button = %ConnectButton
@@ -36,17 +34,19 @@ func _ready() -> void:
 	# Main-menu spec §9 (M4 hardening): adapt to the viewport width.
 	MenuAdapt.apply(self)
 	_port_edit.text = str(DEFAULT_PORT)
+	# Issue #649: the nickname persists between runs.
+	_nickname_edit.text = LanSession.saved_nickname()
 	_next_button.visible = false
 	_host_button.pressed.connect(_on_host_pressed)
 	_next_button.pressed.connect(_on_next_pressed)
 	_connect_button.pressed.connect(_on_connect_pressed)
 	_back_button.pressed.connect(_on_back_pressed)
-	multiplayer.peer_connected.connect(_on_peer_connected)
-	multiplayer.peer_disconnected.connect(_on_peer_disconnected)
-	multiplayer.connected_to_server.connect(_on_connected_to_server)
-	multiplayer.connection_failed.connect(_on_connection_failed)
-	multiplayer.server_disconnected.connect(_on_server_disconnected)
-	_set_status("Host a game, or type the host's address and connect.")
+	# Issue #649: the connection itself lives in LanSession — this
+	# screen only reacts to it.
+	LanSession.players_changed.connect(_refresh_players)
+	LanSession.client_connected.connect(_on_client_connected)
+	LanSession.connection_lost.connect(_on_connection_lost)
+	_set_status("Type your nickname, then host a game or type the host's address and connect.")
 	_refresh_players()
 
 
@@ -60,33 +60,41 @@ func _unhandled_input(event: InputEvent) -> void:
 			_on_back_pressed()
 
 
+func _nickname() -> String:
+	return _nickname_edit.text.strip_edges()
+
+
 func _on_host_pressed() -> void:
+	# Issue #649: the nickname is the player's identity in the shared
+	# lobby — required before the connection starts.
+	if _nickname().is_empty():
+		_set_status("Type your nickname first — the other players see it in the lobby.")
+		_nickname_edit.grab_focus()
+		return
 	var port := _port_value()
 	if port <= 0:
 		_set_status("Invalid port — enter a number between 1 and 65535.")
 		return
-	var peer := ENetMultiplayerPeer.new()
-	if peer.create_server(port, MAX_CLIENTS) != OK:
+	if not LanSession.host_game(port, _nickname()):
 		_set_status("Could not host on port %d — is it already in use?" % port)
 		return
-	multiplayer.multiplayer_peer = peer
-	# Issue #551 rework (owner follow-up): once this machine hosts, the
-	# setup controls are done — the HOST GAME button and the join row
-	# (host address, port, CONNECT) disappear and NEXT takes over,
-	# leading into the level flow below.
-	_host_button.visible = false
-	_address_edit.visible = false
-	_port_edit.visible = false
-	_connect_button.visible = false
+	# Issue #649: once this machine hosts, the setup controls are done
+	# — the nickname row included — and NEXT takes the host into the
+	# shared level setup menu.
+	_hide_setup_controls()
 	_next_button.visible = true
 	_next_button.grab_focus()
 	var addresses := ", ".join(_lan_addresses())
-	_set_status("Hosting. On the other device connect to: %s (port %d)."
-		% [addresses, port])
+	_set_status("Hosting as %s. On the other device connect to: %s (port %d)."
+		% [LanSession.nickname, addresses, port])
 	_refresh_players()
 
 
 func _on_connect_pressed() -> void:
+	if _nickname().is_empty():
+		_set_status("Type your nickname first — the host sees it in the lobby.")
+		_nickname_edit.grab_focus()
+		return
 	var address := _address_edit.text.strip_edges()
 	if address.is_empty():
 		_set_status("Type the host's address first (e.g. 192.168.1.7).")
@@ -95,59 +103,55 @@ func _on_connect_pressed() -> void:
 	if port <= 0:
 		_set_status("Invalid port — enter a number between 1 and 65535.")
 		return
-	var peer := ENetMultiplayerPeer.new()
-	if peer.create_client(address, port) != OK:
+	if not LanSession.join_game(address, port, _nickname()):
 		_set_status("Could not start connecting to %s:%d." % [address, port])
 		return
-	multiplayer.multiplayer_peer = peer
-	_set_status("Connecting to %s:%d ..." % [address, port])
+	_hide_setup_controls()
+	_set_status("Connecting to %s:%d as %s ..." % [address, port, LanSession.nickname])
+	_refresh_players()
+
+
+func _on_client_connected() -> void:
+	# Issue #649: a connected player lands in the SAME level setup
+	# menu as the host — the shared lobby.
+	get_tree().change_scene_to_file("res://scenes/menus/LevelConfigMenu.tscn")
+
+
+func _on_connection_lost(reason: String) -> void:
+	# The client never made it into the shared lobby — back to the
+	# setup controls so the player can retry.
+	_show_setup_controls()
+	_next_button.visible = false
+	_set_status(reason)
 	_refresh_players()
 
 
 func _on_next_pressed() -> void:
-	# Issue #643: the levels menu is gone — the level is picked in the
-	# setup menu's top-line drop-down now.
+	# Issue #643: the level is picked in the setup menu's top-line
+	# drop-down; issue #649: the host AND the connected players sit in
+	# that same menu — the shared lobby.
 	get_tree().change_scene_to_file("res://scenes/menus/LevelConfigMenu.tscn")
 
 
 func _on_back_pressed() -> void:
-	_shutdown_network()
+	LanSession.shutdown()
 	get_tree().change_scene_to_file("res://scenes/Main.tscn")
 
 
-## Leaving the screen by any other path (scene change, quit) must not
-## leave a socket behind.
-func _exit_tree() -> void:
-	_shutdown_network()
+func _hide_setup_controls() -> void:
+	_host_button.visible = false
+	_nickname_edit.visible = false
+	_address_edit.visible = false
+	_port_edit.visible = false
+	_connect_button.visible = false
 
 
-func _on_peer_connected(_id: int) -> void:
-	if multiplayer.is_server():
-		_set_status("A player connected — the shared match itself is the next step.")
-	_refresh_players()
-
-
-func _on_peer_disconnected(_id: int) -> void:
-	_refresh_players()
-
-
-func _on_connected_to_server() -> void:
-	_set_status("Connected to the host — the shared match itself is the next step.")
-	_refresh_players()
-
-
-func _on_connection_failed() -> void:
-	_shutdown_network()
-	_set_status("Could not connect — check the address and port, and that a game is hosted.")
-	_refresh_players()
-
-
-func _on_server_disconnected() -> void:
-	# Losing the host takes this client back offline so the player can
-	# retry (host again or reconnect) on the same screen.
-	_shutdown_network()
-	_set_status("The host closed the game.")
-	_refresh_players()
+func _show_setup_controls() -> void:
+	_host_button.visible = true
+	_nickname_edit.visible = true
+	_address_edit.visible = true
+	_port_edit.visible = true
+	_connect_button.visible = true
 
 
 func _port_value() -> int:
@@ -174,20 +178,16 @@ func _lan_addresses() -> Array[String]:
 
 
 func _refresh_players() -> void:
-	var peer := multiplayer.multiplayer_peer
-	if peer is ENetMultiplayerPeer:
-		# multiplayer.get_peers() lists the REMOTE peers on this api (the
-		# server lists its clients, a client lists the server), so the
-		# local player is the +1.
-		_players_label.text = "PLAYERS: %d" % (multiplayer.get_peers().size() + 1)
-	else:
+	if not LanSession.active:
 		_players_label.text = ""
-
-
-func _shutdown_network() -> void:
-	var peer := multiplayer.multiplayer_peer
-	if peer is ENetMultiplayerPeer:
-		peer.close()
-	# Back to a clean offline api: a closed ENet peer must not linger
-	# as the active peer (assigning null does not reset it).
-	multiplayer.multiplayer_peer = OfflineMultiplayerPeer.new()
+		return
+	var parts := LanSession.participants()
+	if parts.is_empty():
+		_players_label.text = ""
+		return
+	var names := ""
+	for part in parts:
+		if not names.is_empty():
+			names += ", "
+		names += str(part["nick"])
+	_players_label.text = "PLAYERS: %d — %s" % [parts.size(), names]

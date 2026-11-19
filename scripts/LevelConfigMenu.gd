@@ -53,6 +53,19 @@ extends Control
 ## entries — it never changes the pick; START always runs the
 ## explicitly chosen level (the spectate duels start directly, like
 ## the old levels-menu buttons did).
+##
+## Issue #649: a live LAN game makes this menu the SHARED lobby —
+## the host and every connected player (nicknames carried from the
+## LAN menu through the LanSession autoload) sit in it together.
+## The host drives the setup and every change broadcasts to the
+## connected players; the per-team controller choice is now WHO
+## drives the team — the computer, the host, or one of the
+## connected players by nickname. A connected player may edit
+## (name, color, members) exactly the teams the host assigned to
+## them — the edit travels to the host and comes back inside the
+## next broadcast. When the host STARTS, the lobby ends (the match
+## runs on the host device; the synchronized shared match over the
+## wire remains the next step).
 
 ## Issue #643: the stock levels the drop-down offers, in order. The
 ## two spectate duels ride the same list — START runs them directly
@@ -129,6 +142,11 @@ var _color_popup: Popup
 var _color_picker: ColorPicker
 var _color_team_index := -1
 
+## Issue #649: a live LAN game makes this menu the shared lobby.
+var _lan := false
+## Issue #649: true on the hosting machine — the lobby's authority.
+var _lan_host := false
+
 @onready var _level_option: OptionButton = %LevelOption
 @onready var _level_filter: LineEdit = %LevelFilter
 @onready var _title: Label = %Title
@@ -144,6 +162,11 @@ var _color_team_index := -1
 func _ready() -> void:
 	# Main-menu spec §9 (M4 hardening): adapt to the viewport width.
 	MenuAdapt.apply(self)
+	# Issue #649: the shared LAN lobby — a live LAN game (LanSession)
+	# makes this menu shared between the host and the connected
+	# players.
+	_lan = LanSession.active
+	_lan_host = LanSession.active and LanSession.is_host
 	_turn_time.value_changed.connect(func(value: float) -> void: GameConfig.turn_time = value)
 	# Issue #367: the night regime is picked here, before the game.
 	_night_regime.toggled.connect(func(on: bool) -> void: GameConfig.night_regime = on)
@@ -164,8 +187,12 @@ func _ready() -> void:
 	_restore_level_choice()
 	_rebuild_level_options()
 	# Issue #521: the team set for the level — loaded here (once) and
-	# edited directly in GameConfig.teams; Start persists it.
-	GameConfig.load_teams()
+	# edited directly in GameConfig.teams; Start persists it. Issue
+	# #649: a connected player keeps the host's broadcast set (their
+	# local team.cfg is irrelevant in the lobby); local teams only
+	# backfill the rows until the first sync lands.
+	if not (_lan and not _lan_host) or GameConfig.teams.is_empty():
+		GameConfig.load_teams()
 	_game_team_set = GameConfig.teams.duplicate(true)
 	_game_identity = []
 	for team in GameConfig.teams:
@@ -181,7 +208,28 @@ func _ready() -> void:
 	# Setting the property directly does not emit `toggled`, so the
 	# stored choice is restored without being written back.
 	_night_regime.button_pressed = GameConfig.night_regime
-	_start_button.grab_focus()
+	if _lan:
+		LanSession.setup_changed.connect(_on_lan_setup_changed)
+		LanSession.players_changed.connect(_on_lan_players_changed)
+		LanSession.connection_lost.connect(_on_lan_connection_lost)
+		if not _lan_host:
+			# The host owns the match setup: everything but the edits of
+			# the team assigned to this player is read-only here, and only
+			# the host may START the match.
+			_level_option.disabled = true
+			_level_filter.editable = false
+			_turn_time.editable = false
+			_night_regime.disabled = true
+			_spawn_regime.disabled = true
+			_add_team_button.disabled = true
+			_start_button.visible = false
+			_apply_remote_setup()
+		else:
+			# Take the connected players into the lobby right away.
+			LanSession.push_setup(_level_choice)
+			_start_button.grab_focus()
+	else:
+		_start_button.grab_focus()
 
 
 # ------------------------------------------- level pick (issue #643) --
@@ -260,6 +308,9 @@ func _on_level_selected(index: int) -> void:
 		return
 	_level_choice = _level_option.get_item_metadata(index)
 	_apply_level_choice()
+	# Issue #649: the host's level pick rides the next broadcast.
+	if _lan_host:
+		LanSession.push_setup(_level_choice)
 
 
 ## Typing in the filter field narrows the drop-down's list only —
@@ -270,6 +321,12 @@ func _on_level_filter_changed(_text: String) -> void:
 
 
 func _on_start_pressed() -> void:
+	if _lan:
+		# Issue #649: the shared lobby ends when the host starts — the
+		# match runs on this device (the connected players are returned
+		# to the main menu by the dropped connection; the synchronized
+		# shared match over the wire remains the next step).
+		LanSession.shutdown()
 	# Issue #643: the spectate duels have nothing to configure — START
 	# runs them directly, exactly like the old levels-menu buttons.
 	if _level_choice.get("spectate", false):
@@ -364,25 +421,131 @@ func _rebuild_team_rows() -> void:
 		row.add_child(swatch)
 		row.add_child(_build_member_grid(team, i))
 		var controller := OptionButton.new()
-		controller.add_item("Computer")
-		controller.add_item("Player")
-		controller.select(1 if GameConfig.team_controller(i) == "player" else 0)
 		controller.custom_minimum_size = Vector2(0, 40)
 		controller.add_theme_font_size_override("font_size", 16)
-		var team_index := i
-		controller.item_selected.connect(func(index: int) -> void:
-			var choice := "player" if index == 1 else "computer"
-			GameConfig.teams[team_index]["controller"] = choice)
+		if _lan:
+			# Issue #649: in the LAN lobby the per-team choice is WHO
+			# drives the team — the computer, the host, or one of the
+			# connected players — picked by nickname. The host picks;
+			# the connected players see the pick.
+			var parts := LanSession.participants()
+			controller.add_item("Computer")
+			for part in parts:
+				controller.add_item(str(part["nick"]))
+			controller.select(_lan_controller_index(i, parts))
+			controller.disabled = not _lan_host
+			if _lan_host:
+				var lan_team_index := i
+				controller.item_selected.connect(func(index: int) -> void:
+					_on_lan_controller_selected(lan_team_index, index))
+		else:
+			controller.add_item("Computer")
+			controller.add_item("Player")
+			controller.select(1 if GameConfig.team_controller(i) == "player" else 0)
+			var team_index := i
+			controller.item_selected.connect(func(index: int) -> void:
+				var choice := "player" if index == 1 else "computer"
+				GameConfig.teams[team_index]["controller"] = choice)
 		row.add_child(controller)
 		var remove := Button.new()
 		remove.text = "Remove"
 		remove.custom_minimum_size = Vector2(0, 40)
 		remove.add_theme_font_size_override("font_size", 16)
-		remove.disabled = GameConfig.teams.size() <= 2
+		# Issue #649: only the host may drop teams in the LAN lobby.
+		remove.disabled = GameConfig.teams.size() <= 2 or (_lan and not _lan_host)
 		remove.pressed.connect(func() -> void: _on_remove_team_pressed(i))
 		row.add_child(remove)
 		_teams_list.add_child(row)
-	_add_team_button.disabled = GameConfig.teams.size() >= GameConfig.MAX_TEAMS
+	# Issue #649: only the host may add teams in the LAN lobby.
+	_add_team_button.disabled = GameConfig.teams.size() >= GameConfig.MAX_TEAMS \
+			or (_lan and not _lan_host)
+
+
+## Issue #649: the LAN drop-down index of a team's current driver
+## (0 = Computer, 1.. = the participants, the host first). A
+## player-driven team whose driver is not in the roster yet shows as
+## Computer until the roster syncs in.
+func _lan_controller_index(team_index: int, parts: Array) -> int:
+	if GameConfig.team_controller(team_index) != "player":
+		return 0
+	var peer := LanSession.team_peer(team_index)
+	for i in parts.size():
+		if int(parts[i]["peer"]) == peer:
+			return 1 + i
+	return 0
+
+
+## Issue #649: the host assigns a team to the computer, themselves,
+## or one of the connected players — the assignment rides the next
+## setup broadcast.
+func _on_lan_controller_selected(team_index: int, index: int) -> void:
+	if not (_lan and _lan_host) or team_index >= GameConfig.teams.size():
+		return
+	if index <= 0:
+		GameConfig.teams[team_index]["controller"] = "computer"
+		LanSession.team_peers.erase(team_index)
+	else:
+		var parts := LanSession.participants()
+		if index - 1 >= parts.size():
+			return
+		GameConfig.teams[team_index]["controller"] = "player"
+		LanSession.team_peers[team_index] = int(parts[index - 1]["peer"])
+	_after_local_edit()
+
+
+## Issue #649: offline everyone edits every team; in the LAN lobby
+## the host edits every team and a connected player exactly the teams
+## the host assigned to them.
+func _can_edit_team(team_index: int) -> bool:
+	if not _lan or _lan_host:
+		return true
+	return LanSession.team_peer(team_index) == LanSession.my_peer_id()
+
+
+## Issue #649: after any local edit — the host's edit broadcasts to
+## the connected players, a connected player's edit travels to the
+## host as a request; the rows rebuild on top either way.
+func _after_local_edit(team_index := -1) -> void:
+	if _lan and not _lan_host:
+		if team_index >= 0 and team_index < GameConfig.teams.size():
+			LanSession.submit_team_change(team_index,
+					GameConfig.teams[team_index].duplicate(true))
+		_rebuild_team_rows()
+		return
+	if _lan_host:
+		LanSession.push_setup(_level_choice)
+	_rebuild_team_rows()
+
+
+## Issue #649 (client): adopt the host's last broadcast setup.
+func _apply_remote_setup() -> void:
+	if LanSession.setup_level.size() > 0:
+		_level_choice = LanSession.setup_level
+	_apply_level_choice()
+	_rebuild_level_options()
+	_rebuild_team_rows()
+
+
+func _on_lan_setup_changed() -> void:
+	_rename_team_index = -1
+	if _lan_host:
+		# A connected player's edit (or a player leaving) changed the
+		# live set — the rows just follow it.
+		_rebuild_team_rows()
+		return
+	_apply_remote_setup()
+
+
+func _on_lan_players_changed() -> void:
+	# The driver drop-downs list the participants by nickname —
+	# rebuild when the roster changes.
+	_rebuild_team_rows()
+
+
+func _on_lan_connection_lost(_reason: String) -> void:
+	# The host left (or the connection died): the lobby is over —
+	# back to the main menu (the session already shut down).
+	get_tree().change_scene_to_file("res://scenes/Main.tscn")
 
 
 ## Issue #537 rework v2: the team's little grid table — tiered by the
@@ -492,6 +655,10 @@ func _apply_team_color(team_index: int, picked: Color) -> void:
 func _open_color_picker(team_index: int, swatch: Control) -> void:
 	if team_index < 0 or team_index >= GameConfig.teams.size():
 		return
+	# Issue #649: only the team's driver (or the host, or everyone
+	# offline) may recolor it.
+	if not _can_edit_team(team_index):
+		return
 	_color_team_index = team_index
 	if _color_popup == null:
 		_color_picker = ColorPicker.new()
@@ -509,9 +676,11 @@ func _open_color_picker(team_index: int, swatch: Control) -> void:
 		_color_picker.color_changed.connect(func(picked: Color) -> void:
 			_apply_team_color(_color_team_index, picked))
 		# Rebuilding on close recolors the member-grid shapes as well.
+		# Issue #649: a connected player's recolor travels to the host.
 		_color_popup.popup_hide.connect(func() -> void:
+			var edited := _color_team_index
 			_color_team_index = -1
-			_rebuild_team_rows())
+			_after_local_edit(edited))
 	_color_picker.color = GameConfig.teams[team_index]["color"] \
 			if GameConfig.teams[team_index].get("color") is Color else Color(1, 1, 1)
 	var origin: Vector2 = swatch.global_position
@@ -526,6 +695,10 @@ func _open_color_picker(team_index: int, swatch: Control) -> void:
 ## the label into an inline LineEdit (rebuilt with _rename_team_index).
 func _begin_team_rename(team_index: int) -> void:
 	if team_index < 0 or team_index >= GameConfig.teams.size():
+		return
+	# Issue #649: only the team's driver (or the host, or everyone
+	# offline) may rename it.
+	if not _can_edit_team(team_index):
 		return
 	_rename_team_index = team_index
 	_rebuild_team_rows()
@@ -542,7 +715,8 @@ func _commit_team_rename(team_index: int, text: String) -> void:
 	var cleaned := text.strip_edges()
 	if not cleaned.is_empty():
 		GameConfig.teams[team_index]["label"] = cleaned
-	_rebuild_team_rows()
+	# Issue #649: a connected player's rename travels to the host.
+	_after_local_edit(team_index)
 
 
 ## Owner item 2: a filled square's click drops that teammate; one is
@@ -550,11 +724,15 @@ func _commit_team_rename(team_index: int, text: String) -> void:
 func _remove_member(team_index: int, member_index: int) -> void:
 	if team_index < 0 or team_index >= GameConfig.teams.size():
 		return
+	# Issue #649: only the team's driver (or the host, or everyone
+	# offline) may resize it.
+	if not _can_edit_team(team_index):
+		return
 	var names: Array = GameConfig.teams[team_index]["names"]
 	if member_index < 0 or member_index >= names.size() or names.size() <= 1:
 		return
 	names.remove_at(member_index)
-	_rebuild_team_rows()
+	_after_local_edit(team_index)
 
 
 ## Owner item 3: a free square's click appends a teammate, up to the
@@ -562,11 +740,15 @@ func _remove_member(team_index: int, member_index: int) -> void:
 func _add_member(team_index: int) -> void:
 	if team_index < 0 or team_index >= GameConfig.teams.size():
 		return
+	# Issue #649: only the team's driver (or the host, or everyone
+	# offline) may resize it.
+	if not _can_edit_team(team_index):
+		return
 	var names: Array = GameConfig.teams[team_index]["names"]
 	if names.size() >= GameConfig.MAX_LEVEL_TEAM_MEMBERS:
 		return
 	names.append("Member %d" % (names.size() + 1))
-	_rebuild_team_rows()
+	_after_local_edit(team_index)
 
 
 func _on_add_team_pressed() -> void:
@@ -588,7 +770,7 @@ func _on_add_team_pressed() -> void:
 		"controller": "computer",
 		"language": str(source.get("language", GameConfig.DEFAULT_LANGUAGE)),
 	})
-	_rebuild_team_rows()
+	_after_local_edit()
 
 
 ## The added team's color: the source team's own if the level does not
@@ -619,18 +801,37 @@ func _default_member_names() -> Array[String]:
 func _on_remove_team_pressed(index: int) -> void:
 	if GameConfig.teams.size() <= 2:
 		return
+	# Issue #649: only the host may drop teams in the LAN lobby (the
+	# button is disabled there; this guards the call path).
+	if _lan and not _lan_host:
+		return
 	GameConfig.teams.remove_at(index)
 	# Issue #537 rework v3: keep the original-identity list aligned with
 	# the live set — the removed team's original leaves with it.
 	if index >= 0 and index < _game_identity.size():
 		_game_identity.remove_at(index)
+	# Issue #649: the host's driver assignment of the dropped team
+	# goes with it.
+	if _lan_host:
+		LanSession.team_peers.erase(index)
+		var shifted: Dictionary = {}
+		for team_index in LanSession.team_peers.keys():
+			if int(team_index) > index:
+				shifted[int(team_index) - 1] = LanSession.team_peers[team_index]
+			else:
+				shifted[int(team_index)] = LanSession.team_peers[team_index]
+		LanSession.team_peers = shifted
 	_rename_team_index = -1
-	_rebuild_team_rows()
+	_after_local_edit()
 
 
 ## Issue #643: the levels menu is gone — Back returns to the MAIN
 ## menu (and Escape with it, see _unhandled_input below).
 func _on_back_pressed() -> void:
+	# Issue #649: leaving the setup menu ends the LAN session — no
+	# peer outlives the game.
+	if _lan:
+		LanSession.shutdown()
 	get_tree().change_scene_to_file("res://scenes/Main.tscn")
 
 
