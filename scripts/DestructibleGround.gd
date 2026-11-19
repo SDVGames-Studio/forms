@@ -62,6 +62,16 @@ const MIN_BAND := 4.0
 @export var arc_center := 0.0
 @export var arc_span := 0.0
 
+## Issue #633: the optional ground PICTURE (a background image chosen
+## in the level editor, embedded in the level file) — drawn as the
+## chunk's fill instead of the flat color. Carved children inherit
+## the picture AND its mapping (`picture_origin` / `picture_span` =
+## the local-space rect the texture is stretched over), so craters
+## keep showing the same, world-continuous part of the picture.
+@export var picture: Texture2D
+var picture_origin := Vector2.ZERO
+var picture_span := Vector2.ZERO
+
 
 func _ready() -> void:
 	collision_layer = 1
@@ -74,6 +84,16 @@ func _ready() -> void:
 					-PI / 2.0 + (float(i) + 0.5) * span, span))
 		return
 	add_to_group("destructible_ground")
+	# Issue #633: a picture without an explicit mapping is stretched
+	# over the chunk's own geometry (authored chunks; carved children
+	# always receive their shifted mapping explicitly).
+	if picture != null and picture_span == Vector2.ZERO:
+		if polygon.size() >= 3:
+			picture_origin = _polygon_aabb(polygon).position
+			picture_span = _polygon_aabb(polygon).size
+		else:
+			picture_origin = -rect_size / 2.0
+			picture_span = rect_size
 	if ring_outer > 0.0:
 		var poly := CollisionPolygon2D.new()
 		poly.name = "Shape"
@@ -97,10 +117,53 @@ func _ready() -> void:
 func _draw() -> void:
 	if ring_outer > 0.0:
 		draw_colored_polygon(_sector_polygon(), COLOR)
+	elif picture != null:
+		if polygon.size() >= 3:
+			draw_polygon(polygon, _fill(polygon.size()),
+				_picture_uvs(polygon), picture)
+		else:
+			var quad := PackedVector2Array([
+				Vector2(-rect_size.x / 2.0, -rect_size.y / 2.0),
+				Vector2(rect_size.x / 2.0, -rect_size.y / 2.0),
+				Vector2(rect_size.x / 2.0, rect_size.y / 2.0),
+				Vector2(-rect_size.x / 2.0, rect_size.y / 2.0),
+			])
+			draw_polygon(quad, _fill(quad.size()),
+				_picture_uvs(quad), picture)
 	elif polygon.size() >= 3:
 		draw_colored_polygon(polygon, COLOR)
 	else:
 		draw_rect(Rect2(-rect_size / 2.0, rect_size), COLOR)
+
+
+## Issue #633: UVs of local points inside the chunk's picture mapping
+## (always within [0, 1] — chunks and their carved children are subsets
+## of the rect the mapping covers).
+func _picture_uvs(points: PackedVector2Array) \
+		-> PackedVector2Array:
+	var span := Vector2(
+			picture_span.x if picture_span.x > 0.001 else 1.0,
+			picture_span.y if picture_span.y > 0.001 else 1.0)
+	var uvs := PackedVector2Array()
+	for p in points:
+		uvs.append((p - picture_origin) / span)
+	return uvs
+
+
+## White per-vertex colors for a textured draw_polygon.
+static func _fill(count: int) -> PackedColorArray:
+	var colors := PackedColorArray()
+	for i in count:
+		colors.append(Color.WHITE)
+	return colors
+
+
+## The local-space AABB of a polygon.
+static func _polygon_aabb(points: PackedVector2Array) -> Rect2:
+	var aabb := Rect2(points[0], Vector2.ZERO)
+	for p in points:
+		aabb = aabb.expand(p)
+	return aabb
 
 
 ## Issue #376: local-space bounds of the authored chunk — the rect for
@@ -259,6 +322,11 @@ func _spawn_poly(pts: PackedVector2Array) -> DestructibleGround:
 	var piece := DestructibleGround.new()
 	piece.polygon = pts
 	piece.position = position
+	# Issue #633: carved pieces share the carved node's local frame,
+	# so the picture mapping carries over unchanged.
+	piece.picture = picture
+	piece.picture_origin = picture_origin
+	piece.picture_span = picture_span
 	return piece
 
 
@@ -459,4 +527,12 @@ func _spawn(offset: Vector2, size: Vector2) -> void:
 	var piece := DestructibleGround.new()
 	piece.rect_size = size
 	piece.position = position + offset + size / 2.0
+	# Issue #633: keep the picture world-continuous — the child's local
+	# origin sits at the parent-local point (offset + size/2), so the
+	# mapping shifts by exactly that.
+	if picture != null:
+		piece.picture = picture
+		piece.picture_origin = picture_origin \
+				- (offset + size / 2.0)
+		piece.picture_span = picture_span
 	get_parent().add_child(piece)

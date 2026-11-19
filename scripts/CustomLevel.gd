@@ -41,6 +41,10 @@ const EditorCanvas := preload("res://scripts/LevelEditorCanvas.gd")
 ## Issue #632: how finely a circle piece becomes a polygon disc.
 const DISC_SEGMENTS := 32
 
+## Issue #633: the level's ground PICTURE (decoded once, applied to
+## every ground body the build creates).
+var _picture: Texture2D = null
+
 
 func _ready() -> void:
 	_build(GameConfig.custom_level_name)
@@ -100,6 +104,8 @@ func _build(stem: String) -> void:
 			if typeof(raw) == TYPE_DICTIONARY:
 				spawns.append(Vector2(
 					float(raw.get("x", 0.0)), float(raw.get("y", 0.0))))
+	# Issue #633: the optional ground picture applies to every piece.
+	_picture = _picture_texture(level)
 	for i in pieces.size():
 		_add_ground(pieces[i], i)
 	var plan := _figure_plan()
@@ -136,6 +142,9 @@ func _make_ground(kind: String, index: int) -> StaticBody2D:
 	ground.name = "Ground%d" % index
 	ground.script = IndestructibleScript \
 		if kind == "indestructible" else DestructibleScript
+	# Issue #633: the level's picture fills both ground kinds.
+	if _picture != null:
+		ground.set("picture", _picture)
 	return ground
 
 
@@ -203,6 +212,23 @@ func _add_world_polygon(world: PackedVector2Array,
 	_add_polygon_ground(local, centroid, index, kind)
 
 
+## Issue #633: decode the level file's embedded ground picture (a
+## base64 PNG chosen in the editor); null when absent or unreadable
+## (a broken picture must never break the level — flat colors stay).
+static func _picture_texture(level: Dictionary) -> Texture2D:
+	var raw = level.get("picture", {})
+	if typeof(raw) != TYPE_DICTIONARY:
+		return null
+	var b64 := str((raw as Dictionary).get("png", ""))
+	if b64.is_empty():
+		return null
+	var image := Image.new()
+	if image.load_png_from_buffer(
+				Marshalls.base64_to_raw(b64)) != OK:
+		return null
+	return ImageTexture.create_from_image(image)
+
+
 ## A local-space polygon ground. Indestructible ground keeps it whole
 ## (LevelTerrain reads the polygon; static collision decomposes concave
 ## loops by itself). Destructible chunks carve exactly when CONVEX
@@ -230,6 +256,17 @@ func _add_polygon_ground(local: PackedVector2Array, at: Vector2,
 				local[ids[i]], local[ids[i + 1]], local[ids[i + 2]]]))
 	if parts.is_empty():
 		parts = [Geometry2D.convex_hull(local)]
+	# Issue #633: destructible pieces of ONE authored polygon share the
+	# whole polygon's picture mapping, so the picture stays continuous
+	# across the split (all parts share the same local frame).
+	var pic_origin := Vector2.ZERO
+	var pic_span := Vector2.ZERO
+	if kind != "indestructible" and _picture != null:
+		var aabb := Rect2(local[0], Vector2.ZERO)
+		for p in local:
+			aabb = aabb.expand(p)
+		pic_origin = aabb.position
+		pic_span = aabb.size
 	for j in parts.size():
 		var part: PackedVector2Array = parts[j]
 		if part.size() < 3:
@@ -238,6 +275,9 @@ func _add_polygon_ground(local: PackedVector2Array, at: Vector2,
 		if parts.size() > 1:
 			ground.name = "Ground%d_%d" % [index, j]
 		ground.set("polygon", part)
+		if pic_span != Vector2.ZERO:
+			ground.set("picture_origin", pic_origin)
+			ground.set("picture_span", pic_span)
 		ground.position = at
 		add_child(ground)
 
