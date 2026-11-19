@@ -17,10 +17,18 @@ extends Control
 ##  - DOWNLOAD exports a copy of the current level file to a path the
 ##    user picks, so built maps can be shared.
 ##
+## Issue #632: the SHAPE palette — a second button row under the
+## canvas (RECTANGLE / TRIANGLE / CIRCLE / LOOP / CURVE) that
+## combines with the ground tools: rectangle and triangle drag their
+## bounding box, circle drags centre-to-edge, loop clicks vertices
+## (clicking the marked first vertex closes it) and curve clicks
+## start, end and bend. Rect/tri/circle serialise as the {x,y,w,h}
+## box; loop/curve store their clicked points.
+##
 ## Layout follows the shared menu pattern (MenuTheme, MenuBackground,
 ## brand column on the left, canvas filling the remaining space); the
 ## file operations sit in the bars under the canvas. The data model is
-## deliberately plain ({kind, x, y, w, h} pieces and {x, y} spawns in
+## deliberately plain ({kind, shape, ...} pieces and {x, y} spawns in
 ## a fixed 1152x648 level space) so CustomLevel.gd can build a real
 ## playable scene from the files.
 
@@ -33,6 +41,11 @@ const NAME_CHARS := \
 @onready var _destructible_tool: Button = %DestructibleTool
 @onready var _spawn_tool: Button = %SpawnTool
 @onready var _erase_tool: Button = %EraseTool
+@onready var _rect_tool: Button = %RectTool
+@onready var _triangle_tool: Button = %TriangleTool
+@onready var _circle_tool: Button = %CircleTool
+@onready var _loop_tool: Button = %LoopTool
+@onready var _curve_tool: Button = %CurveTool
 @onready var _canvas: Control = %EditorCanvas
 @onready var _file_name_edit: LineEdit = %FileNameEdit
 @onready var _save_button: Button = %SaveButton
@@ -67,6 +80,17 @@ func _ready() -> void:
 		func() -> void: _canvas.set_tool("spawn"))
 	_erase_tool.pressed.connect(
 		func() -> void: _canvas.set_tool("erase"))
+	# Issue #632: the shape palette — combines with the ground tools.
+	_rect_tool.pressed.connect(
+		func() -> void: _canvas.set_shape("rect"))
+	_triangle_tool.pressed.connect(
+		func() -> void: _canvas.set_shape("tri"))
+	_circle_tool.pressed.connect(
+		func() -> void: _canvas.set_shape("circle"))
+	_loop_tool.pressed.connect(
+		func() -> void: _canvas.set_shape("loop"))
+	_curve_tool.pressed.connect(
+		func() -> void: _canvas.set_shape("curve"))
 	_save_button.pressed.connect(_on_save_pressed)
 	_load_button.pressed.connect(_on_load_pressed)
 	_load_file_button.pressed.connect(_on_load_file_pressed)
@@ -76,11 +100,13 @@ func _ready() -> void:
 	_clear_button.pressed.connect(_on_clear_pressed)
 	_back_button.pressed.connect(_on_back_pressed)
 	_indestructible_tool.set_pressed_no_signal(true)
+	_rect_tool.set_pressed_no_signal(true)
 	_canvas.set_tool("indestructible")
+	_canvas.set_shape("rect")
 	_back_button.grab_focus()
 	_ensure_levels_dir()
 	_refresh_file_list()
-	_set_status("drag on the canvas to place ground, click for spawns")
+	_set_status("drag ground shapes; click points for loops, curves and spawns")
 
 
 func _ensure_levels_dir() -> void:
@@ -118,14 +144,29 @@ func _sanitize_name(raw: String) -> String:
 func _serialize_level(name: String) -> Dictionary:
 	var pieces: Array = []
 	for piece in _canvas.get_pieces():
-		var rect: Rect2 = piece["rect"]
-		pieces.append({
-			"kind": piece["kind"],
-			"x": rect.position.x,
-			"y": rect.position.y,
-			"w": rect.size.x,
-			"h": rect.size.y,
-		})
+		var shape := str(piece.get("shape", "rect"))
+		if shape == "loop" or shape == "curve":
+			var points: Array = []
+			for point in piece["points"]:
+				points.append({
+				"x": (point as Vector2).x,
+				"y": (point as Vector2).y,
+			})
+			pieces.append({
+				"kind": piece["kind"],
+				"shape": shape,
+				"points": points,
+			})
+		else:
+			var rect: Rect2 = piece["rect"]
+			pieces.append({
+				"kind": piece["kind"],
+				"shape": shape,
+				"x": rect.position.x,
+				"y": rect.position.y,
+				"w": rect.size.x,
+				"h": rect.size.y,
+			})
 	var spawns: Array = []
 	for spawn in _canvas.get_spawns():
 		var pos: Vector2 = spawn
@@ -218,12 +259,34 @@ func _load_from_path(path: String) -> bool:
 		var kind := str((raw as Dictionary).get("kind", ""))
 		if kind != "indestructible" and kind != "destructible":
 			continue
+		# Issue #632: rect / tri / circle author an {x,y,w,h} box (a
+		# missing shape key is a legacy #464 rectangle); loop and curve
+		# author their clicked points.
+		var shape := str((raw as Dictionary).get("shape", "rect"))
+		if shape != "rect" and shape != "tri" and shape != "circle" \
+				and shape != "loop" and shape != "curve":
+			shape = "rect"
+		if shape == "loop" or shape == "curve":
+			var points := PackedVector2Array()
+			for rp in (raw as Dictionary).get("points", []):
+				if typeof(rp) == TYPE_DICTIONARY:
+					points.append(Vector2(
+						float((rp as Dictionary).get("x", 0.0)),
+						float((rp as Dictionary).get("y", 0.0))))
+			# Loops need a polygon (>= 3 points); curves exactly their
+			# start, end and bend control point.
+			if (shape == "loop" and points.size() >= 3) \
+					or (shape == "curve" and points.size() == 3):
+				pieces.append({
+					"kind": kind, "shape": shape, "points": points})
+			continue
 		var w := float((raw as Dictionary).get("w", 0.0))
 		var h := float((raw as Dictionary).get("h", 0.0))
 		if w <= 0.0 or h <= 0.0:
 			continue
 		pieces.append({
 			"kind": kind,
+			"shape": shape,
 			"rect": Rect2(
 				Vector2(
 					float((raw as Dictionary).get("x", 0.0)),
