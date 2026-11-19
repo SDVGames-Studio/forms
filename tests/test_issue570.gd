@@ -82,8 +82,8 @@ func _ready() -> void:
 			"weapon bundles must roll the saw at the mine/pistol/bat tier (3)")
 	_check(BodyScript.BOUNCE.has(BodyScript.Kind.SAW),
 			"the SAW kind must be registered in BOUNCE")
-	_check(1 + WeaponInventory.WEAPONS.size() == 11,
-			"the RL attack head grew to 1 + 10 weapon slots")
+	_check(1 + WeaponInventory.WEAPONS.size() == 12,
+			"the RL attack head grew to 1 + 11 weapon slots (shovel, #656)")
 
 	# 2) Throw: a SAW body leaves the weapon with the mine's lob.
 	var gun := _make_weapon()

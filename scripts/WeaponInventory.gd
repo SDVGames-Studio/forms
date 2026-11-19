@@ -20,8 +20,9 @@ extends CanvasLayer
 ## inventory grid: weapons on keys 1-4 plus the mine on key 9 (issue
 ## #246), the jackhammer on key 0 (issue #307), the railgun on key R
 ## (issue #359), the pistol on key P (issue #526) and the baseball bat
-## on key B (issue #527), the circular saw on key C (issue #570), tools
-## on keys 5-8 (issue #227 added the fourth tool, Rock).
+## on key B (issue #527), the circular saw on key C (issue #570), the
+## entrenching shovel on key E (issue #656), tools on keys 5-8 (issue
+## #227 added the fourth tool, Rock).
 ## The tool LOGIC stays in the ToolInventory autoload; this script only
 ## renders the shared slots.
 
@@ -71,7 +72,7 @@ func unlock_all() -> void:
 ## selection keeps highlighting it (grayed out, unselectable) so the
 ## wielding character never sees its active weapon morph mid-run.
 func _advance_off_spent_weapon() -> void:
-	if selected_weapon == WEAPON_SPEAR \
+	if uses_are_infinite(selected_weapon) \
 			or can_spend_weapon(TurnController.TEAM_PLAYER, selected_weapon):
 		return
 	for i in range(1, WEAPONS.size() + 1):
@@ -97,17 +98,20 @@ var _toggle_button: Button
 var _mobile_open := false
 var _mobile_layout_applied := false
 
-const WEAPONS := ["Shotgun", "Rocket", "Grenade", "Spear", "Mine", "Jackhammer", "Railgun", "Pistol", "Baseball Bat", "Circular Saw"]
+const WEAPONS := ["Shotgun", "Rocket", "Grenade", "Spear", "Mine", "Jackhammer", "Railgun", "Pistol", "Baseball Bat", "Circular Saw", "Entrenching Shovel"]
 
 ## Issue #305: per-team use budgets. Every team starts a round with 5
-## uses of each weapon and 5 uses of each tool; the SPEAR is the only
+## uses of each weapon and 5 uses of each tool; the SPEAR is the first
 ## exception — its uses are infinite (shown as ∞, never spent).
 ## Issue #359: the RAILGUN is the second exception — each team starts a
-## round with exactly ONE railgun shot.
+## round with exactly ONE railgun shot. Issue #656: the entrenching
+## SHOVEL is endless like the spear (see uses_are_infinite).
 const USES_PER_ITEM := 5
 const WEAPON_SPEAR := 3
 const WEAPON_RAILGUN := 6
 const RAILGUN_USES := 1
+## Issue #656: the eleventh weapon — endless uses, never budgeted.
+const WEAPON_SHOVEL := 10
 ## ∞ fallback when the default font has no U+221E glyph.
 var _infinity_text := "∞"
 
@@ -136,6 +140,7 @@ const ICONS: Array = [
 	{"shape": "rect", "size": Vector2(18, 6), "color": Color(0.5, 0.55, 0.6, 1)},
 	{"shape": "rect", "size": Vector2(30, 8), "color": Color(0.85, 0.6, 0.3, 1)},
 	{"shape": "circle", "radius": 9.0, "color": Color(0.75, 0.78, 0.85, 1)},
+	{"shape": "rect", "size": Vector2(12, 22), "color": Color(0.55, 0.42, 0.28, 1)},
 ]
 
 ## Issue #271: hover hints. The scripts are preloaded (not the autoload
@@ -323,10 +328,18 @@ func _budget(team_id: String) -> Dictionary:
 	return _team_uses[team_id]
 
 
+## Issue #656: true for the weapons whose uses are ENDLESS — the spear
+## (always was) and the entrenching shovel. Every budget site (uses_left,
+## can/spend/grant, the HUD counters and the selection gates) routes
+## through this instead of naming the spear alone.
+func uses_are_infinite(weapon: int) -> bool:
+	return weapon == WEAPON_SPEAR or weapon == WEAPON_SHOVEL
+
+
 ## Issue #305: uses of a weapon the team may still fire (-1 = infinite,
-## the spear).
+## the spear and the shovel).
 func weapon_uses_left(team_id: String, weapon: int) -> int:
-	if weapon == WEAPON_SPEAR:
+	if uses_are_infinite(weapon):
 		return -1
 	var w := clampi(weapon, 0, WEAPONS.size() - 1)
 	return int(_budget(team_id)["weapons"][w])
@@ -339,9 +352,9 @@ func tool_uses_left(team_id: String, tool: int) -> int:
 
 
 ## Issue #305: true while the team may still fire this weapon (always
-## true for the spear — infinite uses).
+## true for the spear and the shovel — endless uses).
 func can_spend_weapon(team_id: String, weapon: int) -> bool:
-	return weapon == WEAPON_SPEAR or weapon_uses_left(team_id, weapon) > 0
+	return uses_are_infinite(weapon) or weapon_uses_left(team_id, weapon) > 0
 
 
 ## Issue #327: the weapon a member of this team may actually TAKE
@@ -349,7 +362,7 @@ func can_spend_weapon(team_id: String, weapon: int) -> bool:
 ## otherwise the infinite spear (there is always something to hold).
 ## The hand sync in Weapon._physics_process resolves through this.
 func held_weapon_for(team_id: String) -> int:
-	if selected_weapon != WEAPON_SPEAR \
+	if not uses_are_infinite(selected_weapon) \
 			and not can_spend_weapon(team_id, selected_weapon):
 		return WEAPON_SPEAR
 	return selected_weapon
@@ -365,7 +378,7 @@ func can_spend_tool(team_id: String, tool: int) -> bool:
 func spend_weapon(team_id: String, weapon: int) -> bool:
 	if not can_spend_weapon(team_id, weapon):
 		return false
-	if weapon != WEAPON_SPEAR:
+	if not uses_are_infinite(weapon):
 		var w := clampi(weapon, 0, WEAPONS.size() - 1)
 		_budget(team_id)["weapons"][w] = maxi(0, weapon_uses_left(team_id, w) - 1)
 		# Issue #327 reworked for #316: the last use is gone while the
@@ -403,11 +416,11 @@ func spend_tool(team_id: String, tool: int) -> bool:
 
 
 ## Issue #364: a picked-up weapon bundle ADDS one use of that weapon
-## to the team's budget (the bundle roll never picks the spear — it is
-## infinite already).
+## to the team's budget (the bundle roll never picks the spear or the
+## shovel — both are endless already).
 func grant_weapon(team_id: String, weapon: int) -> void:
 	var w := clampi(weapon, 0, WEAPONS.size() - 1)
-	if w == WEAPON_SPEAR:
+	if uses_are_infinite(w):
 		return
 	_budget(team_id)["weapons"][w] = weapon_uses_left(team_id, w) + 1
 	refresh_counts()
@@ -435,7 +448,7 @@ func refresh_counts() -> void:
 			or get_node_or_null("/root/TurnController") == null:
 		return
 	for i in _slot_counts.size():
-		_slot_counts[i].text = _infinity_text if i == WEAPON_SPEAR \
+		_slot_counts[i].text = _infinity_text if uses_are_infinite(i) \
 			else str(weapon_uses_left(TurnController.TEAM_PLAYER, i))
 	for i in _tool_slot_counts.size():
 		_tool_slot_counts[i].text = str(tool_uses_left(TurnController.TEAM_PLAYER, i))
@@ -470,6 +483,9 @@ func _weapon_hint(i: int) -> String:
 			damage = "%d + knockback" % WeaponFire.BAT_DAMAGE
 		"Circular Saw":
 			damage = "%d/s while sucking in" % int(SawBody.SAW_CUT_DPS)
+		"Entrenching Shovel":
+			damage = "%d × %d swings + digs ground" % [WeaponFire.SHOVEL_DAMAGE,
+				int(WeaponFire.SHOTS_PER_TURN[i])]
 	return "%s\nDamage: %s" % [WEAPONS[i], damage]
 
 
@@ -519,7 +535,7 @@ func set_selected(index: int) -> void:
 	# Issue #305: a weapon the team can no longer pay for stays
 	# unselectable (its slot shows 0 and is grayed out below).
 	var idx := clampi(index, 0, WEAPONS.size() - 1)
-	if idx != WEAPON_SPEAR \
+	if not uses_are_infinite(idx) \
 			and not can_spend_weapon(TurnController.TEAM_PLAYER, idx):
 		_update_highlight()
 		return
@@ -569,7 +585,7 @@ func refresh_tools() -> void:
 			and tools.has_used_tool(active)
 	for i in _slots.size():
 		# Issue #305: a spent weapon grays out too — its budget is gone.
-		var spent: bool = i != WEAPON_SPEAR \
+		var spent: bool = not uses_are_infinite(i) \
 				and weapon_uses_left(TurnController.TEAM_PLAYER, i) == 0
 		_slots[i].modulate = Color(1, 1, 1, 0.35) \
 			if weapons_blocked or spent else Color.WHITE
