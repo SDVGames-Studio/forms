@@ -103,6 +103,15 @@ toggle_mode = true
 button_group = SubResource("ButtonGroup_tools")
 text = "ERASE"
 
+[node name="EditTool" type="Button" parent="Layout/MainBox/Top/Side/Tools"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(340, 42)
+layout_mode = 2
+theme_override_font_sizes/font_size = 16
+toggle_mode = true
+button_group = SubResource("ButtonGroup_tools")
+text = "EDIT POINTS"
+
 [node name="Spacer" type="Control" parent="Layout/MainBox/Top"]
 layout_mode = 2
 size_flags_horizontal = 3

@@ -1,7 +1,8 @@
 extends Node
-## Level-editor UI checks (issues #464 and #632): scene structure
-## (four tool toggles in one group, the five SHAPE toggles of the
-## #632 palette in their own group, canvas with the
+## Level-editor UI checks (issues #464, #632 and #639): scene
+## structure (the tool toggles in one group — ground tools, SPAWN,
+## ERASE and the #639 EDIT POINTS tool — and the five SHAPE toggles
+## of the #632 palette in their own group, canvas with the
 ## LevelEditorCanvas script, shared theme), tool and shape button
 ## wiring, a full save -> clear -> load JSON round-trip through
 ## user://levels/ (rectangles AND every #632 shape), the issue #633
@@ -96,8 +97,9 @@ class LevelEditorDriver extends Node:
 
 		# --- Structure: unique-name nodes, canvas script, theme. ---
 		for unique in ["IndestructibleTool", "DestructibleTool",
-				"SpawnTool", "EraseTool", "RectTool", "TriangleTool",
-				"CircleTool", "LoopTool", "CurveTool", "EditorCanvas",
+				"SpawnTool", "EraseTool", "EditTool", "RectTool",
+				"TriangleTool", "CircleTool", "LoopTool", "CurveTool",
+				"EditorCanvas",
 				"FileNameEdit", "SaveButton", "LoadButton", "FileSelect",
 				"ClearButton", "BackButton", "StatusText",
 				"PictureButton", "NoPictureButton", "PictureDialog"]:
@@ -113,7 +115,7 @@ class LevelEditorDriver extends Node:
 		ok = ok and canvas_script_ok
 		var tool_toggles := true
 		for unique in ["IndestructibleTool", "DestructibleTool",
-				"SpawnTool", "EraseTool"]:
+				"SpawnTool", "EraseTool", "EditTool"]:
 			var b := editor.get_node("%" + unique) as BaseButton
 			tool_toggles = tool_toggles and b != null \
 				and b.toggle_mode and b.button_group != null
@@ -130,6 +132,50 @@ class LevelEditorDriver extends Node:
 		tool_set = tool_set and canvas.get_tool() == "indestructible"
 		print("LEVELEDITOR tool_wiring=", tool_set)
 		ok = ok and tool_set
+
+		# --- Issue #639: EDIT POINTS — every figure exposes movable
+		# handles that reshape it (corner, circle edge, loop vertex). ---
+		(editor.get_node("%EditTool") as BaseButton).pressed.emit()
+		var edit_ok: bool = canvas.get_tool() == "edit"
+		canvas.set_pieces([
+			{"kind": "indestructible", "shape": "rect",
+				"rect": Rect2(Vector2(64, 64), Vector2(128, 64))},
+			{"kind": "destructible", "shape": "circle",
+				"rect": Rect2(Vector2(300, 100), Vector2(100, 100))},
+			{"kind": "indestructible", "shape": "loop",
+				"points": PackedVector2Array([Vector2(500, 100),
+					Vector2(600, 100), Vector2(600, 200)])},
+		])
+		# rect bottom-right corner -> dragged; opposite corner fixed.
+		edit_ok = edit_ok and canvas.grab_handle_at(Vector2(192, 128))
+		canvas.drag_handle_to(Vector2(320, 224))
+		canvas.release_handle()
+		var rect_piece: Dictionary = canvas.get_pieces()[0]
+		edit_ok = edit_ok and (rect_piece["rect"] as Rect2) \
+			== Rect2(Vector2(64, 64), Vector2(256, 160))
+		# circle edge handle -> radius clamps up to the SNAP minimum.
+		edit_ok = edit_ok and canvas.grab_handle_at(Vector2(400, 150))
+		canvas.drag_handle_to(Vector2(350, 150))
+		canvas.release_handle()
+		var circle_piece: Dictionary = canvas.get_pieces()[1]
+		edit_ok = edit_ok and (circle_piece["rect"] as Rect2) \
+			== Rect2(Vector2(318, 118), Vector2(64, 64))
+		# loop vertex moves; the other points stay put.
+		edit_ok = edit_ok and canvas.grab_handle_at(Vector2(600, 200))
+		canvas.drag_handle_to(Vector2(700, 300))
+		canvas.release_handle()
+		var loop_piece: Dictionary = canvas.get_pieces()[2]
+		edit_ok = edit_ok and (loop_piece["points"] \
+				as PackedVector2Array) == PackedVector2Array([
+				Vector2(500, 100), Vector2(600, 100),
+				Vector2(700, 300)])
+		# no handle nearby -> a grab attempt changes nothing.
+		edit_ok = edit_ok and not canvas.grab_handle_at(Vector2(20, 600))
+		print("LEVELEDITOR edit_handles=", edit_ok)
+		ok = ok and edit_ok
+		var back_to_ground := editor.get_node("%IndestructibleTool") \
+			as BaseButton
+		back_to_ground.pressed.emit()
 
 		# --- Issue #632: shape toggles share their own group + wiring. ---
 		var shape_toggles := true
