@@ -5,10 +5,10 @@
 [ext_resource type="PackedScene" path="res://scenes/menus/MenuBackground.tscn" id="3_bg"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBox_teams_panel"]
-content_margin_left = 10.0
-content_margin_top = 10.0
-content_margin_right = 10.0
-content_margin_bottom = 10.0
+content_margin_left = 8.0
+content_margin_top = 8.0
+content_margin_right = 8.0
+content_margin_bottom = 8.0
 bg_color = Color(0.09, 0.098, 0.122, 1)
 
 [node name="LevelConfigMenu" type="Control"]
@@ -33,7 +33,7 @@ grow_vertical = 2
 theme_override_constants/margin_left = 72
 theme_override_constants/margin_top = 56
 theme_override_constants/margin_right = 72
-theme_override_constants/margin_bottom = 72
+theme_override_constants/margin_bottom = 64
 
 [node name="Columns" type="HBoxContainer" parent="Layout"]
 layout_mode = 2
@@ -68,14 +68,38 @@ size_flags_horizontal = 3
 [node name="Nav" type="VBoxContainer" parent="Layout/Columns"]
 layout_mode = 2
 size_flags_vertical = 3
-theme_override_constants/separation = 14
+theme_override_constants/separation = 12
 
 [node name="Form" type="PanelContainer" parent="Layout/Columns/Nav"]
 layout_mode = 2
 
 [node name="FormBox" type="VBoxContainer" parent="Layout/Columns/Nav/Form"]
 layout_mode = 2
-theme_override_constants/separation = 14
+theme_override_constants/separation = 10
+
+[node name="LevelRow" type="HBoxContainer" parent="Layout/Columns/Nav/Form/FormBox"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="LevelLabel" type="Label" parent="Layout/Columns/Nav/Form/FormBox/LevelRow"]
+custom_minimum_size = Vector2(180, 0)
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+text = "Level"
+
+[node name="LevelOption" type="OptionButton" parent="Layout/Columns/Nav/Form/FormBox/LevelRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(200, 0)
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+clip_text = true
+
+[node name="LevelFilter" type="LineEdit" parent="Layout/Columns/Nav/Form/FormBox/LevelRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(120, 0)
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+placeholder_text = "Filter"
 
 [node name="TurnTimeRow" type="HBoxContainer" parent="Layout/Columns/Nav/Form/FormBox"]
 layout_mode = 2
@@ -134,7 +158,7 @@ theme_override_styles/panel = SubResource("StyleBox_teams_panel")
 
 [node name="TeamsBox" type="VBoxContainer" parent="Layout/Columns/Nav/TeamsPanel"]
 layout_mode = 2
-theme_override_constants/separation = 8
+theme_override_constants/separation = 6
 
 [node name="TeamsTitle" type="Label" parent="Layout/Columns/Nav/TeamsPanel/TeamsBox"]
 layout_mode = 2
@@ -154,19 +178,19 @@ theme_override_constants/separation = 8
 
 [node name="AddTeamButton" type="Button" parent="Layout/Columns/Nav/TeamsPanel/TeamsBox"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(0, 44)
+custom_minimum_size = Vector2(0, 40)
 layout_mode = 2
 text = "+ Add team"
 
 [node name="StartButton" type="Button" parent="Layout/Columns/Nav"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(340, 64)
+custom_minimum_size = Vector2(340, 56)
 layout_mode = 2
 text = "START"
 
 [node name="BackButton" type="Button" parent="Layout/Columns/Nav"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(340, 64)
+custom_minimum_size = Vector2(340, 56)
 layout_mode = 2
 text = "Back"
 

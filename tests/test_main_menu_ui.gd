@@ -87,9 +87,11 @@ class MainMenuDriver extends Node:
 		menu.queue_free()
 		await get_tree().process_frame
 
-		# --- Navigation (spec §5): NEW GAME -> existing LevelsMenu. ---
+		# --- Navigation (spec §5): NEW GAME -> level setup menu (the
+		# level is picked there since issue #643 removed the levels
+		# menu). ---
 		ok = ok and await _nav_check("%NewGameButton",
-			"res://scenes/menus/LevelsMenu.tscn", "new_game")
+			"res://scenes/menus/LevelConfigMenu.tscn", "new_game")
 		# --- LEVEL EDITOR -> level editor (issue #464). ---
 		ok = ok and await _nav_check("%LevelEditorButton",
 			"res://scenes/menus/LevelEditor.tscn", "level_editor")

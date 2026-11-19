@@ -30,7 +30,6 @@ class MenuAdaptDriver extends Node:
 		"res://scenes/menus/HotkeysMenu.tscn",
 		"res://scenes/menus/DebugMenu.tscn",
 		"res://scenes/menus/GraphicsMenu.tscn",
-		"res://scenes/menus/LevelsMenu.tscn",
 		"res://scenes/menus/LevelConfigMenu.tscn",
 		"res://scenes/menus/AudioMenu.tscn",
 	]

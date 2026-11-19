@@ -44,6 +44,34 @@ extends Control
 ## ColorPickerButton wore the menu theme's flat gray Button style and
 ## hid the color — and it keeps one size, vertically centered, in
 ## every row (a taller 2x8-tier row stretched it before).
+##
+## Issue #643: the levels menu is GONE — the level is chosen right
+## here, in the menu's TOP LINE: a drop-down with every available
+## level (the stock skirmish maps, the two spectate duels, and every
+## level saved in the editor) with a filter field to its right that
+## narrows the drop-down's list as you type. The filter only hides
+## entries — it never changes the pick; START always runs the
+## explicitly chosen level (the spectate duels start directly, like
+## the old levels-menu buttons did).
+
+## Issue #643: the stock levels the drop-down offers, in order. The
+## two spectate duels ride the same list — START runs them directly
+## (nothing to configure: no player team, the cast is baked in).
+const STOCK_LEVELS: Array[Dictionary] = [
+	{"label": "Level 1", "path": "res://scenes/levels/Level1.tscn"},
+	{"label": "Level 2", "path": "res://scenes/levels/Level2.tscn"},
+	{"label": "Level 3", "path": "res://scenes/levels/Level3.tscn"},
+	{"label": "Level 4", "path": "res://scenes/levels/Level4.tscn"},
+	{"label": "Level 5", "path": "res://scenes/levels/Level5.tscn"},
+	{"label": "Duel (spectate)",
+		"path": "res://scenes/levels/Level6.tscn", "spectate": true},
+	{"label": "Duel 3v3 (spectate)",
+		"path": "res://scenes/levels/Level7.tscn", "spectate": true},
+]
+
+## Issue #643: editor-saved levels (issue #464) live here as JSON —
+## they join the drop-down after the stock maps, alphabetically.
+const LEVELS_DIR := "user://levels"
 
 ## Palette for teams added here (mirrors TeamMenu's).
 const TEAM_PALETTE: Array[Color] = [
@@ -70,6 +98,12 @@ const GRID_SEPARATION := 2.0
 ## The "+" sign on a free spot (the theme's muted text tone).
 const PLUS_COLOR := Color(0.467, 0.49, 0.545)
 
+## Issue #643: every available level behind the drop-down (stock +
+## editor-saved) and the entry the player picked — the filter only
+## narrows what the drop-down SHOWS, never the choice itself.
+var _levels: Array = []
+var _level_choice: Dictionary = {}
+
 ## Issue #537 v2 (item 5): the game's team set as it was when the menu
 ## opened — the source every "+ Add team" pulls from, so the level can
 ## only field teams that exist in the game (the team menu makes new
@@ -95,6 +129,8 @@ var _color_popup: Popup
 var _color_picker: ColorPicker
 var _color_team_index := -1
 
+@onready var _level_option: OptionButton = %LevelOption
+@onready var _level_filter: LineEdit = %LevelFilter
 @onready var _title: Label = %Title
 @onready var _turn_time: SpinBox = %TurnTimeSpinBox
 @onready var _night_regime: CheckButton = %NightRegimeCheck
@@ -119,6 +155,14 @@ func _ready() -> void:
 	# `select` does not emit `item_selected`, so the stored choice is
 	# restored without being written back.
 	_spawn_regime.select(GameConfig.spawn_regime)
+	# Issue #643: the level pick lives in the menu's top line now — a
+	# drop-down of every available level plus a filter field to its
+	# right.
+	_levels = _available_levels()
+	_level_option.item_selected.connect(_on_level_selected)
+	_level_filter.text_changed.connect(_on_level_filter_changed)
+	_restore_level_choice()
+	_rebuild_level_options()
 	# Issue #521: the team set for the level — loaded here (once) and
 	# edited directly in GameConfig.teams; Start persists it.
 	GameConfig.load_teams()
@@ -137,14 +181,101 @@ func _ready() -> void:
 	# Setting the property directly does not emit `toggled`, so the
 	# stored choice is restored without being written back.
 	_night_regime.button_pressed = GameConfig.night_regime
-	if GameConfig.level_path.is_empty():
-		# Opened directly (e.g. from the editor): fall back to level 1.
-		GameConfig.level_path = "res://scenes/levels/Level1.tscn"
-	_title.text = _title.text + " — " + GameConfig.level_path.get_file().get_basename()
 	_start_button.grab_focus()
 
 
+# ------------------------------------------- level pick (issue #643) --
+
+## Every available level: the stock maps (spectate duels included)
+## then every editor-saved level, alphabetically.
+func _available_levels() -> Array:
+	var list: Array = []
+	for entry in STOCK_LEVELS:
+		list.append(entry.duplicate())
+	var stems: Array[String] = []
+	if DirAccess.dir_exists_absolute(LEVELS_DIR):
+		for fname in DirAccess.get_files_at(LEVELS_DIR):
+			if fname.ends_with(".json"):
+				stems.append(fname.get_basename())
+	stems.sort()
+	for stem in stems:
+		list.append({
+			"label": stem.replace("_", " "),
+			"path": "res://scenes/levels/CustomLevel.tscn",
+			"custom_stem": stem,
+		})
+	return list
+
+
+## The choice on open: whatever GameConfig still holds (the level of
+## the previous round), else Level 1 — then write it back so both
+## sides agree even when the stored path points at a custom level
+## that no longer exists on disk.
+func _restore_level_choice() -> void:
+	_level_choice = _levels[0]
+	var wanted := GameConfig.level_path
+	if wanted.is_empty():
+		wanted = _levels[0]["path"]
+	for entry in _levels:
+		if entry["path"] != wanted:
+			continue
+		var stem := str(entry.get("custom_stem", ""))
+		# Custom levels share one scene path — the stem is the pick.
+		if not stem.is_empty() and stem != GameConfig.custom_level_name:
+			continue
+		_level_choice = entry
+		break
+	_apply_level_choice()
+
+
+## Write the pick to GameConfig: stock maps take the path (and clear
+## any stale custom pick); customs point at CustomLevel.tscn with the
+## JSON stem the level is built from.
+func _apply_level_choice() -> void:
+	GameConfig.level_path = _level_choice["path"]
+	GameConfig.custom_level_name = str(_level_choice.get("custom_stem", ""))
+
+
+## Fill the drop-down with the entries the filter lets through; the
+## picked level stays selected whenever it is visible. `select` emits
+## nothing, so restoring the shown selection never re-writes the
+## choice.
+func _rebuild_level_options() -> void:
+	_level_option.clear()
+	var needle := _level_filter.text.strip_edges().to_lower()
+	var selected := -1
+	for entry in _levels:
+		if not needle.is_empty() \
+				and not str(entry["label"]).to_lower().contains(needle):
+			continue
+		_level_option.add_item(str(entry["label"]))
+		_level_option.set_item_metadata(_level_option.item_count - 1, entry)
+		if entry == _level_choice:
+			selected = _level_option.item_count - 1
+	_level_option.select(selected)
+
+
+func _on_level_selected(index: int) -> void:
+	if index < 0 or index >= _level_option.item_count:
+		return
+	_level_choice = _level_option.get_item_metadata(index)
+	_apply_level_choice()
+
+
+## Typing in the filter field narrows the drop-down's list only —
+## GameConfig keeps the last explicit pick; emptying the filter
+## brings the selection back.
+func _on_level_filter_changed(_text: String) -> void:
+	_rebuild_level_options()
+
+
 func _on_start_pressed() -> void:
+	# Issue #643: the spectate duels have nothing to configure — START
+	# runs them directly, exactly like the old levels-menu buttons.
+	if _level_choice.get("spectate", false):
+		MusicManager.play_for_level(GameConfig.level_path)
+		get_tree().change_scene_to_file(GameConfig.level_path)
+		return
 	# Issue #537 rework v3 (item 2): from here on the level takes every
 	# team's SIZE from this menu's grids.
 	GameConfig.menu_team_sizes = true
@@ -497,12 +628,15 @@ func _on_remove_team_pressed(index: int) -> void:
 	_rebuild_team_rows()
 
 
+## Issue #643: the levels menu is gone — Back returns to the MAIN
+## menu (and Escape with it, see _unhandled_input below).
 func _on_back_pressed() -> void:
-	get_tree().change_scene_to_file("res://scenes/menus/LevelsMenu.tscn")
+	get_tree().change_scene_to_file("res://scenes/Main.tscn")
 
 
 ## Issue #303: Escape is the cancel button in every menu — it acts as
-## Back here, returning to the levels menu.
+## Back here, returning to the main menu (issue #643: the levels menu
+## in between is gone).
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
 		var key := event as InputEventKey

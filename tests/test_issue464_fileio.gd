@@ -150,36 +150,35 @@ class Driver extends Node:
 		editor.queue_free()
 		await get_tree().process_frame
 
-	## Levels menu: saved levels appear under CUSTOM LEVELS and route
-	## to the level config menu with the custom level picked.
+	## Level setup menu (issue #643): saved levels appear in the
+	## top-line level drop-down and picking one routes GameConfig at
+	## the custom level.
 	func _test_levels_menu() -> void:
 		GameConfig.custom_level_name = ""
 		GameConfig.level_path = ""
-		var menu: Node = load("res://scenes/menus/LevelsMenu.tscn").instantiate()
+		var menu: Node = load("res://scenes/menus/LevelConfigMenu.tscn").instantiate()
 		add_child(menu)
 		await get_tree().process_frame
-		var box: Node = menu.get_node("%CustomLevels")
-		var buttons: Array = []
-		for child in box.get_children():
-			if child is Button:
-				buttons.append(child)
-		_check("custom levels section is visible with saved files",
-			box.visible and not buttons.is_empty())
-		var found := false
-		for button in buttons:
-			if (button as Button).text.contains("issue464 fileio"):
-				found = true
-		_check("saved editor level is listed", found)
-		# The real handler: changes the scene to the level config menu.
-		menu._on_custom_level_pressed(TEST_STEM)
-		await get_tree().process_frame
-		_check("custom level click routes to level config",
+		var dropdown: OptionButton = menu.get_node("%LevelOption")
+		var found := -1
+		var listed_by_text := false
+		for i in dropdown.item_count:
+			if dropdown.get_item_text(i).contains("issue464 fileio"):
+				listed_by_text = true
+			if str(dropdown.get_item_metadata(i).get("custom_stem", "")) == TEST_STEM:
+				found = i
+		_check("custom levels are offered in the level drop-down",
+			listed_by_text and found >= 0)
+		_check("the drop-down entry carries the saved level's stem",
+			found >= 0
+			and str(dropdown.get_item_metadata(found).get("custom_stem", "")) == TEST_STEM)
+		if found >= 0:
+			menu._on_level_selected(found)
+		_check("picking the entry aims GameConfig at the custom level",
 			GameConfig.custom_level_name == TEST_STEM
-			and GameConfig.level_path == "res://scenes/levels/CustomLevel.tscn"
-			and get_tree().current_scene != null
-			and get_tree().current_scene.name == "LevelConfigMenu")
-		if get_tree().current_scene != null:
-			get_tree().current_scene.queue_free()
+			and GameConfig.level_path == "res://scenes/levels/CustomLevel.tscn")
+		menu.queue_free()
+		await get_tree().process_frame
 		GameConfig.custom_level_name = ""
 		GameConfig.level_path = ""
 

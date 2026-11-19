@@ -1,6 +1,6 @@
 extends Node
 ## Regression check for issue #303: the Escape key acts as the cancel
-## button in every menu — Back on all navigation menus (levels, settings,
+## button in every menu — Back on all navigation menus (settings,
 ## team, level-config, hotkeys) and quit on the root main menu. The
 ## in-game pause menu already handled Escape (open/close).
 ##
@@ -23,11 +23,12 @@ class Issue303Driver extends Node:
 	signal done(ok: bool)
 
 	## [menu scene, expected scene after Escape] — checked in order.
+	## Issue #643: the levels menu is gone — LevelConfigMenu's Back
+	## (and Escape) now return to the main menu.
 	const MENUS := [
-		["res://scenes/menus/LevelsMenu.tscn", "res://scenes/Main.tscn"],
 		["res://scenes/menus/SettingsMenu.tscn", "res://scenes/Main.tscn"],
 		["res://scenes/menus/TeamMenu.tscn", "res://scenes/menus/SettingsMenu.tscn"],
-		["res://scenes/menus/LevelConfigMenu.tscn", "res://scenes/menus/LevelsMenu.tscn"],
+		["res://scenes/menus/LevelConfigMenu.tscn", "res://scenes/Main.tscn"],
 		["res://scenes/menus/HotkeysMenu.tscn", "res://scenes/menus/SettingsMenu.tscn"],
 		# Main-menu spec M2 (Q1): the debug switches live under their own
 		# category screen — Escape returns to the settings screen.
