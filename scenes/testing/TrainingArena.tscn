@@ -1,10 +1,13 @@
-[gd_scene load_steps=4 format=3 uid="uid://btrainarena01"]
+[gd_scene load_steps=5 format=3 uid="uid://btrainarena01"]
 
 [ext_resource type="Script" path="res://scripts/LevelConfig.gd" id="9_lvlcfg"]
 
 [ext_resource type="Script" path="res://scripts/IndestructibleGround.gd" id="10_indestr"]
 
 [ext_resource type="Script" path="res://scripts/Character.gd" id="2_char"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_wall"]
+size = Vector2(32, 600)
 
 [node name="TrainingArena" type="Node2D" groups=["level"]]
 script = ExtResource("9_lvlcfg")
@@ -25,6 +28,28 @@ mouse_filter = 2
 position = Vector2(350, 300)
 script = ExtResource("10_indestr")
 rect_size = Vector2(700, 120)
+
+[node name="LeftWall" type="StaticBody2D" parent="."]
+position = Vector2(-16, 60)
+collision_layer = 1
+
+[node name="Shape" type="CollisionShape2D" parent="LeftWall"]
+shape = SubResource("RectangleShape2D_wall")
+
+[node name="Visual" type="Polygon2D" parent="LeftWall"]
+color = Color(0.2, 0.22, 0.32, 1)
+polygon = PackedVector2Array(-16, -300, 16, -300, 16, 300, -16, 300)
+
+[node name="RightWall" type="StaticBody2D" parent="."]
+position = Vector2(716, 60)
+collision_layer = 1
+
+[node name="Shape" type="CollisionShape2D" parent="RightWall"]
+shape = SubResource("RectangleShape2D_wall")
+
+[node name="Visual" type="Polygon2D" parent="RightWall"]
+color = Color(0.2, 0.22, 0.32, 1)
+polygon = PackedVector2Array(-16, -300, 16, -300, 16, 300, -16, 300)
 
 [node name="Player" type="CharacterBody2D" parent="."]
 script = ExtResource("2_char")

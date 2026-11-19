@@ -4,7 +4,8 @@ extends Node
 ##
 ## DoD coverage:
 ##  - the training scene instances the small flat TrainingArena.tscn
-##    (one indestructible ground slab, no walls/hills) and the staged
+##    (one indestructible ground slab, side walls since #657,
+##    no hills) and the staged
 ##    teams stand within 200 px of each other;
 ##  - the turn executor CONSUMES the pending order on the bot's own
 ##    turn and actuates it: walk (Character.move), jump, and the attack
