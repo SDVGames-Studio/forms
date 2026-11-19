@@ -2,16 +2,17 @@ extends Node2D
 ## Issue #464 rework: a PLAYABLE level built at runtime from an
 ## editor-authored level file (user://levels/<name>.json).
 ##
-## The level editor stores its map as plain data — {kind,x,y,w,h}
+## The level editor stores its map as plain data — {kind, shape, ...}
 ## ground pieces and {x,y} spawn points in the 1152x648 authoring
-## space (see LevelEditorCanvas). The levels menu sends the player
-## here with GameConfig.custom_level_name set; this script turns the
-## JSON into exactly the nodes the stock levels are authored with:
-## IndestructibleGround / DestructibleGround StaticBody2Ds, a player
-## team (hero with the shared zoom camera + teammates, each with a
-## Weapon) and computer figures on the spawn points — then applies
-## the usual pre-game configuration (GameConfig.apply, NightRegime),
-## mirroring scripts/LevelConfig.gd on every stock level.
+## space (see LevelEditorCanvas). Since issue #632 the palette draws
+## rectangles, triangles, circles, closed loops and bezier curves;
+## this script turns the JSON into exactly the nodes the stock levels
+## are authored with: IndestructibleGround / DestructibleGround
+## StaticBody2Ds, a player team (hero with the shared zoom camera +
+## teammates, each with a Weapon) and computer figures on the spawn
+## points — then applies the usual pre-game configuration
+## (GameConfig.apply, NightRegime), mirroring scripts/LevelConfig.gd
+## on every stock level.
 ##
 ## Spawn points fill the figures in team order: hero, teammates, then
 ## the computer team; a figure without a spawn point falls back to a
@@ -36,6 +37,13 @@ const IndestructibleScript := preload(
 	"res://scripts/IndestructibleGround.gd")
 const DestructibleScript := preload(
 	"res://scripts/DestructibleGround.gd")
+const EditorCanvas := preload("res://scripts/LevelEditorCanvas.gd")
+## Issue #632: how finely a circle piece becomes a polygon disc.
+const DISC_SEGMENTS := 32
+
+## Issue #633: the level's ground PICTURE (decoded once, applied to
+## every ground body the build creates).
+var _picture: Texture2D = null
 
 
 func _ready() -> void:
@@ -96,6 +104,8 @@ func _build(stem: String) -> void:
 			if typeof(raw) == TYPE_DICTIONARY:
 				spawns.append(Vector2(
 					float(raw.get("x", 0.0)), float(raw.get("y", 0.0))))
+	# Issue #633: the optional ground picture applies to every piece.
+	_picture = _picture_texture(level)
 	for i in pieces.size():
 		_add_ground(pieces[i], i)
 	var plan := _figure_plan()
@@ -105,22 +115,220 @@ func _build(stem: String) -> void:
 		_add_figure(plan[i], at)
 
 
-## One ground piece → StaticBody2D with the ground script. The editor
-## stores the rect's top-left corner; the levels position bodies by
-## their centre.
+## One ground piece → StaticBody2D with the ground script. Issue
+## #632: the palette's shapes build on the forms the ground scripts
+## already support — discs (IndestructibleGround.radius, #190) and
+## polygons (DestructibleGround.polygon, #376; IndestructibleGround
+## .polygon, #632). A missing shape key is a legacy #464 rectangle.
 func _add_ground(raw: Dictionary, index: int) -> void:
 	var kind := str(raw.get("kind", "indestructible"))
-	var size := Vector2(
-		maxf(32.0, float(raw.get("w", 0.0))),
-		maxf(32.0, float(raw.get("h", 0.0))))
+	match str(raw.get("shape", "rect")):
+		"circle":
+			_add_circle_ground(raw, index, kind)
+		"tri":
+			_add_triangle_ground(raw, index, kind)
+		"loop":
+			_add_world_polygon(_read_points(raw), index, kind)
+		"curve":
+			_add_world_polygon(_curve_strip(_read_points(raw)),
+				index, kind)
+		_:
+			_add_rect_ground(raw, index, kind)
+
+
+## A bare ground body named for its piece index.
+func _make_ground(kind: String, index: int) -> StaticBody2D:
 	var ground := StaticBody2D.new()
 	ground.name = "Ground%d" % index
 	ground.script = IndestructibleScript \
 		if kind == "indestructible" else DestructibleScript
+	# Issue #633: the level's picture fills both ground kinds.
+	if _picture != null:
+		ground.set("picture", _picture)
+	return ground
+
+
+## Legacy rectangle piece. The editor stores the rect's top-left
+## corner; the levels position bodies by their centre.
+func _add_rect_ground(raw: Dictionary, index: int, kind: String) -> void:
+	var size := Vector2(
+		maxf(32.0, float(raw.get("w", 0.0))),
+		maxf(32.0, float(raw.get("h", 0.0))))
+	var ground := _make_ground(kind, index)
 	ground.set("rect_size", size)
 	ground.position = Vector2(
 		float(raw.get("x", 0.0)), float(raw.get("y", 0.0))) + size * 0.5
 	add_child(ground)
+
+
+## Circle piece — the dragged box's inscribed disc. Indestructible
+## ground uses the native disc (a real CircleShape2D, exact gravity);
+## destructible ground becomes a polygon disc chunk (#376 carving).
+func _add_circle_ground(raw: Dictionary, index: int, kind: String) -> void:
+	var size := Vector2(
+		maxf(32.0, float(raw.get("w", 0.0))),
+		maxf(32.0, float(raw.get("h", 0.0))))
+	var radius := minf(size.x, size.y) * 0.5
+	var center := Vector2(
+		float(raw.get("x", 0.0)), float(raw.get("y", 0.0))) + size * 0.5
+	if kind == "indestructible":
+		var disc := _make_ground(kind, index)
+		disc.set("radius", radius)
+		disc.position = center
+		add_child(disc)
+	else:
+		_add_polygon_ground(_disc_polygon(radius), center, index, kind)
+
+
+## Triangle piece — an upward-pointing triangle inscribed in the box
+## (base on the box's bottom edge, apex on its top edge).
+func _add_triangle_ground(raw: Dictionary, index: int, kind: String) -> void:
+	var size := Vector2(
+		maxf(32.0, float(raw.get("w", 0.0))),
+		maxf(32.0, float(raw.get("h", 0.0))))
+	var center := Vector2(
+		float(raw.get("x", 0.0)), float(raw.get("y", 0.0))) + size * 0.5
+	var half := size * 0.5
+	_add_polygon_ground(PackedVector2Array([
+		Vector2(-half.x, half.y),
+		Vector2(half.x, half.y),
+		Vector2(0.0, -half.y),
+	]), center, index, kind)
+
+
+## A world-space polygon piece (loop vertices, a curve's ground
+## ribbon): centred on its vertex mean, built as local polygon(s).
+func _add_world_polygon(world: PackedVector2Array,
+		index: int, kind: String) -> void:
+	if world.size() < 3:
+		return
+	var centroid := Vector2.ZERO
+	for p in world:
+		centroid += p
+	centroid /= float(world.size())
+	var local := PackedVector2Array()
+	for p in world:
+		local.append(p - centroid)
+	_add_polygon_ground(local, centroid, index, kind)
+
+
+## Issue #633: decode the level file's embedded ground picture (a
+## base64 PNG chosen in the editor); null when absent or unreadable
+## (a broken picture must never break the level — flat colors stay).
+static func _picture_texture(level: Dictionary) -> Texture2D:
+	var raw = level.get("picture", {})
+	if typeof(raw) != TYPE_DICTIONARY:
+		return null
+	var b64 := str((raw as Dictionary).get("png", ""))
+	if b64.is_empty():
+		return null
+	var image := Image.new()
+	if image.load_png_from_buffer(
+				Marshalls.base64_to_raw(b64)) != OK:
+		return null
+	return ImageTexture.create_from_image(image)
+
+
+## A local-space polygon ground. Indestructible ground keeps it whole
+## (LevelTerrain reads the polygon; static collision decomposes concave
+## loops by itself). Destructible chunks carve exactly when CONVEX
+## (#376), so a concave polygon is triangulated into convex parts —
+## a failed triangulation falls back to the convex hull.
+func _add_polygon_ground(local: PackedVector2Array, at: Vector2,
+		index: int, kind: String) -> void:
+	if local.size() < 3:
+		return
+	if kind == "indestructible":
+		var ground := _make_ground(kind, index)
+		ground.set("polygon", local)
+		ground.position = at
+		add_child(ground)
+		return
+	var parts: Array = []
+	if _is_convex(local):
+		parts = [local]
+	else:
+		# This Godot's triangulate_polygon returns flat VERTEX INDICES,
+		# three per triangle — collect the triangles themselves.
+		var ids := Geometry2D.triangulate_polygon(local)
+		for i in range(0, ids.size() - 2, 3):
+			parts.append(PackedVector2Array([
+				local[ids[i]], local[ids[i + 1]], local[ids[i + 2]]]))
+	if parts.is_empty():
+		parts = [Geometry2D.convex_hull(local)]
+	# Issue #633: destructible pieces of ONE authored polygon share the
+	# whole polygon's picture mapping, so the picture stays continuous
+	# across the split (all parts share the same local frame).
+	var pic_origin := Vector2.ZERO
+	var pic_span := Vector2.ZERO
+	if kind != "indestructible" and _picture != null:
+		var aabb := Rect2(local[0], Vector2.ZERO)
+		for p in local:
+			aabb = aabb.expand(p)
+		pic_origin = aabb.position
+		pic_span = aabb.size
+	for j in parts.size():
+		var part: PackedVector2Array = parts[j]
+		if part.size() < 3:
+			continue
+		var ground := _make_ground(kind, index)
+		if parts.size() > 1:
+			ground.name = "Ground%d_%d" % [index, j]
+		ground.set("polygon", part)
+		if pic_span != Vector2.ZERO:
+			ground.set("picture_origin", pic_origin)
+			ground.set("picture_span", pic_span)
+		ground.position = at
+		add_child(ground)
+
+
+## A curve piece — the quadratic bezier's ground ribbon, sampled with
+## the editor's own strip math (click order [start, end, bend]).
+func _curve_strip(points: PackedVector2Array) -> PackedVector2Array:
+	if points.size() != 3:
+		return PackedVector2Array()
+	return EditorCanvas.curve_strip_polygon(
+		points, EditorCanvas.CURVE_THICKNESS)
+
+
+## The "points": [{x, y}, ...] of a loop/curve piece.
+static func _read_points(raw: Dictionary) -> PackedVector2Array:
+	var points := PackedVector2Array()
+	for p in raw.get("points", []):
+		if typeof(p) == TYPE_DICTIONARY:
+			points.append(Vector2(
+				float((p as Dictionary).get("x", 0.0)),
+				float((p as Dictionary).get("y", 0.0))))
+	return points
+
+
+## A regular polygon disc of `radius` (the circle piece's chunky
+## destructible twin — convex, so #376 carving stays exact).
+static func _disc_polygon(radius: float) -> PackedVector2Array:
+	var points := PackedVector2Array()
+	for i in DISC_SEGMENTS:
+		var a := TAU * float(i) / float(DISC_SEGMENTS)
+		points.append(Vector2(cos(a), sin(a)) * radius)
+	return points
+
+
+## True when the polygon's edge cross products all keep one sign.
+static func _is_convex(points: PackedVector2Array) -> bool:
+	var side := 0
+	for i in points.size():
+		var a := points[i]
+		var b := points[(i + 1) % points.size()]
+		var c := points[(i + 2) % points.size()]
+		var cross := (b.x - a.x) * (c.y - b.y) \
+				- (b.y - a.y) * (c.x - b.x)
+		var s := 1 if cross > 0.0 else (-1 if cross < 0.0 else 0)
+		if s == 0:
+			continue
+		if side == 0:
+			side = s
+		elif s != side:
+			return false
+	return true
 
 
 ## One figure on a spawn point. Player figures get the authored

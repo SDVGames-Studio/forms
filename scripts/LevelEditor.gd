@@ -17,10 +17,18 @@ extends Control
 ##  - DOWNLOAD exports a copy of the current level file to a path the
 ##    user picks, so built maps can be shared.
 ##
+## Issue #632: the SHAPE palette — a second button row under the
+## canvas (RECTANGLE / TRIANGLE / CIRCLE / LOOP / CURVE) that
+## combines with the ground tools: rectangle and triangle drag their
+## bounding box, circle drags centre-to-edge, loop clicks vertices
+## (clicking the marked first vertex closes it) and curve clicks
+## start, end and bend. Rect/tri/circle serialise as the {x,y,w,h}
+## box; loop/curve store their clicked points.
+##
 ## Layout follows the shared menu pattern (MenuTheme, MenuBackground,
 ## brand column on the left, canvas filling the remaining space); the
 ## file operations sit in the bars under the canvas. The data model is
-## deliberately plain ({kind, x, y, w, h} pieces and {x, y} spawns in
+## deliberately plain ({kind, shape, ...} pieces and {x, y} spawns in
 ## a fixed 1152x648 level space) so CustomLevel.gd can build a real
 ## playable scene from the files.
 
@@ -28,11 +36,19 @@ const LEVELS_DIR := "user://levels"
 const FORMAT := "forms-level/1"
 const NAME_CHARS := \
 	"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_- "
+## Issue #633: the longest side an embedded ground picture may keep —
+## larger images are downscaled so level files stay share-sized.
+const MAX_PICTURE_SIDE := 1152
 
 @onready var _indestructible_tool: Button = %IndestructibleTool
 @onready var _destructible_tool: Button = %DestructibleTool
 @onready var _spawn_tool: Button = %SpawnTool
 @onready var _erase_tool: Button = %EraseTool
+@onready var _rect_tool: Button = %RectTool
+@onready var _triangle_tool: Button = %TriangleTool
+@onready var _circle_tool: Button = %CircleTool
+@onready var _loop_tool: Button = %LoopTool
+@onready var _curve_tool: Button = %CurveTool
 @onready var _canvas: Control = %EditorCanvas
 @onready var _file_name_edit: LineEdit = %FileNameEdit
 @onready var _save_button: Button = %SaveButton
@@ -42,6 +58,9 @@ const NAME_CHARS := \
 @onready var _download_button: Button = %DownloadButton
 @onready var _open_dialog: FileDialog = %OpenDialog
 @onready var _save_dialog: FileDialog = %SaveDialog
+@onready var _picture_button: Button = %PictureButton
+@onready var _no_picture_button: Button = %NoPictureButton
+@onready var _picture_dialog: FileDialog = %PictureDialog
 @onready var _clear_button: Button = %ClearButton
 @onready var _back_button: Button = %BackButton
 @onready var _status_text: Label = %StatusText
@@ -67,20 +86,36 @@ func _ready() -> void:
 		func() -> void: _canvas.set_tool("spawn"))
 	_erase_tool.pressed.connect(
 		func() -> void: _canvas.set_tool("erase"))
+	# Issue #632: the shape palette — combines with the ground tools.
+	_rect_tool.pressed.connect(
+		func() -> void: _canvas.set_shape("rect"))
+	_triangle_tool.pressed.connect(
+		func() -> void: _canvas.set_shape("tri"))
+	_circle_tool.pressed.connect(
+		func() -> void: _canvas.set_shape("circle"))
+	_loop_tool.pressed.connect(
+		func() -> void: _canvas.set_shape("loop"))
+	_curve_tool.pressed.connect(
+		func() -> void: _canvas.set_shape("curve"))
 	_save_button.pressed.connect(_on_save_pressed)
 	_load_button.pressed.connect(_on_load_pressed)
 	_load_file_button.pressed.connect(_on_load_file_pressed)
 	_download_button.pressed.connect(_on_download_pressed)
 	_open_dialog.file_selected.connect(_on_open_dialog_selected)
 	_save_dialog.file_selected.connect(_on_save_dialog_selected)
+	_picture_button.pressed.connect(_on_picture_pressed)
+	_no_picture_button.pressed.connect(_on_no_picture_pressed)
+	_picture_dialog.file_selected.connect(_on_picture_selected)
 	_clear_button.pressed.connect(_on_clear_pressed)
 	_back_button.pressed.connect(_on_back_pressed)
 	_indestructible_tool.set_pressed_no_signal(true)
+	_rect_tool.set_pressed_no_signal(true)
 	_canvas.set_tool("indestructible")
+	_canvas.set_shape("rect")
 	_back_button.grab_focus()
 	_ensure_levels_dir()
 	_refresh_file_list()
-	_set_status("drag on the canvas to place ground, click for spawns")
+	_set_status("drag ground shapes; click points for loops, curves and spawns")
 
 
 func _ensure_levels_dir() -> void:
@@ -118,24 +153,48 @@ func _sanitize_name(raw: String) -> String:
 func _serialize_level(name: String) -> Dictionary:
 	var pieces: Array = []
 	for piece in _canvas.get_pieces():
-		var rect: Rect2 = piece["rect"]
-		pieces.append({
-			"kind": piece["kind"],
-			"x": rect.position.x,
-			"y": rect.position.y,
-			"w": rect.size.x,
-			"h": rect.size.y,
-		})
+		var shape := str(piece.get("shape", "rect"))
+		if shape == "loop" or shape == "curve":
+			var points: Array = []
+			for point in piece["points"]:
+				points.append({
+				"x": (point as Vector2).x,
+				"y": (point as Vector2).y,
+			})
+			pieces.append({
+				"kind": piece["kind"],
+				"shape": shape,
+				"points": points,
+			})
+		else:
+			var rect: Rect2 = piece["rect"]
+			pieces.append({
+				"kind": piece["kind"],
+				"shape": shape,
+				"x": rect.position.x,
+				"y": rect.position.y,
+				"w": rect.size.x,
+				"h": rect.size.y,
+			})
 	var spawns: Array = []
 	for spawn in _canvas.get_spawns():
 		var pos: Vector2 = spawn
 		spawns.append({"x": pos.x, "y": pos.y})
-	return {
+	var level := {
 		"format": FORMAT,
 		"name": name,
 		"pieces": pieces,
 		"spawns": spawns,
 	}
+	# Issue #633: the ground picture travels INSIDE the level file, so
+	# downloads/loads keep it without side-car files.
+	var picture: Dictionary = _canvas.get_ground_picture()
+	if not picture.is_empty():
+		level["picture"] = {
+			"name": picture["name"],
+			"png": Marshalls.raw_to_base64(picture["png"]),
+		}
+	return level
 
 
 ## Write the current level to `path` as JSON. Returns true on success.
@@ -201,6 +260,49 @@ func _on_save_dialog_selected(path: String) -> void:
 		_set_status("downloaded %s" % path)
 
 
+## Issue #633: choose the ground PICTURE — any image the user picks is
+## decoded, downscaled to MAX_PICTURE_SIDE and embedded (as PNG) with
+## the level. It fills every ground piece of BOTH kinds on the canvas
+## and in the playable level; the kind-colored outlines stay.
+func _on_picture_pressed() -> void:
+	_picture_dialog.popup_centered(Vector2i(900, 600))
+
+
+func _on_picture_selected(path: String) -> void:
+	var image := Image.new()
+	var err := ERR_FILE_UNRECOGNIZED
+	var bytes := FileAccess.get_file_as_bytes(path)
+	match path.get_extension().to_lower():
+		"jpg", "jpeg":
+			err = image.load_jpg_from_buffer(bytes)
+		"webp":
+			err = image.load_webp_from_buffer(bytes)
+		"bmp":
+			err = image.load_bmp_from_buffer(bytes)
+		_:
+			err = image.load_png_from_buffer(bytes)
+	if err != OK or image.is_empty():
+		_set_status("cannot read picture %s" % path.get_file())
+		return
+	var longest := maxi(image.get_width(), image.get_height())
+	if longest > MAX_PICTURE_SIDE:
+		var factor := MAX_PICTURE_SIDE / float(longest)
+		image.resize(maxi(1, int(image.get_width() * factor)),
+				maxi(1, int(image.get_height() * factor)),
+			Image.INTERPOLATE_LANCZOS)
+	_canvas.set_ground_picture(ImageTexture.create_from_image(image),
+		path.get_file(), image.save_png_to_buffer())
+	_set_status("ground picture %s (%dx%d)" % [path.get_file(),
+		image.get_width(), image.get_height()])
+
+
+## Issue #633: drop the picture — ground pieces get their flat colors
+## back on the canvas and in the playable level.
+func _on_no_picture_pressed() -> void:
+	_canvas.clear_ground_picture()
+	_set_status("ground picture cleared")
+
+
 ## Load any forms level file (user://levels entry or a path from the
 ## user's filesystem). Returns true when the canvas changed.
 func _load_from_path(path: String) -> bool:
@@ -218,12 +320,34 @@ func _load_from_path(path: String) -> bool:
 		var kind := str((raw as Dictionary).get("kind", ""))
 		if kind != "indestructible" and kind != "destructible":
 			continue
+		# Issue #632: rect / tri / circle author an {x,y,w,h} box (a
+		# missing shape key is a legacy #464 rectangle); loop and curve
+		# author their clicked points.
+		var shape := str((raw as Dictionary).get("shape", "rect"))
+		if shape != "rect" and shape != "tri" and shape != "circle" \
+				and shape != "loop" and shape != "curve":
+			shape = "rect"
+		if shape == "loop" or shape == "curve":
+			var points := PackedVector2Array()
+			for rp in (raw as Dictionary).get("points", []):
+				if typeof(rp) == TYPE_DICTIONARY:
+					points.append(Vector2(
+						float((rp as Dictionary).get("x", 0.0)),
+						float((rp as Dictionary).get("y", 0.0))))
+			# Loops need a polygon (>= 3 points); curves exactly their
+			# start, end and bend control point.
+			if (shape == "loop" and points.size() >= 3) \
+					or (shape == "curve" and points.size() == 3):
+				pieces.append({
+					"kind": kind, "shape": shape, "points": points})
+			continue
 		var w := float((raw as Dictionary).get("w", 0.0))
 		var h := float((raw as Dictionary).get("h", 0.0))
 		if w <= 0.0 or h <= 0.0:
 			continue
 		pieces.append({
 			"kind": kind,
+			"shape": shape,
 			"rect": Rect2(
 				Vector2(
 					float((raw as Dictionary).get("x", 0.0)),
@@ -240,6 +364,7 @@ func _load_from_path(path: String) -> bool:
 			float((raw as Dictionary).get("y", 0.0))))
 	_canvas.set_pieces(pieces)
 	_canvas.set_spawns(spawns)
+	_load_ground_picture(level)
 	_current_path = path
 	var loaded_name := str(level.get("name", ""))
 	_loaded_name = loaded_name if not loaded_name.is_empty() \
@@ -247,9 +372,28 @@ func _load_from_path(path: String) -> bool:
 	_file_name_edit.text = _loaded_name
 	_refresh_file_list(path.get_file().get_basename()
 		if path.begins_with(LEVELS_DIR) else "")
-	_set_status("loaded %s (%d pieces, %d spawns)" % [
-		path.get_file(), pieces.size(), spawns.size()])
+	_set_status("loaded %s (%d pieces, %d spawns%s)" % [
+		path.get_file(), pieces.size(), spawns.size(),
+		", picture" if _canvas.has_ground_picture() else ""])
 	return true
+
+
+## Issue #633: restore the level file's embedded ground picture onto
+## the canvas; a missing/broken one quietly falls back to flat colors.
+func _load_ground_picture(level: Dictionary) -> void:
+	var raw = level.get("picture", {})
+	if typeof(raw) == TYPE_DICTIONARY:
+		var b64 := str((raw as Dictionary).get("png", ""))
+		if not b64.is_empty():
+			var image := Image.new()
+			if image.load_png_from_buffer(
+					Marshalls.base64_to_raw(b64)) == OK:
+				_canvas.set_ground_picture(
+					ImageTexture.create_from_image(image),
+					str((raw as Dictionary).get("name", "picture")),
+					Marshalls.base64_to_raw(b64))
+				return
+	_canvas.clear_ground_picture()
 
 
 func _on_load_pressed() -> void:
