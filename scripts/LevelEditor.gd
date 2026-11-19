@@ -44,6 +44,7 @@ const MAX_PICTURE_SIDE := 1152
 @onready var _destructible_tool: Button = %DestructibleTool
 @onready var _spawn_tool: Button = %SpawnTool
 @onready var _erase_tool: Button = %EraseTool
+@onready var _edit_tool: Button = %EditTool
 @onready var _rect_tool: Button = %RectTool
 @onready var _triangle_tool: Button = %TriangleTool
 @onready var _circle_tool: Button = %CircleTool
@@ -86,6 +87,9 @@ func _ready() -> void:
 		func() -> void: _canvas.set_tool("spawn"))
 	_erase_tool.pressed.connect(
 		func() -> void: _canvas.set_tool("erase"))
+	# Issue #639: EDIT — drag a figure's points to reshape it.
+	_edit_tool.pressed.connect(
+		func() -> void: _canvas.set_tool("edit"))
 	# Issue #632: the shape palette — combines with the ground tools.
 	_rect_tool.pressed.connect(
 		func() -> void: _canvas.set_shape("rect"))
@@ -115,7 +119,7 @@ func _ready() -> void:
 	_back_button.grab_focus()
 	_ensure_levels_dir()
 	_refresh_file_list()
-	_set_status("drag ground shapes; click points for loops, curves and spawns")
+	_set_status("drag ground shapes; EDIT POINTS resizes them")
 
 
 func _ensure_levels_dir() -> void:

@@ -25,6 +25,14 @@ extends Control
 ##  - "curve": click the bezier's start, end and then its bend — a
 ##    quadratic curve stored as the three points in click order.
 ##
+## Issue #639 EDIT tool — every placed figure gets clickable, movable
+## points: with the tool active each piece draws its handles (the box
+## corners for rect/tri, the centre and right-edge point for a circle,
+## the stored vertices for loop/curve) and dragging one reshapes the
+## piece live. Box corners keep the opposite corner fixed, the circle
+## edge handle sets the radius, vertices move freely — all snapped to
+## the same grid and kept inside the level space.
+##
 ## Everything snaps to a 32 px grid. Box drags smaller than MIN_PIECE
 ## fall back to DEFAULT_SIZE centred on the click, so a single click
 ## still places a piece.
@@ -43,6 +51,10 @@ const DEFAULT_SIZE := Vector2(128, 64)
 ## the click distance that CLOSES a loop on its first vertex.
 const DEFAULT_RADIUS := 64.0
 const CLOSE_RADIUS := 20.0
+## Issue #639: how near the cursor must be to grab an edit handle
+## (level-space pixels) and how big the handle dots draw.
+const HANDLE_GRAB := 18.0
+const HANDLE_SIZE := 4.0
 ## Issue #632: the ground ribbon a bezier curve authors and how finely
 ## it is sampled (CustomLevel builds the same strip).
 const CURVE_THICKNESS := 48.0
@@ -72,6 +84,13 @@ var _pending := PackedVector2Array()
 var _pic: Texture2D = null
 var _pic_name := ""
 var _pic_png := PackedByteArray()
+## Issue #639: the edit-tool grab (indices into _pieces and that
+## piece's handle list) and the handle under the cursor, for
+## highlighting. -1 = none.
+var _grab_piece := -1
+var _grab_handle := -1
+var _hover_piece := -1
+var _hover_handle := -1
 
 
 func _ready() -> void:
@@ -88,6 +107,9 @@ func _rescale() -> void:
 
 func set_tool(kind: String) -> void:
 	_tool = kind
+	release_handle()
+	_hover_piece = -1
+	_hover_handle = -1
 	_cancel_pending()
 	queue_redraw()
 
@@ -112,6 +134,8 @@ func set_pieces(pieces: Array) -> void:
 	for piece in _pieces:
 		if piece.get("shape", "") == "":
 			piece["shape"] = "rect"
+	if _grab_piece >= _pieces.size():
+		release_handle()
 	queue_redraw()
 
 
@@ -159,6 +183,7 @@ func clear_all() -> void:
 	_pieces.clear()
 	_spawns.clear()
 	_dragging = false
+	release_handle()
 	_cancel_pending()
 	queue_redraw()
 
@@ -169,15 +194,28 @@ func _gui_input(event: InputEvent) -> void:
 		if mb.button_index != MOUSE_BUTTON_LEFT:
 			return
 		if mb.pressed:
-			_press(_local_snap_mouse())
+			# Issue #639: the edit tool grabs a handle instead of
+			# authoring — searched with the RAW cursor position (the
+			# snap grid would shift the hit test).
+			if _tool == "edit":
+				grab_handle_at(get_local_mouse_position())
+			else:
+				_press(_local_snap_mouse())
 			accept_event()
 		elif _dragging:
 			_release(_local_snap_mouse())
+			accept_event()
+		elif _grab_piece >= 0:
+			release_handle()
 			accept_event()
 	elif event is InputEventMouseMotion:
 		_hover = get_local_mouse_position()
 		if _dragging:
 			_drag_end = _local_snap_mouse()
+		elif _grab_piece >= 0:
+			drag_handle_to(_local_snap_mouse())
+		elif _tool == "edit":
+			_update_hover_handle(get_local_mouse_position())
 		queue_redraw()
 
 
@@ -257,6 +295,134 @@ func _cancel_pending() -> void:
 		queue_redraw()
 
 
+## Issue #639: the editable points of a piece — the box corners for
+## rect/tri (bounding box authoring), the centre and right-edge
+## point for a circle, the stored vertices for loop/curve.
+static func piece_handles(piece: Dictionary) -> PackedVector2Array:
+	match str(piece.get("shape", "rect")):
+		"circle":
+			var crect: Rect2 = piece["rect"]
+			var center := crect.get_center()
+			var radius := minf(crect.size.x, crect.size.y) * 0.5
+			return PackedVector2Array([center,
+				center + Vector2(radius, 0.0)])
+		"loop", "curve":
+			return piece["points"]
+		_:
+			var rect: Rect2 = piece["rect"]
+			return PackedVector2Array([
+				rect.position,
+				Vector2(rect.end.x, rect.position.y),
+				rect.end,
+				Vector2(rect.position.x, rect.end.y)])
+
+
+## Issue #639: start dragging the handle nearest `pos` (level-space
+## coordinates) when one is within HANDLE_GRAB. Later pieces win
+## ties, matching erase's topmost convention. Returns true on a grab.
+func grab_handle_at(pos: Vector2) -> bool:
+	_grab_piece = -1
+	_grab_handle = -1
+	var best := HANDLE_GRAB
+	for pi in _pieces.size():
+		var handles := piece_handles(_pieces[pi])
+		for hi in handles.size():
+			var dist := pos.distance_to(handles[hi])
+			if dist <= best:
+				best = dist
+				_grab_piece = pi
+				_grab_handle = hi
+	if _grab_piece >= 0:
+		_hover_piece = _grab_piece
+		_hover_handle = _grab_handle
+	queue_redraw()
+	return _grab_piece >= 0
+
+
+## Issue #639: move the grabbed handle to `pos` (snapped by the
+## caller), reshaping its piece.
+func drag_handle_to(pos: Vector2) -> void:
+	if _grab_piece < 0 or _grab_piece >= _pieces.size():
+		return
+	_apply_handle(_grab_piece, _grab_handle,
+		pos.clamp(Vector2.ZERO, CANVAS_SIZE))
+	queue_redraw()
+
+
+## Issue #639: stop dragging (the piece keeps its new shape).
+func release_handle() -> void:
+	if _grab_piece >= 0:
+		_grab_piece = -1
+		_grab_handle = -1
+		queue_redraw()
+
+
+func _apply_handle(pi: int, hi: int, pos: Vector2) -> void:
+	var piece: Dictionary = _pieces[pi]
+	match str(piece.get("shape", "rect")):
+		"circle":
+			_apply_circle_handle(piece, hi, pos)
+		"loop", "curve":
+			var points: PackedVector2Array = piece["points"]
+			if hi >= 0 and hi < points.size():
+				points[hi] = pos
+				piece["points"] = points
+		_:
+			_apply_box_handle(piece, hi, pos)
+
+
+## Box corner drag: the opposite corner stays put, the dragged one
+## follows the cursor; a collapse below MIN_PIECE keeps the minimum
+## extent toward the drag direction.
+func _apply_box_handle(piece: Dictionary, hi: int, pos: Vector2) -> void:
+	var corners := piece_handles(piece)
+	if hi < 0 or hi >= corners.size():
+		return
+	var fixed := corners[(hi + 2) % 4]
+	var next := Rect2(fixed, pos - fixed).abs()
+	if next.size.x < MIN_PIECE.x:
+		next.position.x = fixed.x - MIN_PIECE.x \
+			if pos.x < fixed.x else fixed.x
+		next.size.x = MIN_PIECE.x
+	if next.size.y < MIN_PIECE.y:
+		next.position.y = fixed.y - MIN_PIECE.y \
+			if pos.y < fixed.y else fixed.y
+		next.size.y = MIN_PIECE.y
+	next = next.intersection(Rect2(Vector2.ZERO, CANVAS_SIZE))
+	if next.size.x > 0.0 and next.size.y > 0.0:
+		piece["rect"] = next
+
+
+## Circle handles: index 0 moves the centre (radius kept, clamped
+## inside the level), index 1 sets the radius from the distance.
+func _apply_circle_handle(piece: Dictionary, hi: int, pos: Vector2) -> void:
+	var rect: Rect2 = piece["rect"]
+	var center := rect.get_center()
+	var radius := minf(rect.size.x, rect.size.y) * 0.5
+	if hi == 0:
+		center = pos.clamp(Vector2(radius, radius),
+			CANVAS_SIZE - Vector2(radius, radius))
+	else:
+		var limit := minf(minf(center.x, center.y),
+			minf(CANVAS_SIZE.x - center.x, CANVAS_SIZE.y - center.y))
+		radius = clampf(center.distance_to(pos), SNAP, maxf(SNAP, limit))
+	piece["rect"] = Rect2(center - Vector2(radius, radius),
+		Vector2(radius * 2.0, radius * 2.0))
+
+
+func _update_hover_handle(pos: Vector2) -> void:
+	_hover_piece = -1
+	_hover_handle = -1
+	var best := HANDLE_GRAB
+	for pi in _pieces.size():
+		var handles := piece_handles(_pieces[pi])
+		for hi in handles.size():
+			if pos.distance_to(handles[hi]) <= best:
+				best = pos.distance_to(handles[hi])
+			_hover_piece = pi
+			_hover_handle = hi
+
+
 func _erase_at(pos: Vector2) -> void:
 	for i in range(_spawns.size() - 1, -1, -1):
 		if pos.distance_to(_spawns[i] as Vector2) <= ERASE_RADIUS:
@@ -309,6 +475,9 @@ func _draw() -> void:
 		draw_arc(pos, 14.0, 0.0, TAU, 40, SPAWN_COLOR, 2.0)
 		draw_circle(pos, 5.0, SPAWN_COLOR)
 	_draw_preview()
+	# Issue #639: the edit tool draws every piece's handles on top.
+	if _tool == "edit":
+		_draw_handles()
 	draw_rect(Rect2(Vector2.ZERO, CANVAS_SIZE), BORDER_COLOR, false, 2.0)
 
 
@@ -401,6 +570,21 @@ func _draw_outline(pts: PackedVector2Array, color: Color) -> void:
 	draw_polyline(closed, color, 2.0)
 
 
+## Issue #639: the edit-tool handle dots — a dark base circle keeps
+## them readable on any fill; the grabbed/hovered one lights up.
+func _draw_handles() -> void:
+	for pi in _pieces.size():
+		var handles := piece_handles(_pieces[pi])
+		for hi in handles.size():
+			var active: bool = (pi == _grab_piece and hi == _grab_handle) \
+				or (pi == _hover_piece and hi == _hover_handle)
+			var color := Color(SPAWN_COLOR, 1.0) if active \
+				else Color(1, 1, 1, 0.95)
+			draw_circle(handles[hi], HANDLE_SIZE + 2.0,
+				Color(0.08, 0.09, 0.12, 0.9))
+			draw_circle(handles[hi], HANDLE_SIZE, color)
+
+
 func _draw_preview() -> void:
 	if _dragging:
 		_draw_drag_preview()
@@ -414,7 +598,7 @@ func _draw_preview() -> void:
 		if _tool == "spawn":
 			draw_arc(snapped, 14.0, 0.0, TAU, 40,
 				Color(SPAWN_COLOR, 0.5), 2.0)
-		elif _tool != "erase":
+		elif _tool != "erase" and _tool != "edit":
 			var color := _tool_color()
 			match _shape:
 				"circle":
