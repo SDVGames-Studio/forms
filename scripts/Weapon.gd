@@ -49,6 +49,14 @@ extends Node2D
 ##                    steady pull toward the blade, either team) and
 ##                    grinding the ones it reaches for damage per
 ##                    second — then it stops and disappears.
+## 11 Entrenching shovel (key E) — issue #656: a MELEE weapon with LESS
+##                    range than the spear. Every swing damages the
+##                    figures the short swing reaches for 20% of the
+##                    spear's damage AND carves an upright ellipse out
+##                    of destructible ground in front of the wielder
+##                    (one diameter = the figure's height, the other =
+##                    half its width). Five swings per turn, ENDLESS
+##                    uses (never on the team budget, like the spear).
 ## Visuals are plain rectangles built in code — no extra assets.
 
 const ProjectileScript := preload("res://scripts/Projectile.gd")
@@ -78,9 +86,10 @@ const COOLDOWN := 0.3
 
 ## Issue #101: shots each weapon allows during ONE turn (index = weapon:
 ## shotgun 2, rocket 1, grenade 1, spear 2, mine 1, jackhammer 1, railgun 1,
-## pistol 3, baseball bat 1 — issues #526, #527) and the 3-second delay
-## after every shot during which the character cannot shoot.
-const SHOTS_PER_TURN: Array = [2, 1, 1, 2, 1, 1, 1, 3, 1, 1]
+## pistol 3, baseball bat 1 — issues #526, #527; entrenching shovel 5,
+## issue #656) and the 3-second delay after every shot during which the
+## character cannot shoot.
+const SHOTS_PER_TURN: Array = [2, 1, 1, 2, 1, 1, 1, 3, 1, 1, 5]
 const SHOT_DELAY := 3.0
 
 const PELLET_SPEED := 900.0
@@ -224,13 +233,39 @@ const BAT_FLIGHT_CAP := 5.0
 ## the standard 5 uses per team per round (WeaponInventory).
 const SAW_SPEED := 480.0
 const SAW_MASS := 0.8
+## Issue #656: the entrenching shovel — a MELEE weapon with LESS range
+## than the spear (55 < 70): a short swing that damages every figure it
+## reaches for 20% of the spear's shot damage (5 of 25) and digs an
+## upright ellipse out of destructible ground in front of the wielder.
+## Five swings per turn, ENDLESS uses (WeaponInventory never budgets it,
+## like the spear).
+const SHOVEL_RANGE := 55.0
+const SHOVEL_DAMAGE := 5
+## The dig ellipse's diameters: one = the figure's HEIGHT (the 64 px
+## reference body, CharacterStats.BODY_SIZE), the other = HALF the
+## figure's width (32). The long axis rides the character's VERTICAL
+## (the gravity frame's up, _frame_up) wherever the aim points — the
+## dig stays upright in the wielder's own frame.
+const SHOVEL_DIG_HEIGHT := 64.0
+const SHOVEL_DIG_WIDTH := 32.0
+## How far ahead of the body CENTRE the dig ellipse sits — the body's
+## half width (32) plus the ellipse's half width (16): the hole starts
+## at the wielder's edge.
+const SHOVEL_DIG_OFFSET := 48.0
+## The ellipse is carved with the shared blast CIRCLE (the only carve
+## primitive, exactly like the jackhammer's tunnel stamps): a fan of
+## disk stamps along the character's vertical, centres at these
+## fractions of the ellipse's half height, each stamp's radius the
+## SMALLER of the ellipse's local half-width and the pole cap — every
+## disk lies INSIDE the ellipse and their union covers it pole to pole.
+const SHOVEL_DIG_FAN: Array = [-0.85, -0.55, -0.25, 0.0, 0.25, 0.55, 0.85]
 
 var _facing := 1.0
 var _cooldown_left := 0.0
 ## Issue #101: shots already made this turn by this member, per weapon
 ## (issue #116: the quota is per weapon so switching after a shot keeps
 ## the newly selected weapon's own quota).
-var _shots_used := [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+var _shots_used := [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 
 ## Issue #101: seconds left before the character may shoot again.
 var _shot_delay_left := 0.0
@@ -267,6 +302,10 @@ var _bat_push: Array = []
 var _bat_push_dir := Vector2.ZERO
 var _bat_push_left := 0.0
 var _bat_effect: Node = null
+## Issue #656: the shovel swing timer — the bat's quick swipe shape on
+## the shovel's own (shorter) reach; the hit itself is instant, see
+## _swing_shovel.
+var _shovel_swing_t := -1.0
 ## Issue #307: jackhammer drill state — seconds left, drill direction
 ## (re-sampled from the live aim every tick so the aim keys steer a
 ## running drill, #316), the per-body accrued grind damage of THIS
@@ -390,6 +429,8 @@ func _held_style_index() -> int:
 		return 9  # baseball bat (#527)
 	if selected_weapon == 9:
 		return 10  # circular saw (#570)
+	if selected_weapon == 10:
+		return 11  # entrenching shovel (#656)
 	return selected_weapon
 
 ## Issue #68: size and color of the held weapon per selected weapon index.
@@ -407,6 +448,7 @@ const HELD_STYLES: Array = [
 	{"size": Vector2(18, 6), "color": Color(0.5, 0.55, 0.6, 1)},   # pistol (#526)
 	{"size": Vector2(30, 8), "color": Color(0.85, 0.6, 0.3, 1)},  # baseball bat (#527)
 	{"size": Vector2(16, 16), "color": Color(0.75, 0.78, 0.85, 1)},  # circular saw (#570)
+	{"size": Vector2(22, 8), "color": Color(0.55, 0.42, 0.28, 1)},  # entrenching shovel (#656)
 ]
 
 ## Currently selected weapon index (0..5), shared through the inventory HUD.
@@ -656,6 +698,18 @@ func _physics_process(delta: float) -> void:
 				else:
 					_bat_swing_t = -1.0
 		_held.position += aim * swing
+		# Issue #656: the shovel swing — the bat's quick swipe shape on
+		# the shovel's own (shorter) reach.
+		var dig_swing := 0.0
+		if _shovel_swing_t >= 0.0:
+				_shovel_swing_t += delta
+				if _shovel_swing_t <= 0.1:
+					dig_swing = SHOVEL_RANGE * 0.5 * (_shovel_swing_t / 0.1)
+				elif _shovel_swing_t <= 0.4:
+					dig_swing = SHOVEL_RANGE * 0.5 * (1.0 - (_shovel_swing_t - 0.1) / 0.3)
+				else:
+					_shovel_swing_t = -1.0
+		_held.position += aim * dig_swing
 		# Issue #307: the drilling jackhammer shakes in the wielder's hands.
 		if _drill_left > 0.0:
 			_held.position += Vector2(randf_range(-2.0, 2.0), randf_range(-2.0, 2.0))
@@ -780,6 +834,7 @@ func _fire(power := 1.0) -> void:
 		7: _fire_pistol()
 		8: _swing_bat(power)
 		9: _throw_saw(power)
+		10: _swing_shovel()
 	# Issue #101+#65: only the LAST shot of the turn hands the turn over;
 	# with quota remaining the character keeps acting after the pause.
 	if _shots_used[clampi(selected_weapon, 0, _shots_used.size() - 1)] >= _shot_limit():
@@ -983,6 +1038,78 @@ func _end_bat_push() -> void:
 	if _bat_effect != null and is_instance_valid(_bat_effect):
 			_bat_effect.queue_free()
 	_bat_effect = null
+
+
+## Issue #656: the entrenching shovel swing — the bat's instant melee
+## corridor with the spear's lateral tolerance but LESS reach than the
+## spear, plus THE DIG: every swing carves the upright ellipse out of
+## destructible ground in front of the wielder (see _shovel_dig).
+func _swing_shovel() -> void:
+	_shovel_swing_t = 0.0
+	_shovel_sweep_hit()
+	_shovel_dig()
+
+
+## Issue #656: the swing's damage corridor — every figure ahead of the
+## wielder along the aim within SHOVEL_RANGE and the spear's 12 px
+## lateral tolerance takes SHOVEL_DAMAGE (20% of the spear's hit).
+## Friendly fire stays on (#57) — only the wielder is exempt, like the
+## spear's thrust and the bat's swing.
+func _shovel_sweep_hit() -> void:
+	var parent := get_parent() as Node2D
+	if parent == null:
+		return
+	var dir := _aim().normalized()
+	var perp := Vector2(-dir.y, dir.x)
+	for group in ["player_team", "enemy_team"]:
+		for node in get_tree().get_nodes_in_group(group):
+			var body := node as Node2D
+			if body == null or body == parent or not is_instance_valid(body) \
+					or not body.has_method("take_damage"):
+				continue
+			var hp = body.get("health")
+			if hp is int and hp <= 0:
+				continue
+			var offset := body.global_position - global_position
+			var along := offset.dot(dir)
+			var lateral := absf(offset.dot(perp))
+			if along > 0.0 and along <= SHOVEL_RANGE and lateral <= 12.0:
+				body.take_damage(SHOVEL_DAMAGE)
+
+
+## Issue #656: THE DIG — one swing carves ONE ellipse out of
+## destructible ground in front of the wielder: centred ahead along the
+## AIM at the body's edge (SHOVEL_DIG_OFFSET), its long axis (the
+## figure's height) along the character's VERTICAL (_frame_up — the
+## dig stays upright in the wielder's gravity frame wherever the aim
+## points), the short axis (half the figure's width) across it. The
+## carve primitive is the shared blast circle, so the ellipse is
+## stamped as a fan of disks along the vertical (SHOVEL_DIG_FAN) — the
+## jackhammer's tunnel stamps, sized to the ellipse. Stamping into thin
+## air is a no-op and indestructible ground ignores apply_blast, so a
+## swing at nothing costs the shot and moves nothing.
+func _shovel_dig() -> void:
+	var parent := get_parent() as Node2D
+	if parent == null:
+		return
+	var aim := _aim().normalized()
+	var up := _frame_up().normalized()
+	var centre := parent.global_position + aim * SHOVEL_DIG_OFFSET
+	var half_h := SHOVEL_DIG_HEIGHT / 2.0
+	var half_w := SHOVEL_DIG_WIDTH / 2.0
+	for f in SHOVEL_DIG_FAN:
+		var fraction := float(f)
+		var offset := half_h * fraction
+		var radius := minf(half_w * sqrt(maxf(0.0, 1.0 - fraction * fraction)),
+				half_h - absf(offset))
+		if radius < 2.0:
+			continue
+		var at := centre + up * offset
+		for ground in get_tree().get_nodes_in_group("destructible_ground"):
+			var chunk := ground as Node2D
+			if chunk != null and is_instance_valid(chunk) \
+					and chunk.has_method("apply_blast"):
+				chunk.apply_blast(at, radius)
 
 
 func _fire_rocket(power := 1.0) -> void:

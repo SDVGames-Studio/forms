@@ -19,10 +19,13 @@ extends Node
 ## railgun PR left this local copy at six weapons and check 1 red.
 ## Issue #526 added the PISTOL as the eighth weapon (standard 5 uses);
 ## issue #527 added the BASEBALL BAT as the ninth (standard 5 uses);
-## issue #570 added the CIRCULAR SAW as the tenth (standard 5 uses).
-const WEAPONS := ["Shotgun", "Rocket", "Grenade", "Spear", "Mine", "Jackhammer", "Railgun", "Pistol", "Baseball Bat", "Circular Saw"]
+## issue #570 added the CIRCULAR SAW as the tenth (standard 5 uses);
+## issue #656 added the ENTRENCHING SHOVEL as the eleventh — endless
+## uses, like the spear.
+const WEAPONS := ["Shotgun", "Rocket", "Grenade", "Spear", "Mine", "Jackhammer", "Railgun", "Pistol", "Baseball Bat", "Circular Saw", "Entrenching Shovel"]
 const SPEAR := 3
 const RAILGUN := 6
+const SHOVEL := 10
 const RAILGUN_START := 1
 
 var _fails: Array = []
@@ -52,7 +55,7 @@ func _ready() -> void:
 
 	# 1) Fresh budgets: 5 uses of every weapon and tool, spear infinite.
 	for w in WEAPONS.size():
-		var want := -1 if w == SPEAR else (RAILGUN_START if w == RAILGUN else 5)
+		var want := -1 if (w == SPEAR or w == SHOVEL) else (RAILGUN_START if w == RAILGUN else 5)
 		_check("weapon %s starts at %d" % [WEAPONS[w], want],
 			inv.weapon_uses_left("player", w) == want)
 	for t in tools.TOOLS.size():

@@ -24,9 +24,9 @@ handshake builds one `spaces.Discrete(size)` object per head from
 (one independent decision dimension per key); the Stable-Baselines3
 wrapper composes those per-head spaces into a single
 `spaces.MultiDiscrete` input (issue #422), so the policy's per-step
-output is one flat integer per head — `move 6 | aim 3 | attack 11 |
-target 4` = 24 slots, a joint space of only 6·3·11·4 = 792 combinations
-instead of one fused `Discrete(792)`.
+output is one flat integer per head — `move 6 | aim 3 | attack 12 |
+target 4` = 25 slots, a joint space of only 6·3·12·4 = 864 combinations
+instead of one fused `Discrete(864)`.
 
 Per-head legality is exposed through `get_action_mask()` (issue #410):
 one boolean array per discrete head (`true` = legal), shipped as
@@ -48,7 +48,7 @@ small as the game itself allows:
 |---|---|---|---|
 | `move` | 6 | discrete | hold + the 5 movement commands (walk right/left, jump, backflip, skip turn) |
 | `aim` | 3 | discrete | hold + aim up/down |
-| `attack` | 11 | discrete | hold fire + the 10 weapon slots (`weapon_1`..`weapon_10`, `WeaponInventory.WEAPONS`; the baseball bat joined as slot 9, #527; the circular saw as slot 10, #570) |
+| `attack` | 12 | discrete | hold fire + the 11 weapon slots (`weapon_1`..`weapon_11`, `WeaponInventory.WEAPONS`; the baseball bat joined as slot 9, #527; the circular saw as slot 10, #570; the entrenching shovel as slot 11, #656) |
 | `target` | 4 | discrete | no target + the enemy team cap (`GameConfig.MAX_TEAM_MEMBERS` = 3) |
 
 The dict's key order (`move`, `aim`, `attack`, `target`) is the wire
@@ -80,7 +80,7 @@ is defined once, below the tables.
 | 1 | aim up | always legal | not yet |
 | 2 | aim down | always legal | not yet |
 
-**`attack` (11):**
+**`attack` (12):**
 
 | Index | Game command (`set_action()`) | Masking condition (legal when) | Actuated today |
 |---|---|---|---|
@@ -95,6 +95,7 @@ is defined once, below the tables.
 | 8 | select + fire weapon slot 8 (Pistol) | ≥ 1 visible enemy | not yet |
 | 9 | select + fire weapon slot 9 (Baseball Bat) | ≥ 1 visible enemy | not yet |
 | 10 | select + fire weapon slot 10 (Circular Saw) | ≥ 1 visible enemy | not yet |
+| 11 | select + fire weapon slot 11 (Entrenching Shovel) | ≥ 1 visible enemy | not yet |
 
 (The slot names follow `WeaponInventory.WEAPONS` order; #382's
 "keys 1-4"/size-5 grounding predated the smaller inventory — #422 fixed
@@ -142,7 +143,7 @@ mask arrays are **logged alongside the chosen actions** on both sides:
 the `inference_step` payload ships `action_mask` next to `action` and
 the Policy Debugger overlay renders one compact mask row per discrete
 head (`mask 1 0 0 0 0 0 0 0 0 0`), while the Python side emits
-`rl_action_mask.format_decision` lines (`attack=0 mask=10000000000 | …`).
+`rl_action_mask.format_decision` lines (`attack=0 mask=100000000000 | …`).
 In-trainer PPO distribution masking (MaskablePPO-style, so SB3's own
 sampler consumes the masks live) is the training-pipeline follow-up.
 
@@ -157,9 +158,10 @@ trained policy's SB3 `MultiDiscrete([3,8,6,4])` output layout
 (`aim, attack, move, target`), so the mask (keyed by head name) is applied
 to the flat 21-value output in that order. (#526/#527 note: the deployed
 net was trained on the pre-pistol 7-weapon space, so its `attack` head is
-FROZEN at 8 while the training scaffold grew to 11 — `InferenceBot.gd`
+FROZEN at 8 while the training scaffold grew to 12 — `InferenceBot.gd`
 keeps the deployed sizes until the policy is retrained; the deployed bot
-never selects the pistol, the baseball bat or the circular saw.)
+never selects the pistol, the baseball bat, the circular saw or the
+entrenching shovel.)
 
 **Fallback behavior** (what #507 orders documented): if the network's
 chosen action for a head is illegal, it is **overridden by the

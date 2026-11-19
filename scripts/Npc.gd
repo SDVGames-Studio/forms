@@ -19,7 +19,7 @@ extends Character
 ##    range, rocket farther, grenade lobbed at the farthest targets.
 ##    Issue #546: the WHOLE arsenal is in play — each distance band
 ##    rotates through every weapon that fits it (melee: spear/bat/
-##    jackhammer; flat: shotgun/pistol; open lane: rocket/railgun;
+##    jackhammer/shovel; flat: shotgun/pistol; open lane: rocket/railgun;
 ##    ballistic: grenade/mine/saw, railgun on a clear line), and the tools
 ##    too: a badly hurt AI can hand its turn to the healthiest teammate
 ##    (Switch) and the ballistic band sometimes lobs the Rock tool
@@ -653,7 +653,9 @@ func _pick_weapon(distance: float, height_diff: float = 0.0) -> void:
 	if distance <= SPEAR_RANGE_NPC:
 		# Issue #546: the melee band — spear thrust, baseball bat swing
 		# (BAT_RANGE) or a jackhammer grind down the adjacent enemy.
-		candidates = [3, 8, 5]
+		# Issue #656: the entrenching shovel joins the melee band — its
+		# weak hit digs cover out of the ground beside the enemy.
+		candidates = [3, 8, 5, 10]
 	elif distance <= SHOTGUN_CLOSE_NPC:
 		# Issue #221 keeps applying: at close range only flat/projectile
 		# weapons — never a blast that would self-harm. Issue #546 adds
