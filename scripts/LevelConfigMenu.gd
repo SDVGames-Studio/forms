@@ -162,6 +162,13 @@ var _lan_host := false
 func _ready() -> void:
 	# Main-menu spec §9 (M4 hardening): adapt to the viewport width.
 	MenuAdapt.apply(self)
+
+	# Issue #648: footer version tracks application/config/version
+	# (single source of truth with the main menu footer).
+	var version_label := get_node_or_null("Footer/VersionLabel") as Label
+	if version_label != null:
+		version_label.text = "v%s" % ProjectSettings.get_setting(
+			"application/config/version", "0.0.0")
 	# Issue #649: the shared LAN lobby — a live LAN game (LanSession)
 	# makes this menu shared between the host and the connected
 	# players.

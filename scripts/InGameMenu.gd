@@ -170,7 +170,10 @@ func _build_ui() -> void:
 
 	var version := Label.new()
 	version.name = "VersionLabel"
-	version.text = "v0.1.0"
+	# Issue #648: version tracks application/config/version, not a
+	# hardcoded string.
+	version.text = "v%s" % ProjectSettings.get_setting(
+		"application/config/version", "0.0.0")
 	version.add_theme_color_override("font_color", DIM_TEXT)
 	version.add_theme_font_size_override("font_size", 14)
 	footer.add_child(version)
