@@ -39,6 +39,15 @@ const MIN_CORNER := 3.0 * Stats.BODY_SIZE
 @export var radius := 0.0
 @export var rect_size := Vector2(200, 100)
 
+## Issue #632: convex POLYGON form — the level editor's triangle /
+## loop / curve palette shapes (mirrors DestructibleGround's polygon
+## chunk, #376). An authored polygon (local space) takes priority over
+## the slab rect, and loses only to the disc. Concave editor loops are
+## kept whole: static collision decomposes them internally and
+## LevelTerrain reads the polygon boundary like it does the rounded
+## slabs (#270).
+@export var polygon: PackedVector2Array
+
 ## Effective slab geometry after the issue #270 guards (slab mode only):
 ## the real size, the local y offset of the slab's centre (the thickness
 ## guard extends downward, keeping the authored top face) and the corner
@@ -59,6 +68,13 @@ func _ready() -> void:
 		circle.radius = radius
 		shape.shape = circle
 		add_child(shape)
+	elif polygon.size() >= 3:
+		# Issue #632: the editor's palette polygons — one collision and
+		# drawing polygon, exactly like the slab branch below.
+		var poly := CollisionPolygon2D.new()
+		poly.name = "Shape"
+		poly.polygon = polygon
+		add_child(poly)
 	else:
 		# Issue #270: enforce the minimum thickness by extending the slab
 		# DOWNWARD — the authored top face (the walking surface) is kept
@@ -79,6 +95,8 @@ func _ready() -> void:
 func _draw() -> void:
 	if radius > 0.0:
 		draw_circle(Vector2.ZERO, radius, COLOR)
+	elif polygon.size() >= 3:
+		draw_colored_polygon(polygon, COLOR)
 	else:
 		draw_colored_polygon(rounded_rect_polygon(_eff_size, _corner,
 				_eff_offset), COLOR)
