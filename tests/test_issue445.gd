@@ -22,6 +22,10 @@ extends Node
 
 const PolicyNames := preload("res://addons/godot_native_rl/policy_names.gd")
 const TrainingBotScript := preload("res://scripts/TrainingBot.gd")
+## Issue #659: the shipped training scene drives BotController.gd bots
+## (since the #607 repertoire rework) — the scan must find those too,
+## or the scene assertions report 0 agents.
+const BotControllerScript := preload("res://scripts/BotController.gd")
 
 ## A hypothetical second role (issue #445's "medic"): same obs contract, a
 ## DIFFERENT action space — legal only under its own distinct policy_name.
@@ -91,7 +95,7 @@ func _ready() -> void:
 func _collect_bot_agents(root: Node) -> Array:
 	var found: Array = []
 	for child in root.get_children():
-		if child is TrainingBotScript:
+		if child is TrainingBotScript or child is BotControllerScript:
 			found.append(child)
 		found.append_array(_collect_bot_agents(child))
 	return found

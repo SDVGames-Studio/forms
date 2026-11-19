@@ -1,8 +1,8 @@
 [gd_scene load_steps=5 format=3 uid="uid://crddm142nc5yy"]
 
 [ext_resource type="Script" uid="uid://cd4kewawb6pga" path="res://addons/godot_native_rl/sync.gd" id="1_sync"]
-[ext_resource type="PackedScene" uid="uid://ceagfc4lub4ch" path="res://scenes/levels/Level1.tscn" id="2_level"]
-[ext_resource type="Script" uid="uid://bffd7t285h3kd" path="res://scripts/BotController.gd" id="3_afqrt"]
+[ext_resource type="PackedScene" uid="uid://btrainarena01" path="res://scenes/testing/TrainingArena.tscn" id="2_level"]
+[ext_resource type="Script" uid="uid://na8tx581cd2r" path="res://scripts/BotController.gd" id="3_afqrt"]
 [ext_resource type="Script" path="res://scripts/TrainingScene.gd" id="4_traincfg"]
 
 [node name="TrainingScene" type="Node2D" unique_id=1719645885]

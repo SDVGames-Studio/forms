@@ -640,6 +640,9 @@ func _credit_damage(damage: int) -> void:
 	_step_damage_reward += bonus
 	reward += bonus
 	_log_reward_component("damage_dealt", bonus)
+	# Issue #659 (task 2): the visible reward trace the issue asks for —
+	# one line per landed hit, next to the ACTION EXECUTED trace.
+	print("COMBAT REWARD: damage_dealt +%.3f" % bonus)
 	damage_dealt.emit(bonus)
 
 ## Issue #433: §2.2 — flat kill bonus on the killing blow; the §2.1
@@ -648,6 +651,9 @@ func _credit_damage(damage: int) -> void:
 func _credit_kill() -> void:
 	reward += KILL_REWARD
 	_log_reward_component("enemy_killed", KILL_REWARD)
+	# Issue #659 (task 2): the kill trace — the reward/enemy_killed
+	# TensorBoard curve in console form for --viz runs.
+	print("COMBAT REWARD: enemy_killed +%.2f" % KILL_REWARD)
 	enemy_killed.emit()
 
 ## Issue #433: §2.6 — proportional friendly fire, floored per step so
@@ -915,6 +921,15 @@ func reset() -> void:
 	# state is empty afterwards.
 	TeamBlackboard.reset_blackboard()
 	pending_command = _idle_command()
+	# Issue #659: a fresh episode starts with no half-executed order and
+	# no turn edge — the executor re-arms at the next own turn.
+	_exec_active_last = false
+	_exec_command = _idle_command()
+	_exec_walked = 0.0
+	_exec_aimed = 0.0
+	_exec_fire_wait = 0.0
+	_exec_fired = false
+	_exec_failed = false
 	# Issue #433: a fresh episode restarts the per-step cap/floor budgets
 	# together with the rest of the controller's own state (the reward
 	# accumulator itself stays the framework's to clear).
@@ -1028,6 +1043,13 @@ func get_action_space() -> Dictionary:
 ## observation enemy slot always name the same figure.
 func get_action_mask() -> Dictionary:
 	var visible := _visible_enemies_nearest_first()
+	# Issue #659: the budget owner of the attack heads — the resolved
+	# figure's team (an empty id only when nothing is resolved, in which
+	# case `visible` is empty too and every attack slot is illegal).
+	var mask_team_id := ""
+	var mask_figure := _resolve_alive_figure()
+	if mask_figure != null:
+		mask_team_id = TurnController.team_id_of(mask_figure)
 	var mask := {}
 	for key in get_action_space().keys():
 		var size: int = get_action_space()[key]["size"]
@@ -1035,11 +1057,25 @@ func get_action_mask() -> Dictionary:
 		legal.resize(size)
 		legal.fill(true)
 		if key == "attack":
+			# Issue #659 (task 4): a firing slot is legal only while a
+			# visible enemy stands in reach AND the team can still PAY
+			# for that weapon — the budget-blind mask let the policy
+			# order slots Weapon._fire silently refused, burning the
+			# whole turn on an impossible input.
 			for i in range(1, size):
-				legal[i] = not visible.is_empty()
+				legal[i] = not visible.is_empty() \
+						and WeaponInventory.can_spend_weapon(mask_team_id, i - 1)
 		elif key == "target":
 			for k in range(1, size):
 				legal[k] = k <= visible.size()
+		elif key == "tool":
+			# Issue #659 (task 4): tool orders have no executor yet —
+			# every tool slot is ILLEGAL (only NONE) so the policy never
+			# spends a decision on an order the game would ignore. The
+			# head stays in the space (wire compatibility, ACTION_SPEC
+			# §2); execution lands with the tools follow-up.
+			for i in range(1, size):
+				legal[i] = false
 		mask[key] = legal
 	return mask
 
@@ -1184,6 +1220,190 @@ func _idle_command() -> Dictionary:
 		"target": TargetCommand.NONE,
 		"tool": ToolCommand.NONE,
 	}
+
+## ─────────────────────────────────────────────────────────────────────
+## Issue #659: TURN ACTION EXECUTION.
+## The #407/#607 execution model ends here: set_action() stores the
+## translated order in pending_command, and THIS per-physics-frame
+## executor actuates it while the controller's figure is the turn's
+## active member — the missing link behind the training report's
+## zero-combat / timeout_frac 1.0 symptom (the order was stored on
+## every decision step but nothing ever consumed it, so every turn of
+## an agent-owned figure burned the whole timer standing still).
+## The executor speaks the game's own actuation API — Character
+## move/aim/jump and Weapon npc_fire — exactly the Npc.gd scripted-AI
+## pattern, so cooldowns, shot quotas, team budgets, the weapon lock
+## and the post-shot turn handover all apply to the bot unchanged.
+
+## Issue #659: the aim gate — same tolerance the NPC AI fires through
+## (Npc.AIM_TOLERANCE).
+const EXEC_AIM_TOLERANCE := 0.12
+## Issue #659: seconds of the turn the walk order is applied for — a
+## full 3 s idle turn walks the whole arena; a bounded walk leaves the
+## policy fine control over positioning.
+const EXEC_WALK_DURATION := 1.2
+## Issue #659: seconds the aim head slews (≈ the full 0→VIEW_MAX sweep
+## at Stats.VIEW_SPEED) before the head counts as finished.
+const EXEC_AIM_DURATION := 0.6
+## Issue #659: max seconds to wait for the aim to converge onto the
+## attack target before firing anyway (a near-enough shot beats a
+## stalled turn).
+const EXEC_FIRE_GRACE := 1.0
+
+## Issue #659: executor state — the turn-start edge detector, the
+## order being executed this turn, and its per-head progress.
+var _exec_active_last := false
+var _exec_command: Dictionary = _idle_command()
+var _exec_walked := 0.0
+var _exec_aimed := 0.0
+var _exec_fire_wait := 0.0
+var _exec_fired := false
+var _exec_failed := false
+
+func _physics_process(delta: float) -> void:
+	# Issue #659: the executor tick — cheap, and it bails immediately
+	# whenever it is not this controller's figure acting.
+	var figure := _resolve_alive_figure()
+	var active: bool = figure != null \
+			and TurnController.active_team != "" \
+			and TurnController.active_member == figure \
+			and not TurnController.game_over \
+			and not TurnController.is_input_frozen()
+	if active and not _exec_active_last:
+		_begin_execution(figure)
+	_exec_active_last = active
+	if not active:
+		return
+	_actuate(figure, delta)
+
+## Issue #659 (task 1): the turn-start hook — consume the pending
+## order, trace it (the issue's explicit debug print), and run the
+## one-shot orders (jump, skip). Continuous orders (walk, aim, attack)
+## are applied per tick in _actuate().
+func _begin_execution(figure: Node2D) -> void:
+	_exec_command = consume_pending_command()
+	_exec_walked = 0.0
+	_exec_aimed = 0.0
+	_exec_fire_wait = 0.0
+	_exec_fired = false
+	_exec_failed = false
+	print("ACTION EXECUTED: ", _exec_command)
+	match int(_exec_command.get("move", MoveCommand.HOLD)):
+		MoveCommand.JUMP, MoveCommand.BACKFLIP:
+			# No backflip exists in the game's move set yet — the order
+			# degrades to its nearest valid neighbour, a plain jump
+			# (task 4: an unexecutable order must not waste the turn).
+			if figure.has_method("jump"):
+				figure.call("jump")
+		MoveCommand.SKIP_TURN:
+			TurnController.skip_turn(figure)
+			_exec_command = _idle_command()
+
+## Issue #659: per-tick actuation of the running turn's order. Every
+## head is applied independently (the action space's heads are
+## independent dimensions); once every ordered head is finished the
+## turn is handed back early instead of burning the timer — the
+## timeout_frac 1.0 half of the training report.
+func _actuate(figure: Node2D, delta: float) -> void:
+	var move_idx := int(_exec_command.get("move", MoveCommand.HOLD))
+	var aim_idx := int(_exec_command.get("aim", AimCommand.HOLD))
+	var attack_idx := int(_exec_command.get("attack", AttackCommand.HOLD_FIRE))
+
+	# AIM head — slew the view while the order says so.
+	var aiming := false
+	if aim_idx != AimCommand.HOLD and _exec_aimed < EXEC_AIM_DURATION:
+		var direction := 1.0 if aim_idx == AimCommand.UP else -1.0
+		figure.call("aim", direction * Stats.VIEW_SPEED * delta)
+		_exec_aimed += delta
+		aiming = true
+
+	# MOVE head — walk the ordered way for the bounded duration.
+	var walking := false
+	if (move_idx == MoveCommand.RIGHT or move_idx == MoveCommand.LEFT) \
+			and _exec_walked < EXEC_WALK_DURATION:
+		figure.call("move", 1.0 if move_idx == MoveCommand.RIGHT else -1.0)
+		_exec_walked += delta
+		walking = true
+
+	# ATTACK head — slew the view onto the target, then fire the
+	# ordered weapon slot through the game's own NPC fire path.
+	if attack_idx != AttackCommand.HOLD_FIRE and not _exec_fired \
+			and not _exec_failed:
+		_execute_attack(figure, attack_idx, delta)
+
+	# Turn economy: all ordered heads finished (jump/skip already ran
+	# at turn start) — hand the turn back now. skip_turn is a no-op
+	# once a committed shot started the post-shot handover.
+	var move_done: bool = move_idx == MoveCommand.HOLD \
+			or move_idx == MoveCommand.JUMP or move_idx == MoveCommand.BACKFLIP \
+			or move_idx == MoveCommand.SKIP_TURN \
+			or _exec_walked >= EXEC_WALK_DURATION
+	var attack_done: bool = attack_idx == AttackCommand.HOLD_FIRE \
+			or _exec_fired or _exec_failed
+	if move_done and not aiming and attack_done:
+		TurnController.skip_turn(figure)
+
+## Issue #659: the attack order — resolve the ordered target (falling
+## back to the nearest visible enemy when the ordered index expired),
+## slew the figure's view onto it, then fire the ordered WeaponInventory
+## slot. A fire that cannot happen at all (no weapon node, no target,
+## npc_fire refusal) DEGRADES to a finished turn (task 4) — never a
+## stall, never a wasted timer.
+func _execute_attack(figure: Node2D, attack_idx: int, delta: float) -> void:
+	_exec_fire_wait += delta
+	var weapon: Node = figure.get_node_or_null("Weapon")
+	if weapon == null or not weapon.has_method("npc_fire"):
+		_exec_failed = true
+		return
+	var target := _resolve_attack_target(
+			int(_exec_command.get("target", TargetCommand.NONE)))
+	if target == null:
+		_exec_failed = true
+		return
+	var desired := _aim_angle_at(figure, target)
+	var current := float(figure.get("view_angle"))
+	var slewed := move_toward(current,
+			clampf(desired, -Stats.VIEW_MAX, Stats.VIEW_MAX),
+			Stats.VIEW_SPEED * delta)
+	figure.set("view_angle", slewed)
+	if absf(desired - slewed) > EXEC_AIM_TOLERANCE \
+			and _exec_fire_wait < EXEC_FIRE_GRACE:
+		return  # still slewing onto the target
+	# Lock the selection to this figure for the rest of the turn — the
+	# held-weapon sync (Weapon._physics_process) would otherwise pull
+	# selected_weapon back to the team's UI slot before the shot.
+	WeaponInventory.lock_for(figure)
+	weapon.set("npc_target", target)
+	weapon.set("selected_weapon", attack_idx - 1)
+	_exec_fired = bool(weapon.call("npc_fire"))
+	if not _exec_fired:
+		_exec_failed = true
+
+## Issue #659: the ordered target — "target" index k names the k-th of
+## _visible_enemies_nearest_first() (the same list the mask and the
+## observation slots use). An expired index (the enemy died or left
+## reach since the decision) degrades to the nearest visible enemy;
+## nobody visible degrades to null (a failed, turn-ending order).
+func _resolve_attack_target(target_idx: int) -> Node2D:
+	var visible := _visible_enemies_nearest_first()
+	if target_idx >= 1 and target_idx <= visible.size():
+		return visible[target_idx - 1]
+	if not visible.is_empty():
+		return visible[0]
+	return null
+
+## Issue #659: the view angle that centres the aim on `target` — the
+## Npc.gd formula in the figure's own gravity frame (flat training
+## ground: the world frame), clamped by the fire path's VIEW_MAX.
+func _aim_angle_at(figure: Node2D, target: Node2D) -> float:
+	var to_target := target.global_position - figure.global_position
+	var grav := Vector2.DOWN
+	if figure.has_method("current_gravity"):
+		grav = figure.call("current_gravity")
+	var tangent := Vector2(grav.y, -grav.x)
+	var vertical := to_target.dot(grav)
+	var horizontal := absf(to_target.dot(tangent))
+	return atan2(-vertical, maxf(horizontal, 1.0))
 
 #func get_obs_space() -> Dictionary:
 #	# Override only for complex obs (images, multiple keys). The base class derives

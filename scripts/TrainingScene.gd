@@ -23,6 +23,21 @@ extends Node2D
 ## <= 0 keeps whatever GameConfig carries (no override).
 @export var idle_turn_time := 3.0
 
+func _init() -> void:
+	# Issue #659: the hero team must be HUMAN-brained in the training
+	# scene — the RL controller (BotController's turn executor) is the
+	# only brain the player side may carry. This runs when the scene is
+	# INSTANTIATED, before any instanced environment child enters the
+	# tree (a child's _ready runs after the root's _init), so the
+	# GameConfig.apply dressing pass — which gives the staged figures
+	# their brains per the configured controllers — still sees the
+	# override. Without it the all-computer default dresses the hero as
+	# Npc.gd and the scripted AI, not the policy, would act for the
+	# player side (while the pending order sat unconsumed).
+	if GameConfig.teams.is_empty():
+		GameConfig.load_teams()
+	GameConfig.teams[0]["controller"] = "player"
+
 func _ready() -> void:
 	if idle_turn_time > 0.0:
 		GameConfig.turn_time = idle_turn_time

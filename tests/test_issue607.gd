@@ -12,7 +12,7 @@ extends Node
 ##     ignored, garbage degrades per head, and consume_pending_command()
 ##     hands the joint order over once and resets to all-neutral.
 ##  3. MASK: without enemies every attack slot but hold-fire and every
-##     target slot but none is illegal while move/aim/tool stay fully
+##     target slot but none is illegal while move/aim stay fully
 ##     legal; with two enemies in reach the attack head opens up and
 ##     target k is legal exactly while the k-th nearest enemy exists
 ##     (nearest-first, the observation vector's order).
@@ -135,9 +135,15 @@ func _ready() -> void:
 	var mask: Dictionary = scene_bot.get_action_mask()
 	_check(mask.keys() == ["move", "aim", "attack", "target", "tool"],
 			"mask covers the five heads in wire order, got %s" % str(mask.keys()))
-	for head in ["move", "aim", "tool"]:
+	for head in ["move", "aim"]:
 		_check(mask[head].size() == want[head] and mask[head].all(func(v): return v),
 				"%s fully legal with no enemy in reach" % head)
+	# Issue #659: tool orders have no executor yet — every tool slot is
+	# masked illegal (only NONE) so the policy never wastes a decision
+	# (or a turn) on an order the game would ignore.
+	_check(mask["tool"].size() == want["tool"] and mask["tool"][0]
+				and not mask["tool"].slice(1).has(true),
+				"tool head masked to NONE until tool execution lands (#659)")
 	_check(mask["attack"][0] == true and not mask["attack"].slice(1).has(true),
 			"no enemy: hold fire legal, weapon slots illegal")
 	_check(mask["target"][0] == true and not mask["target"].slice(1).has(true),
