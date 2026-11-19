@@ -88,6 +88,11 @@ const ROUND_DROP_CHANCE := 0.25
 
 var _level: Node = null
 var _turn_left := 0.0
+## Issue #653: the current turn's number since the level began
+## (1 = the level's first turn) — shown in the central top banner and
+## the debug OSD via turn_number(). Counted once per _begin_turn, so
+## teams skipped while dead never inflate the number.
+var _turn_number := 0
 ## Issue #191: multi-team turn order. A team id is "player" for the player
 ## team; when the level has exactly ONE AI team it keeps the legacy id
 ## "enemy", otherwise each AI team color gets its own "enemy:<color>" id.
@@ -405,6 +410,7 @@ func _on_level_changed() -> void:
 		_switch_wait = 0.0
 		_stall_wait = 0.0
 		_round = 1
+		_turn_number = 0
 		_teams = []
 		_color_to_id = {}
 		_human_teams = {}
@@ -423,6 +429,12 @@ func reset_game() -> void:
 	_roll_wait = 0.0
 	_switch_wait = 0.0
 	_start_round()
+
+
+## Issue #653: the current turn's number for the UI — 1 on the level's
+## first turn, 0 while no turn has begun yet (outside levels).
+func turn_number() -> int:
+	return _turn_number
 
 
 ## Issue #191: the id of the team a figure belongs to.
@@ -567,6 +579,8 @@ func _start_round() -> void:
 	_stall_wait = 0.0
 	# Issue #364: a fresh game starts at round 1 — items drop from round 2.
 	_round = 1
+	# Issue #653: a fresh game also restarts the turn numbering.
+	_turn_number = 0
 	active_team = ""
 	active_member = null
 	_build_ui()
@@ -681,6 +695,8 @@ func _begin_turn(team: String) -> void:
 		return
 	active_team = team
 	_switching = false
+	# Issue #653: count the turn — 1 on the level's first turn.
+	_turn_number += 1
 	# Issue #244: a fresh turn clears the expired-timer wait state.
 	_timer_wait = false
 	# Issue #104: a fresh turn always starts with switching unlocked.
@@ -1099,7 +1115,8 @@ func _update_label() -> void:
 	var team_name: String = _team_name(active_team)
 	# Issue #165/#167: the banner names the team by its actual scene-
 	# authored color and is painted in that team color.
-	_label.text = "%s TURN — %d s" % [team_name, ceili(_turn_left)]
+	# Issue #653: the banner leads with the turn number.
+	_label.text = "Turn %d — %s TURN — %d s" % [_turn_number, team_name, ceili(_turn_left)]
 	_label.add_theme_color_override("font_color", _team_color(active_team))
 	_update_hint()
 

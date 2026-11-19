@@ -2,8 +2,9 @@ extends CanvasLayer
 ## On-Screen Display (issue #76).
 ##
 ## Replaces the small zoom label from issue #43 with a full OSD in the
-## top-left corner: current zoom level, FPS, the current level's name and
-## the current character's health (issue #109). Zoom is read from the
+## top-left corner: current zoom level, FPS, the current level's name,
+## the current character's health (issue #109) and the current turn's
+## number (issue #653). Zoom is read from the
 ## shared player camera every frame, so no other scripts have to notify the
 ## OSD about zoom changes.
 ##
@@ -18,6 +19,8 @@ const ZOOM_LINE := "Zoom: %d%%"
 const FPS_LINE := "FPS: %d"
 const HEALTH_LINE := "HP: %d/%d"
 const HEALTH_NONE := "HP: —"
+## Issue #653: the current turn's number (TurnController.turn_number).
+const TURN_LINE := "Turn: %d"
 
 ## Issue #252: how many action-log lines stay on screen and how long a
 ## line lives before it fades out of the log.
@@ -41,6 +44,8 @@ var _zoom_label: Label
 var _fps_label: Label
 var _level_label: Label
 var _health_label: Label
+## Issue #653: the turn-number line of the debug readout.
+var _turn_label: Label
 var _level_name := ""
 ## Issue #252: action-log label (top-right) and its live lines
 ## ([text, expires_at] pairs; pruned in _process).
@@ -57,6 +62,7 @@ func _ready() -> void:
 	_fps_label = _make_label(30.0)
 	_level_label = _make_label(48.0)
 	_health_label = _make_label(66.0)
+	_turn_label = _make_label(84.0)
 	_log_label = Label.new()
 	_log_label.anchor_left = 0.5
 	_log_label.anchor_right = 1.0
@@ -101,6 +107,8 @@ func _process(_delta: float) -> void:
 	# the per-frame bookkeeping entirely.
 	if not visible:
 		return
+	# Issue #653: the turn number — 0 outside levels / before the roll.
+	_turn_label.text = TURN_LINE % TurnController.turn_number()
 	_zoom_label.text = ZOOM_LINE % roundi(_camera_zoom() * 100.0)
 	_fps_label.text = FPS_LINE % Engine.get_frames_per_second()
 	_update_level_name()
