@@ -27,6 +27,10 @@ const Bot := preload("res://scripts/BotController.gd")
 const SURVIVAL_FULL := 0.02    # §2.4 at hp 100/100
 const SURVIVAL_HALF := 0.01    # §2.4 at hp 50/100 — scales with HP
 const SHAPING := 0.10          # §2.5 × |ΔΦ| = 1
+## §2.10 (#654): every ALIVE player-team turn end also pays the +0.01
+## conservation upkeep while the team's railgun budget is unspent —
+## the test figures are all player_team and never spend it.
+const SAVED := 0.01
 
 
 ## Minimal figure stand-in: alive (health > 0), teamable, shielded flag
@@ -91,14 +95,14 @@ func _ready() -> void:
 			"§2.4 full-HP survival pays %.2f, got %s" % [SURVIVAL_FULL, bot_a.reward]) and ok
 	bot_a.on_own_turn_ended()
 	# +0.02 survival − 0.05 idle − 0.05 danger; ΔΦ = 0 shapes nothing.
-	ok = _expect(is_equal_approx(bot_a.reward, SURVIVAL_FULL - 0.10),
-			"open idle turn nets %.2f, got %s" % [SURVIVAL_FULL - 0.10, bot_a.reward]) and ok
+	ok = _expect(is_equal_approx(bot_a.reward, SURVIVAL_FULL - 0.10 + SAVED),
+			"open idle turn nets %.2f, got %s" % [SURVIVAL_FULL - 0.10 + SAVED, bot_a.reward]) and ok
 	ok = _expect(survival_signals.n == 1.0, "survival emitted once, got %s" % survival_signals.n) and ok
 	ok = _expect(idle_signals.n == 1, "idle_turn emitted once, got %d" % idle_signals.n) and ok
 	ok = _expect(danger_signals.n == 1, "danger_tile_turn_end emitted once, got %d" % danger_signals.n) and ok
 	# The turn-end audit fires at most once per started turn.
 	bot_a.on_own_turn_ended()
-	ok = _expect(is_equal_approx(bot_a.reward, SURVIVAL_FULL - 0.10),
+	ok = _expect(is_equal_approx(bot_a.reward, SURVIVAL_FULL - 0.10 + SAVED),
 			"double turn-end adds nothing, got %s" % bot_a.reward) and ok
 
 	# --- §2.4 (HP scaling) + §2.5: LEAVING cover costs -----------------
@@ -132,8 +136,8 @@ func _ready() -> void:
 			"Φ = 0 after stepping into the open, got %s" % bot_b._tile_quality(fig_b)) and ok
 	bot_b.on_own_turn_ended()
 	# +0.01 survival − 0.10 leaving cover − 0.05 danger; no idle (walked).
-	ok = _expect(is_equal_approx(bot_b.reward, SURVIVAL_HALF - SHAPING - 0.05),
-			"leaving cover nets %.2f, got %s" % [SURVIVAL_HALF - SHAPING - 0.05, bot_b.reward]) and ok
+	ok = _expect(is_equal_approx(bot_b.reward, SURVIVAL_HALF - SHAPING - 0.05 + SAVED),
+			"leaving cover nets %.2f, got %s" % [SURVIVAL_HALF - SHAPING - 0.05 + SAVED, bot_b.reward]) and ok
 	ok = _expect(is_equal_approx(shaping_signals.sum, -SHAPING),
 			"§2.5 shaped −0.10 once, got %s" % shaping_signals.sum) and ok
 
@@ -159,12 +163,12 @@ func _ready() -> void:
 	fig_c.position = Vector2(10010, 0)  # take cover behind the wall
 	bot_c.on_own_turn_ended()
 	# +0.02 survival + 0.10 taking cover; no danger, no idle.
-	ok = _expect(is_equal_approx(bot_c.reward, SURVIVAL_FULL + SHAPING),
-			"turn ended in cover nets %.2f, got %s" % [SURVIVAL_FULL + SHAPING, bot_c.reward]) and ok
+	ok = _expect(is_equal_approx(bot_c.reward, SURVIVAL_FULL + SHAPING + SAVED),
+			"turn ended in cover nets %.2f, got %s" % [SURVIVAL_FULL + SHAPING + SAVED, bot_c.reward]) and ok
 	# DoD: covered end vs open end differ measurably; camping in cover
 	# for a whole turn can never approach the §2.2 kill reward.
-	var covered_turn: float = SURVIVAL_FULL + SHAPING
-	var open_turn: float = SURVIVAL_FULL - 0.10
+	var covered_turn: float = SURVIVAL_FULL + SHAPING + SAVED
+	var open_turn: float = SURVIVAL_FULL - 0.10 + SAVED
 	ok = _expect(covered_turn - open_turn >= 0.19,
 			"covered end beats open end by ≥ 0.19, got %.2f" % (covered_turn - open_turn)) and ok
 	ok = _expect(covered_turn < Bot.KILL_REWARD,
@@ -187,8 +191,8 @@ func _ready() -> void:
 	bot_d.idle_turn.connect(func(_applied: float) -> void: d_idle.n += 1)
 	bot_d.on_own_turn_started()  # controller never got a set_action
 	bot_d.on_own_turn_ended()
-	ok = _expect(is_equal_approx(bot_d.reward, SURVIVAL_FULL - 0.05),
-			"no-choice turn: survival − danger only, got %s" % bot_d.reward) and ok
+	ok = _expect(is_equal_approx(bot_d.reward, SURVIVAL_FULL - 0.05 + SAVED),
+			"no-choice turn: survival − danger + weapon_saved, got %s" % bot_d.reward) and ok
 	ok = _expect(d_idle.n == 0, "silent controller is never idle-punished, got %d" % d_idle.n) and ok
 
 	# --- §2.8: out of the enemy band ⇒ no danger, Φ = 1 (safe tile) -----
@@ -209,8 +213,8 @@ func _ready() -> void:
 	bot_f.set_action({"move": 0, "action": 0})
 	bot_f.on_own_turn_started()
 	bot_f.on_own_turn_ended()
-	ok = _expect(is_equal_approx(bot_f.reward, SURVIVAL_FULL),
-			"out-of-band neutral turn pays only survival, got %s" % bot_f.reward) and ok
+	ok = _expect(is_equal_approx(bot_f.reward, SURVIVAL_FULL + SAVED),
+			"out-of-band neutral turn pays survival + weapon_saved, got %s" % bot_f.reward) and ok
 
 	# --- §2.3 interaction: the own death closes the turn ---------------
 	var bot_e: Node2D = Bot.new()
@@ -240,8 +244,8 @@ func _ready() -> void:
 	var reward_before: float = bot_a.reward
 	Bot.notify_own_turn_started(fig_a)
 	Bot.notify_own_turn_ended(fig_a)
-	ok = _expect(is_equal_approx(bot_a.reward - reward_before, SURVIVAL_FULL - 0.05),
-			"dispatched turn: survival − danger, no stale-idle, got %s" % (bot_a.reward - reward_before)) and ok
+	ok = _expect(is_equal_approx(bot_a.reward - reward_before, SURVIVAL_FULL - 0.05 + SAVED),
+			"dispatched turn: survival − danger + weapon_saved, no stale-idle, got %s" % (bot_a.reward - reward_before)) and ok
 
 	# --- §4: manifest + real signal emission ----------------------------
 	var affordances: Dictionary = bot_a.get_reward_affordances()

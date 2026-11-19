@@ -370,6 +370,17 @@ const DANGER_TILE_PENALTY := -0.05    # §2.8: flat, per turn ended on a danger 
 # pays no outcome at all (truncation must not look like a victory).
 const EPISODE_WIN_REWARD := 0.50      # §2.9: own team is the sole surviving side
 const EPISODE_LOSS_REWARD := -0.50     # §2.9: own side wiped (draw included) or lost
+## Issue #654: §2.10 conservation upkeep — per still-unspent SCARCE
+## weapon at own-turn end. Deliberately upkeep-small (half of §2.4) so
+## one decisive railgun shot (§2.1 + §2.2 pay up to +0.80) always
+## outruns hoarding: the upkeep prices the weapon's opportunity cost,
+## it never forbids spending it.
+const SCARCE_WEAPON_SAVED_REWARD := 0.01
+## Issue #654: indices into WeaponInventory.WEAPONS of the weapons worth
+## saving — today exactly one, the railgun (WEAPON_RAILGUN = 6, the
+## 1-use-per-team RAILGUN_USES budget; every other weapon carries five
+## uses or is infinite, so none is scarce).
+const SCARCE_WEAPON_INDICES := [6]
 ## Issue #436: REWARD_SPEC §3's magnitude budget — every non-terminal
 ## per-step reward is inside [−1, +1] by construction and terminal steps
 ## clip to ±1.0 before logging. Derived from §3, not chosen freely (the
@@ -413,6 +424,11 @@ signal danger_tile_turn_end(applied: float)
 # reward signal.
 signal episode_won(applied: float)
 signal episode_lost(applied: float)
+## Issue #654: the §2.10 conservation upkeep event, declared for the
+## recipe system (REWARD_SPEC §4) — same payload contract as every other
+## reward signal: the signed delta actually added to `reward` when the
+## agent's own turn ends with the team's scarce weapon budget unspent.
+signal weapon_saved(applied: float)
 
 ## Issue #433: how much of this step's §2.1 cap / §2.6 floor budget is
 ## already spent — several hits inside ONE decision step amortize into
@@ -472,6 +488,7 @@ func get_reward_affordances() -> Dictionary:
 			"danger_tile_turn_end": "§2.8 — turn ended inside an enemy's clear line-of-fire band (−0.05)",
 			"episode_won": "§2.9 — episode ended with own team the sole surviving side (+0.50 terminal, #437)",
 			"episode_lost": "§2.9 — episode ended with own side wiped or outlived, draw included (−0.50 terminal, #437)",
+			"weapon_saved": "§2.10 — own turn ended with the team's scarce weapon (railgun) budget still unspent (+0.01 per scarce weapon per turn, #654)",
 		},
 	}
 
@@ -732,6 +749,28 @@ func on_own_turn_ended() -> void:
 		reward += DANGER_TILE_PENALTY
 		_log_reward_component("danger_tile_turn_end", DANGER_TILE_PENALTY)
 		danger_tile_turn_end.emit(DANGER_TILE_PENALTY)
+	# Issue #654: §2.10 conservation upkeep — the turn passed with the
+	# team's scarce weapon still in the budget (option value preserved).
+	# A state audit like §2.8, not a command audit: it reads the live
+	# WeaponInventory ledger, so it needs no _has_ordered gate.
+	var saved := _scarce_weapons_saved(figure)
+	if saved > 0:
+		var applied := SCARCE_WEAPON_SAVED_REWARD * float(saved)
+		reward += applied
+		_log_reward_component("weapon_saved", applied)
+		weapon_saved.emit(applied)
+
+## Issue #654: how many of the team's SCARCE weapons still have unspent
+## uses, read from the live WeaponInventory budget (per-team ledger,
+## lazily created on first touch — the enemy side's ledger is as real as
+## the player's, so both bots audit their own team symmetrically).
+func _scarce_weapons_saved(figure: Node2D) -> int:
+	var team_id := TurnController.team_id_of(figure)
+	var saved := 0
+	for w in SCARCE_WEAPON_INDICES:
+		if WeaponInventory.weapon_uses_left(team_id, w) > 0:
+			saved += 1
+	return saved
 
 ## Issue #434: §2.5 — potential-based shaping: every decision step of
 ## the own turn pays ±0.10 × ΔΦ since the last evaluation, so a whole
