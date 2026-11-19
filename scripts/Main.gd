@@ -4,10 +4,11 @@ extends Control
 ## Asymmetric composition: branding on the left, the primary
 ## options on the right (NEW GAME / LEVEL EDITOR / LAN GAME / SETTINGS /
 ## QUIT), fully static geometric background (MenuBackground) and a small
-## footer with the game version. NEW GAME opens the existing level
-## selection flow (LevelsMenu -> LevelConfigMenu); LEVEL EDITOR opens
-## the level editor (issue #464); LAN GAME opens the LAN lobby (issue
-## #551); SETTINGS opens the SettingsMenu.
+## footer with the game version. NEW GAME opens the level setup menu
+## (LEVEL SETUP) — the level itself is picked there, in the top-line
+## drop-down, since issue #643 removed the separate levels menu;
+## LEVEL EDITOR opens the level editor (issue #464); LAN GAME opens
+## the LAN lobby (issue #551); SETTINGS opens the SettingsMenu.
 
 @onready var _new_game_button: Button = %NewGameButton
 @onready var _level_editor_button: Button = %LevelEditorButton
@@ -45,7 +46,10 @@ func _ready() -> void:
 
 
 func _on_new_game_pressed() -> void:
-	get_tree().change_scene_to_file("res://scenes/menus/LevelsMenu.tscn")
+	# Issue #643: the levels menu is gone — NEW GAME goes straight to
+	# the level setup menu, where the top-line drop-down picks the
+	# level (with a filter field beside it).
+	get_tree().change_scene_to_file("res://scenes/menus/LevelConfigMenu.tscn")
 
 
 ## Issue #464: the level editor — authoring skirmish maps with the

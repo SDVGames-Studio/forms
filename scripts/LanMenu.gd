@@ -13,7 +13,8 @@ extends Control
 ## Issue #551 rework (owner follow-up 2026-11-16): once HOST GAME
 ## starts, the host's setup controls (HOST GAME, host address, port,
 ## CONNECT) disappear and a NEXT button appears, taking the host into
-## the usual level flow — LevelsMenu → LevelConfigMenu → START runs
+## the usual level flow — LevelConfigMenu (the level drop-down picks
+## the map there since issue #643) → START runs
 ## the game. The ENet connection still does not drive a synchronized
 ## shared match — that remains the next step.
 
@@ -104,7 +105,9 @@ func _on_connect_pressed() -> void:
 
 
 func _on_next_pressed() -> void:
-	get_tree().change_scene_to_file("res://scenes/menus/LevelsMenu.tscn")
+	# Issue #643: the levels menu is gone — the level is picked in the
+	# setup menu's top-line drop-down now.
+	get_tree().change_scene_to_file("res://scenes/menus/LevelConfigMenu.tscn")
 
 
 func _on_back_pressed() -> void:

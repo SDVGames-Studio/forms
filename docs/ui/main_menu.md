@@ -132,15 +132,17 @@ Keyboard and controller navigation must be supported through Godot's focus syste
 
 The existing project already implements the following flow:
 
-`Main → LevelsMenu → LevelConfigMenu → Gameplay`
+`Main → LevelConfigMenu → Gameplay`
+
+(The separate `LevelsMenu` was removed in issue #643 — the level is
+picked in `LevelConfigMenu`'s top-line drop-down, with a filter field.)
 
 Reuse this flow.
 
 Requirements:
 
 - Rename the main menu's Play option to New Game.
-- New Game opens the existing `LevelsMenu`.
-- Preserve the existing level selection and level configuration behavior.
+- New Game opens the level setup menu (`LevelConfigMenu`).
 - Preserve the existing game initialization logic.
 - Provide a way to return to the main menu.
 - Do not introduce another level selection implementation.
@@ -293,8 +295,9 @@ Avoid external UI frameworks and unnecessary plugins.
 The current project contains:
 
 - `Main.tscn` and `Main.gd` — main menu.
-- `LevelsMenu` — level selection.
-- `LevelConfigMenu` — level configuration.
+- `LevelConfigMenu` — level configuration (and, since issue #643,
+  level selection via the top-line drop-down + filter; the old
+  `LevelsMenu` is gone).
 - `SettingsMenu` — settings navigation.
 - `TeamMenu` — team customization.
 - `HotkeysMenu` — controls configuration.
@@ -358,7 +361,8 @@ If an existing requirement conflicts with this specification, stop and request c
 
 ### New Game
 
-- [ ] New Game opens the existing LevelsMenu.
+- [ ] New Game opens the level setup menu (level pick inside it,
+      issue #643).
 - [ ] Existing level configuration flow remains functional.
 - [ ] Level Selection is accessible only through this flow.
 - [ ] Navigation back to the main menu works.

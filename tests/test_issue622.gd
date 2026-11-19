@@ -4,8 +4,8 @@ extends Node
 ## window sizes (the canvas_items/expand stretch keeps the layout canvas
 ## at 1152x648 or larger, so the window classes also prove resize
 ## invariance) AND with worst-case dynamic content: 8 editor-saved
-## custom levels in LevelsMenu, 8 teams x 3 members in TeamMenu /
-## LevelConfigMenu. Asserts every visible Control either fits inside
+## custom levels in LevelConfigMenu's level drop-down (issue #643),
+## 8 teams x 3 members in TeamMenu / LevelConfigMenu. Asserts every visible Control either fits inside
 ## the viewport rect or lives inside a ScrollContainer (reachable by
 ## scrolling) whose content fits its width (h-scroll is disabled by
 ## convention). Headless-safe: rects come from the container layout
@@ -39,7 +39,6 @@ class FitDriver extends Node:
 		"res://scenes/menus/HotkeysMenu.tscn",
 		"res://scenes/menus/DebugMenu.tscn",
 		"res://scenes/menus/GraphicsMenu.tscn",
-		"res://scenes/menus/LevelsMenu.tscn",
 		"res://scenes/menus/LevelConfigMenu.tscn",
 		"res://scenes/menus/AudioMenu.tscn",
 		"res://scenes/menus/LanMenu.tscn",
@@ -84,8 +83,8 @@ class FitDriver extends Node:
 		DisplayServer.window_set_size(size)
 		get_window().size = size
 
-	## Worst case for LevelsMenu: N editor-saved levels (one 56 px
-	## button each) in user://levels.
+	## Worst case for the level drop-down (issue #643): N editor-saved
+	## levels in user://levels joining the drop-down's list.
 	func _seed_custom_levels(count: int) -> void:
 		DirAccess.make_dir_recursive_absolute(LEVELS_DIR)
 		_clear_custom_levels()

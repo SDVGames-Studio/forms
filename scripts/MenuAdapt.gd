@@ -96,8 +96,9 @@ static func _apply_at(root: Control, layout: MarginContainer,
 			separation(width))
 	# Nav buttons only exist on the screens with a Nav column
 	# (TeamMenu/HotkeysMenu use their own grids — untouched). Issue #622:
-	# the pass also descends into a ScrollContainer directly under Nav
-	# (LevelsMenu wraps its list) so those buttons adapt too.
+	# the pass also descends into containers directly under Nav (the
+	# historical LevelsMenu wrapped its list; kept for any wrapped
+	# future list) so those buttons adapt too.
 	var nav := layout.get_node_or_null("Columns/Nav") as VBoxContainer
 	if nav != null:
 		var button_width := nav_width(width)
