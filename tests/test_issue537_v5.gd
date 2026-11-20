@@ -76,8 +76,8 @@ func _ready() -> void:
 		var want: Color = GameConfig.teams[i]["color"]
 		_check("row %d square shows the team's actual color %s" % [i, want],
 			swatch.color.is_equal_approx(want))
-		_check("row %d square fixed 38x38, no stretch" % i,
-			swatch.custom_minimum_size == Vector2(38, 38)
+		_check("row %d square fixed 30x30, no stretch" % i,
+			swatch.custom_minimum_size == Vector2(30, 30)
 			and swatch.size_flags_vertical == Control.SIZE_SHRINK_CENTER)
 
 	# Position: the square sits BETWEEN the name and the member grid in

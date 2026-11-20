@@ -12,10 +12,10 @@ content_margin_bottom = 8.0
 bg_color = Color(0.09, 0.098, 0.122, 1)
 
 [sub_resource type="StyleBoxFlat" id="StyleBox_form_panel"]
-content_margin_left = 16.0
-content_margin_top = 12.0
-content_margin_right = 16.0
-content_margin_bottom = 12.0
+content_margin_left = 12.0
+content_margin_top = 10.0
+content_margin_right = 12.0
+content_margin_bottom = 10.0
 bg_color = Color(0.09, 0.098, 0.122, 1)
 border_width_left = 1
 border_width_top = 1
@@ -47,172 +47,189 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 theme_override_constants/margin_left = 48
-theme_override_constants/margin_top = 32
+theme_override_constants/margin_top = 24
 theme_override_constants/margin_right = 48
-theme_override_constants/margin_bottom = 40
+theme_override_constants/margin_bottom = 56
 
-[node name="Columns" type="HBoxContainer" parent="Layout"]
+[node name="Board" type="VBoxContainer" parent="Layout"]
 layout_mode = 2
-theme_override_constants/separation = 32
-
-[node name="Brand" type="VBoxContainer" parent="Layout/Columns"]
-layout_mode = 2
-size_flags_vertical = 4
-theme_override_constants/separation = 10
-
-[node name="Title" type="Label" parent="Layout/Columns/Brand"]
-unique_name_in_owner = true
-layout_mode = 2
-theme_override_font_sizes/font_size = 42
-text = "LEVEL SETUP"
-
-[node name="Subtitle" type="Label" parent="Layout/Columns/Brand"]
-layout_mode = 2
-theme_override_colors/font_color = Color(0.467, 0.49, 0.545, 1)
-theme_override_font_sizes/font_size = 15
-text = "CONFIGURE THE SKIRMISH"
-
-[node name="AccentRule" type="ColorRect" parent="Layout/Columns/Brand"]
-custom_minimum_size = Vector2(260, 4)
-layout_mode = 2
-color = Color(0.655, 0.545, 0.98, 1)
-
-[node name="Spacer" type="Control" parent="Layout/Columns"]
-layout_mode = 2
-size_flags_horizontal = 3
-
-[node name="Nav" type="VBoxContainer" parent="Layout/Columns"]
-layout_mode = 2
-size_flags_vertical = 3
 theme_override_constants/separation = 12
 
-[node name="Form" type="PanelContainer" parent="Layout/Columns/Nav"]
+[node name="Brand" type="HBoxContainer" parent="Layout/Board"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="Title" type="Label" parent="Layout/Board/Brand"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 36
+text = "LEVEL SETUP"
+clip_text = true
+
+[node name="Subtitle" type="Label" parent="Layout/Board/Brand"]
+layout_mode = 2
+size_flags_vertical = 8
+theme_override_colors/font_color = Color(0.467, 0.49, 0.545, 1)
+theme_override_font_sizes/font_size = 13
+text = "CONFIGURE THE SKIRMISH"
+
+[node name="AccentRule" type="ColorRect" parent="Layout/Board/Brand"]
+custom_minimum_size = Vector2(140, 4)
+layout_mode = 2
+size_flags_horizontal = 3
+color = Color(0.655, 0.545, 0.98, 1)
+
+[node name="Content" type="HBoxContainer" parent="Layout/Board"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+theme_override_constants/separation = 16
+
+[node name="LeftCol" type="VBoxContainer" parent="Layout/Board/Content"]
+layout_mode = 2
+size_flags_vertical = 0
+theme_override_constants/separation = 12
+
+[node name="Form" type="PanelContainer" parent="Layout/Board/Content/LeftCol"]
 layout_mode = 2
 theme_override_styles/panel = SubResource("StyleBox_form_panel")
 
-[node name="FormBox" type="VBoxContainer" parent="Layout/Columns/Nav/Form"]
+[node name="FormBox" type="VBoxContainer" parent="Layout/Board/Content/LeftCol/Form"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="LevelRow" type="HBoxContainer" parent="Layout/Board/Content/LeftCol/Form/FormBox"]
 layout_mode = 2
 theme_override_constants/separation = 10
 
-[node name="LevelRow" type="HBoxContainer" parent="Layout/Columns/Nav/Form/FormBox"]
+[node name="LevelLabel" type="Label" parent="Layout/Board/Content/LeftCol/Form/FormBox/LevelRow"]
+custom_minimum_size = Vector2(92, 0)
 layout_mode = 2
-theme_override_constants/separation = 12
-
-[node name="LevelLabel" type="Label" parent="Layout/Columns/Nav/Form/FormBox/LevelRow"]
-custom_minimum_size = Vector2(130, 0)
-layout_mode = 2
-theme_override_font_sizes/font_size = 16
+theme_override_font_sizes/font_size = 15
 text = "Level"
 
-[node name="LevelOption" type="OptionButton" parent="Layout/Columns/Nav/Form/FormBox/LevelRow"]
+[node name="LevelOption" type="OptionButton" parent="Layout/Board/Content/LeftCol/Form/FormBox/LevelRow"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(170, 0)
+custom_minimum_size = Vector2(160, 0)
 layout_mode = 2
-theme_override_font_sizes/font_size = 16
+theme_override_font_sizes/font_size = 15
 clip_text = true
 
-[node name="LevelFilter" type="LineEdit" parent="Layout/Columns/Nav/Form/FormBox/LevelRow"]
+[node name="LevelFilter" type="LineEdit" parent="Layout/Board/Content/LeftCol/Form/FormBox/LevelRow"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(100, 0)
+custom_minimum_size = Vector2(80, 0)
 layout_mode = 2
-theme_override_font_sizes/font_size = 16
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 15
 placeholder_text = "Filter"
 
-[node name="TurnTimeRow" type="HBoxContainer" parent="Layout/Columns/Nav/Form/FormBox"]
+[node name="TurnTimeRow" type="HBoxContainer" parent="Layout/Board/Content/LeftCol/Form/FormBox"]
 layout_mode = 2
-theme_override_constants/separation = 12
+theme_override_constants/separation = 10
 
-[node name="TurnTimeLabel" type="Label" parent="Layout/Columns/Nav/Form/FormBox/TurnTimeRow"]
-custom_minimum_size = Vector2(130, 0)
+[node name="TurnTimeLabel" type="Label" parent="Layout/Board/Content/LeftCol/Form/FormBox/TurnTimeRow"]
+custom_minimum_size = Vector2(92, 0)
 layout_mode = 2
-theme_override_font_sizes/font_size = 16
+theme_override_font_sizes/font_size = 15
 text = "Turn time (s)"
 
-[node name="TurnTimeSpinBox" type="SpinBox" parent="Layout/Columns/Nav/Form/FormBox/TurnTimeRow"]
+[node name="TurnTimeSpinBox" type="SpinBox" parent="Layout/Board/Content/LeftCol/Form/FormBox/TurnTimeRow"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(110, 0)
+custom_minimum_size = Vector2(90, 0)
 layout_mode = 2
-theme_override_font_sizes/font_size = 16
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 15
 min_value = 5.0
 max_value = 120.0
 value = 15.0
 
-[node name="NightRegimeRow" type="HBoxContainer" parent="Layout/Columns/Nav/Form/FormBox"]
+[node name="NightRegimeRow" type="HBoxContainer" parent="Layout/Board/Content/LeftCol/Form/FormBox"]
 layout_mode = 2
-theme_override_constants/separation = 12
+theme_override_constants/separation = 10
 
-[node name="NightRegimeLabel" type="Label" parent="Layout/Columns/Nav/Form/FormBox/NightRegimeRow"]
-custom_minimum_size = Vector2(130, 0)
+[node name="NightRegimeLabel" type="Label" parent="Layout/Board/Content/LeftCol/Form/FormBox/NightRegimeRow"]
+custom_minimum_size = Vector2(92, 0)
 layout_mode = 2
-theme_override_font_sizes/font_size = 16
+theme_override_font_sizes/font_size = 15
 text = "Night regime"
 
-[node name="NightRegimeCheck" type="CheckButton" parent="Layout/Columns/Nav/Form/FormBox/NightRegimeRow"]
+[node name="NightRegimeCheck" type="CheckButton" parent="Layout/Board/Content/LeftCol/Form/FormBox/NightRegimeRow"]
 unique_name_in_owner = true
 layout_mode = 2
-theme_override_font_sizes/font_size = 16
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 15
 
-[node name="SpawnRegimeRow" type="HBoxContainer" parent="Layout/Columns/Nav/Form/FormBox"]
+[node name="SpawnRegimeRow" type="HBoxContainer" parent="Layout/Board/Content/LeftCol/Form/FormBox"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="SpawnRegimeLabel" type="Label" parent="Layout/Board/Content/LeftCol/Form/FormBox/SpawnRegimeRow"]
+custom_minimum_size = Vector2(92, 0)
+layout_mode = 2
+theme_override_font_sizes/font_size = 15
+text = "Spawn regime"
+
+[node name="SpawnRegimeOption" type="OptionButton" parent="Layout/Board/Content/LeftCol/Form/FormBox/SpawnRegimeRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 15
+
+[node name="ButtonsRow" type="HBoxContainer" parent="Layout/Board/Content/LeftCol"]
 layout_mode = 2
 theme_override_constants/separation = 12
 
-[node name="SpawnRegimeLabel" type="Label" parent="Layout/Columns/Nav/Form/FormBox/SpawnRegimeRow"]
-custom_minimum_size = Vector2(130, 0)
-layout_mode = 2
-theme_override_font_sizes/font_size = 16
-text = "Spawn regime"
-
-[node name="SpawnRegimeOption" type="OptionButton" parent="Layout/Columns/Nav/Form/FormBox/SpawnRegimeRow"]
+[node name="BackButton" type="Button" parent="Layout/Board/Content/LeftCol/ButtonsRow"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(200, 0)
 layout_mode = 2
-theme_override_font_sizes/font_size = 16
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 18
+text = "Back"
 
-[node name="TeamsPanel" type="PanelContainer" parent="Layout/Columns/Nav"]
+[node name="StartButton" type="Button" parent="Layout/Board/Content/LeftCol/ButtonsRow"]
+unique_name_in_owner = true
 layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 18
+text = "START"
+
+[node name="TeamsPanel" type="PanelContainer" parent="Layout/Board/Content"]
+layout_mode = 2
+size_flags_horizontal = 3
 size_flags_vertical = 3
 theme_override_styles/panel = SubResource("StyleBox_teams_panel")
 
-[node name="TeamsBox" type="VBoxContainer" parent="Layout/Columns/Nav/TeamsPanel"]
+[node name="TeamsBox" type="VBoxContainer" parent="Layout/Board/Content/TeamsPanel"]
 layout_mode = 2
 theme_override_constants/separation = 6
 
-[node name="TeamsTitle" type="Label" parent="Layout/Columns/Nav/TeamsPanel/TeamsBox"]
+[node name="TeamsHeader" type="HBoxContainer" parent="Layout/Board/Content/TeamsPanel/TeamsBox"]
 layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="TeamsTitle" type="Label" parent="Layout/Board/Content/TeamsPanel/TeamsBox/TeamsHeader"]
+layout_mode = 2
+size_flags_horizontal = 3
 theme_override_font_sizes/font_size = 16
 text = "Teams"
 
-[node name="TeamsScroll" type="ScrollContainer" parent="Layout/Columns/Nav/TeamsPanel/TeamsBox"]
+[node name="AddTeamButton" type="Button" parent="Layout/Board/Content/TeamsPanel/TeamsBox/TeamsHeader"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 32)
+layout_mode = 2
+theme_override_font_sizes/font_size = 14
+text = "+ Add team"
+
+[node name="TeamsScroll" type="ScrollContainer" parent="Layout/Board/Content/TeamsPanel/TeamsBox"]
 layout_mode = 2
 size_flags_vertical = 3
 horizontal_scroll_mode = 0
 
-[node name="TeamsList" type="VBoxContainer" parent="Layout/Columns/Nav/TeamsPanel/TeamsBox/TeamsScroll"]
+[node name="TeamsList" type="VBoxContainer" parent="Layout/Board/Content/TeamsPanel/TeamsBox/TeamsScroll"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_constants/separation = 8
-
-[node name="AddTeamButton" type="Button" parent="Layout/Columns/Nav/TeamsPanel/TeamsBox"]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(0, 34)
-layout_mode = 2
-theme_override_font_sizes/font_size = 16
-text = "+ Add team"
-
-[node name="StartButton" type="Button" parent="Layout/Columns/Nav"]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(280, 48)
-layout_mode = 2
-theme_override_font_sizes/font_size = 18
-text = "START"
-
-[node name="BackButton" type="Button" parent="Layout/Columns/Nav"]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(280, 48)
-layout_mode = 2
-theme_override_font_sizes/font_size = 18
-text = "Back"
+theme_override_constants/separation = 6
 
 [node name="Footer" type="HBoxContainer" parent="."]
 layout_mode = 1

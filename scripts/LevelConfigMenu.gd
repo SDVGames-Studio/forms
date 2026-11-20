@@ -67,6 +67,16 @@ extends Control
 ## runs on the host device; the synchronized shared match over the
 ## wire remains the next step).
 
+## Issue #647 rework v2 (owner 2026-11-20): the menu now USES the
+## width instead of hugging the right edge — the brand is a compact
+## TOP header, the form sits in a left column and the teams panel
+## FILLS the remaining width and height beside it (the dead spacer
+## between a far-left title and a far-right form is gone). The team
+## rows got denser (slimmer row buttons, tighter separation) and the
+## per-team controller drop-down carries a measured minimum width —
+## clip_text kept its text OUT of its minimum size, so "Computer"/
+## "Player" were being cut off inside an arrow-sized field.
+
 ## Issue #643: the stock levels the drop-down offers, in order. The
 ## two spectate duels ride the same list — START runs them directly
 ## (nothing to configure: no player team, the cast is baked in).
@@ -108,6 +118,13 @@ const GRID_TIERS: Array[Array] = [[1, 4], [2, 8], [4, 16]]
 const GRID_WIDTH := 124.0
 const GRID_SEPARATION := 2.0
 
+## Issue #647 rework v2: minimum width of the per-team controller
+## drop-down. clip_text keeps long LAN nicknames tamed, but it also
+## removes the item text from the button's MINIMUM size — without
+## this floor the field collapses to stylebox + arrow and visibly
+## cuts "Computer"/"Player" off (owner report).
+const CONTROLLER_MIN_WIDTH := 132.0
+
 ## The "+" sign on a free spot (the theme's muted text tone).
 const PLUS_COLOR := Color(0.467, 0.49, 0.545)
 
@@ -141,6 +158,12 @@ var _rename_team_index := -1
 var _color_popup: Popup
 var _color_picker: ColorPicker
 var _color_team_index := -1
+
+## Issue #647 rework v2: slimmer styleboxes for the DENSE controls
+## (per-team controller/remove, add-team) — the theme's button padding
+## (12 px top/bottom) made every team row ~45 px tall, which is what
+## starved the teams list down to two visible rows. Built once.
+var _compact_boxes: Dictionary = {}
 
 ## Issue #649: a live LAN game makes this menu the shared lobby.
 var _lan := false
@@ -208,6 +231,10 @@ func _ready() -> void:
 			"color": team["color"] if team.get("color") is Color else Color(1, 1, 1),
 		})
 	_add_team_button.pressed.connect(_on_add_team_pressed)
+	# Issue #647 rework v2: dense row styling for the in-scene add-team
+	# button (the script-built team-row buttons get it in
+	# _rebuild_team_rows).
+	_compact_button_styles(_add_team_button)
 	_rebuild_team_rows()
 	_start_button.pressed.connect(_on_start_pressed)
 	_back_button.pressed.connect(_on_back_pressed)
@@ -428,9 +455,10 @@ func _rebuild_team_rows() -> void:
 		row.add_child(swatch)
 		row.add_child(_build_member_grid(team, i))
 		var controller := OptionButton.new()
-		controller.custom_minimum_size = Vector2(0, 34)
+		controller.custom_minimum_size = Vector2(CONTROLLER_MIN_WIDTH, 32)
 		controller.add_theme_font_size_override("font_size", 14)
 		controller.clip_text = true
+		_compact_button_styles(controller)
 		if _lan:
 			# Issue #649: in the LAN lobby the per-team choice is WHO
 			# drives the team — the computer, the host, or one of the
@@ -457,8 +485,9 @@ func _rebuild_team_rows() -> void:
 		row.add_child(controller)
 		var remove := Button.new()
 		remove.text = "Remove"
-		remove.custom_minimum_size = Vector2(0, 34)
+		remove.custom_minimum_size = Vector2(0, 32)
 		remove.add_theme_font_size_override("font_size", 14)
+		_compact_button_styles(remove)
 		# Issue #649: only the host may drop teams in the LAN lobby.
 		remove.disabled = GameConfig.teams.size() <= 2 or (_lan and not _lan_host)
 		remove.pressed.connect(func() -> void: _on_remove_team_pressed(i))
@@ -467,6 +496,33 @@ func _rebuild_team_rows() -> void:
 	# Issue #649: only the host may add teams in the LAN lobby.
 	_add_team_button.disabled = GameConfig.teams.size() >= GameConfig.MAX_TEAMS \
 			or (_lan and not _lan_host)
+
+
+## Issue #647 rework v2: apply the dense stylebox set (same flat look
+## and colors as the theme's buttons, 5 px vertical padding instead of
+## 12) to one row-level button/option button. Built once, shared.
+func _compact_button_styles(button: Button) -> void:
+	if _compact_boxes.is_empty():
+		var palette := {
+			"normal": [Color(0.16, 0.176, 0.22), Color(0.204, 0.224, 0.263)],
+			"hover": [Color(0.204, 0.224, 0.263), Color(0.204, 0.224, 0.263)],
+			"pressed": [Color(0.655, 0.545, 0.98), Color(0.655, 0.545, 0.98)],
+			"disabled": [Color(0.122, 0.137, 0.169), Color(0.204, 0.224, 0.263)],
+		}
+		for state: String in palette:
+			var colors: Array = palette[state]
+			var box := StyleBoxFlat.new()
+			box.bg_color = colors[0]
+			box.border_color = colors[1]
+			box.set_border_width_all(1)
+			box.set_corner_radius_all(6)
+			box.content_margin_left = 12.0
+			box.content_margin_right = 12.0
+			box.content_margin_top = 5.0
+			box.content_margin_bottom = 5.0
+			_compact_boxes[state] = box
+	for state: String in _compact_boxes:
+		button.add_theme_stylebox_override(state, _compact_boxes[state])
 
 
 ## Issue #649: the LAN drop-down index of a team's current driver

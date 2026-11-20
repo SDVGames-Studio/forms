@@ -69,10 +69,10 @@ class Driver extends Node:
 		var failures: Array[String] = []
 		var view: Rect2 = get_viewport().get_visible_rect()
 		var scroll: ScrollContainer = menu.get_node(
-			"Layout/Columns/Nav/TeamsPanel/TeamsBox/TeamsScroll")
+			"Layout/Board/Content/TeamsPanel/TeamsBox/TeamsScroll")
 		var list: VBoxContainer = scroll.get_node("TeamsList")
 		var add: Button = menu.get_node(
-			"Layout/Columns/Nav/TeamsPanel/TeamsBox/AddTeamButton")
+			"Layout/Board/Content/TeamsPanel/TeamsBox/TeamsHeader/AddTeamButton")
 		if list.get_child_count() != GameConfig.MAX_TEAMS:
 			failures.append("expected %d rows, got %d" % [
 				GameConfig.MAX_TEAMS, list.get_child_count()])

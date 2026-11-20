@@ -30,7 +30,9 @@ class MenuAdaptDriver extends Node:
 		"res://scenes/menus/HotkeysMenu.tscn",
 		"res://scenes/menus/DebugMenu.tscn",
 		"res://scenes/menus/GraphicsMenu.tscn",
-		"res://scenes/menus/LevelConfigMenu.tscn",
+		"# LevelConfigMenu left the #348 template family in the issue #647
+		# rework (brand is a top header, form beside the teams panel — no
+		# Columns/Nav brand+nav shape to adapt), so it is not asserted here.
 		"res://scenes/menus/AudioMenu.tscn",
 	]
 
