@@ -252,13 +252,15 @@ const SHOVEL_DIG_WIDTH := 32.0
 ## half width (32) plus the ellipse's half width (16): the hole starts
 ## at the wielder's edge.
 const SHOVEL_DIG_OFFSET := 48.0
-## The ellipse is carved with the shared blast CIRCLE (the only carve
-## primitive, exactly like the jackhammer's tunnel stamps): a fan of
-## disk stamps along the character's vertical, centres at these
-## fractions of the ellipse's half height, each stamp's radius the
-## SMALLER of the ellipse's local half-width and the pole cap — every
-## disk lies INSIDE the ellipse and their union covers it pole to pole.
-const SHOVEL_DIG_FAN: Array = [-0.85, -0.55, -0.25, 0.0, 0.25, 0.55, 0.85]
+## Issue #656 rework: the dig spot is ANCHORED — the first swing of a
+## dig fixes the ellipse (centre + upright) in WORLD space, and while
+## the wielder stays within this distance of that stance every further
+## swing re-carves the SAME ellipse. The first delivery re-centred the
+## dig on the live aim every swing, so re-aiming between the five
+## swings dragged the hole into a ragged trench — the owner's rework:
+## the removed ground must remain an ellipse. Moving this far (one dig
+## width) starts a fresh dig at the new spot.
+const SHOVEL_DIG_REANCHOR := 32.0
 
 var _facing := 1.0
 var _cooldown_left := 0.0
@@ -306,6 +308,15 @@ var _bat_effect: Node = null
 ## the shovel's own (shorter) reach; the hit itself is instant, see
 ## _swing_shovel.
 var _shovel_swing_t := -1.0
+## Issue #656 rework: the anchored dig of the current stance — the
+## ellipse centre/up fixed in world space by the first swing there,
+## the wielder's position when it was fixed, and whether that exact
+## ellipse has been carved already (re-carving an empty hole is a
+## no-op, so later swings cost nothing). See SHOVEL_DIG_REANCHOR.
+var _shovel_dig_anchor := Vector2.INF
+var _shovel_dig_up := Vector2.ZERO
+var _shovel_dig_body := Vector2.INF
+var _shovel_dig_carved := false
 ## Issue #307: jackhammer drill state — seconds left, drill direction
 ## (re-sampled from the live aim every tick so the aim keys steer a
 ## running drill, #316), the per-body accrued grind damage of THIS
@@ -1077,39 +1088,41 @@ func _shovel_sweep_hit() -> void:
 				body.take_damage(SHOVEL_DAMAGE)
 
 
-## Issue #656: THE DIG — one swing carves ONE ellipse out of
+## Issue #656: THE DIG — one use carves ONE upright ellipse out of
 ## destructible ground in front of the wielder: centred ahead along the
-## AIM at the body's edge (SHOVEL_DIG_OFFSET), its long axis (the
-## figure's height) along the character's VERTICAL (_frame_up — the
-## dig stays upright in the wielder's gravity frame wherever the aim
-## points), the short axis (half the figure's width) across it. The
-## carve primitive is the shared blast circle, so the ellipse is
-## stamped as a fan of disks along the vertical (SHOVEL_DIG_FAN) — the
-## jackhammer's tunnel stamps, sized to the ellipse. Stamping into thin
-## air is a no-op and indestructible ground ignores apply_blast, so a
-## swing at nothing costs the shot and moves nothing.
+## aim at the body's edge (SHOVEL_DIG_OFFSET), its long axis (the
+## figure's height) along the character's VERTICAL (_frame_up — the dig
+## stays upright in the wielder's gravity frame wherever the aim
+## points), the short axis (half the figure's width) across it. Rework:
+## the ellipse is ANCHORED in world space by the first swing of the
+## stance (see SHOVEL_DIG_REANCHOR) and carved EXACTLY via
+## DestructibleGround.apply_dig — no fan of blast circles — so however
+## the five swings are aimed while standing, the removed ground remains
+## that one ellipse. Stamping into thin air is a no-op and indestructible
+## ground ignores the dig, so a swing at nothing costs the shot and
+## moves nothing.
 func _shovel_dig() -> void:
 	var parent := get_parent() as Node2D
 	if parent == null:
 		return
-	var aim := _aim().normalized()
-	var up := _frame_up().normalized()
-	var centre := parent.global_position + aim * SHOVEL_DIG_OFFSET
-	var half_h := SHOVEL_DIG_HEIGHT / 2.0
-	var half_w := SHOVEL_DIG_WIDTH / 2.0
-	for f in SHOVEL_DIG_FAN:
-		var fraction := float(f)
-		var offset := half_h * fraction
-		var radius := minf(half_w * sqrt(maxf(0.0, 1.0 - fraction * fraction)),
-				half_h - absf(offset))
-		if radius < 2.0:
-			continue
-		var at := centre + up * offset
-		for ground in get_tree().get_nodes_in_group("destructible_ground"):
-			var chunk := ground as Node2D
-			if chunk != null and is_instance_valid(chunk) \
-					and chunk.has_method("apply_blast"):
-				chunk.apply_blast(at, radius)
+	if _shovel_dig_body == Vector2.INF \
+				or parent.global_position.distance_to(_shovel_dig_body) \
+				> SHOVEL_DIG_REANCHOR:
+		_shovel_dig_anchor = parent.global_position \
+				+ _aim().normalized() * SHOVEL_DIG_OFFSET
+		_shovel_dig_up = _frame_up().normalized()
+		_shovel_dig_body = parent.global_position
+		_shovel_dig_carved = false
+	if _shovel_dig_carved:
+		return
+	for ground in get_tree().get_nodes_in_group("destructible_ground"):
+		var chunk := ground as Node2D
+		if chunk != null and is_instance_valid(chunk) \
+				and chunk.has_method("apply_dig"):
+			chunk.apply_dig(_shovel_dig_anchor,
+					SHOVEL_DIG_WIDTH / 2.0, SHOVEL_DIG_HEIGHT / 2.0,
+					_shovel_dig_up)
+	_shovel_dig_carved = true
 
 
 func _fire_rocket(power := 1.0) -> void:
