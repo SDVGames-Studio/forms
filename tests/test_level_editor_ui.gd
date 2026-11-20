@@ -133,8 +133,8 @@ class LevelEditorDriver extends Node:
 		print("LEVELEDITOR tool_wiring=", tool_set)
 		ok = ok and tool_set
 
-		# --- Issue #639: EDIT POINTS — every figure exposes movable
-		# handles that reshape it (corner, circle edge, loop vertex). ---
+		# --- Issue #639: EDIT POINTS — dragging a point moves ONLY
+		# that point; every other point stays exactly still. ---
 		(editor.get_node("%EditTool") as BaseButton).pressed.emit()
 		var edit_ok: bool = canvas.get_tool() == "edit"
 		canvas.set_pieces([
@@ -145,14 +145,28 @@ class LevelEditorDriver extends Node:
 			{"kind": "indestructible", "shape": "loop",
 				"points": PackedVector2Array([Vector2(500, 100),
 					Vector2(600, 100), Vector2(600, 200)])},
+			{"kind": "destructible", "shape": "tri",
+				"rect": Rect2(Vector2(64, 300), Vector2(128, 64))},
 		])
-		# rect bottom-right corner -> dragged; opposite corner fixed.
+		# rect bottom-right corner -> ONLY it moves: the piece turns
+		# into a free quad (loop) whose other three points hold still.
 		edit_ok = edit_ok and canvas.grab_handle_at(Vector2(192, 128))
 		canvas.drag_handle_to(Vector2(320, 224))
 		canvas.release_handle()
 		var rect_piece: Dictionary = canvas.get_pieces()[0]
-		edit_ok = edit_ok and (rect_piece["rect"] as Rect2) \
-			== Rect2(Vector2(64, 64), Vector2(256, 160))
+		edit_ok = edit_ok and str(rect_piece.get("shape", "")) == "loop" \
+			and (rect_piece["points"] as PackedVector2Array) \
+			== PackedVector2Array([Vector2(64, 64), Vector2(192, 64),
+				Vector2(320, 224), Vector2(64, 128)])
+		# tri apex -> only the apex moves; base vertices stay still.
+		edit_ok = edit_ok and canvas.grab_handle_at(Vector2(128, 300))
+		canvas.drag_handle_to(Vector2(160, 240))
+		canvas.release_handle()
+		var tri_piece: Dictionary = canvas.get_pieces()[3]
+		edit_ok = edit_ok and str(tri_piece.get("shape", "")) == "loop" \
+			and (tri_piece["points"] as PackedVector2Array) \
+			== PackedVector2Array([Vector2(64, 364), Vector2(192, 364),
+				Vector2(160, 240)])
 		# circle edge handle -> radius clamps up to the SNAP minimum.
 		edit_ok = edit_ok and canvas.grab_handle_at(Vector2(400, 150))
 		canvas.drag_handle_to(Vector2(350, 150))
@@ -160,6 +174,13 @@ class LevelEditorDriver extends Node:
 		var circle_piece: Dictionary = canvas.get_pieces()[1]
 		edit_ok = edit_ok and (circle_piece["rect"] as Rect2) \
 			== Rect2(Vector2(318, 118), Vector2(64, 64))
+		# circle centre handle -> the disc travels, radius unchanged.
+		edit_ok = edit_ok and canvas.grab_handle_at(Vector2(350, 150))
+		canvas.drag_handle_to(Vector2(450, 150))
+		canvas.release_handle()
+		circle_piece = canvas.get_pieces()[1]
+		edit_ok = edit_ok and (circle_piece["rect"] as Rect2) \
+			== Rect2(Vector2(418, 118), Vector2(64, 64))
 		# loop vertex moves; the other points stay put.
 		edit_ok = edit_ok and canvas.grab_handle_at(Vector2(600, 200))
 		canvas.drag_handle_to(Vector2(700, 300))
