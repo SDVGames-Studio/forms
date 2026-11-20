@@ -26,12 +26,17 @@ extends Control
 ##    quadratic curve stored as the three points in click order.
 ##
 ## Issue #639 EDIT tool — every placed figure gets clickable, movable
-## points: with the tool active each piece draws its handles (the box
-## corners for rect/tri, the centre and right-edge point for a circle,
-## the stored vertices for loop/curve) and dragging one reshapes the
-## piece live. Box corners keep the opposite corner fixed, the circle
-## edge handle sets the radius, vertices move freely — all snapped to
-## the same grid and kept inside the level space.
+## points: with the tool active each piece draws its handles (the
+## figure's own points: four corners for a rect, the three vertices
+## of a tri, the centre and right-edge point for a circle, the stored
+## vertices for loop/curve) and dragging one moves ONLY that point —
+## every other point stays exactly where it was (#639 rework). A
+## rect/tri corner drag frees the box: the piece becomes a loop
+## polygon (the level format's free-form shape) keeping its current
+## points, and just the dragged point moves. The circle centre handle
+## carries the whole disc along (a circle's position IS its centre),
+## the circle edge handle sets the radius, loop/curve vertices move
+## freely — all snapped to the same grid, kept inside the level space.
 ##
 ## Everything snaps to a 32 px grid. Box drags smaller than MIN_PIECE
 ## fall back to DEFAULT_SIZE centred on the click, so a single click
@@ -295,9 +300,10 @@ func _cancel_pending() -> void:
 		queue_redraw()
 
 
-## Issue #639: the editable points of a piece — the box corners for
-## rect/tri (bounding box authoring), the centre and right-edge
-## point for a circle, the stored vertices for loop/curve.
+## Issue #639: the editable points of a piece — the figure's OWN
+## points: the four corners for a rect, the three vertices for a tri
+## (its bounding box stays an authoring-only concept), the centre and
+## right-edge point for a circle, the stored vertices for loop/curve.
 static func piece_handles(piece: Dictionary) -> PackedVector2Array:
 	match str(piece.get("shape", "rect")):
 		"circle":
@@ -306,6 +312,8 @@ static func piece_handles(piece: Dictionary) -> PackedVector2Array:
 			var radius := minf(crect.size.x, crect.size.y) * 0.5
 			return PackedVector2Array([center,
 				center + Vector2(radius, 0.0)])
+		"tri":
+			return triangle_polygon(piece["rect"])
 		"loop", "curve":
 			return piece["points"]
 		_:
@@ -368,29 +376,23 @@ func _apply_handle(pi: int, hi: int, pos: Vector2) -> void:
 				points[hi] = pos
 				piece["points"] = points
 		_:
-			_apply_box_handle(piece, hi, pos)
+			_apply_free_point_handle(piece, hi, pos)
 
 
-## Box corner drag: the opposite corner stays put, the dragged one
-## follows the cursor; a collapse below MIN_PIECE keeps the minimum
-## extent toward the drag direction.
-func _apply_box_handle(piece: Dictionary, hi: int, pos: Vector2) -> void:
-	var corners := piece_handles(piece)
-	if hi < 0 or hi >= corners.size():
+## Issue #639 rework: a rect/tri corner drag moves ONLY the grabbed
+## point — every other point of the figure stays exactly still. The
+## axis-aligned box can not express that, so the piece becomes a free
+## loop polygon with its current points and the dragged point moves;
+## CustomLevel builds loops of both ground kinds the same way.
+func _apply_free_point_handle(piece: Dictionary, hi: int,
+		pos: Vector2) -> void:
+	var points := piece_handles(piece)
+	if hi < 0 or hi >= points.size():
 		return
-	var fixed := corners[(hi + 2) % 4]
-	var next := Rect2(fixed, pos - fixed).abs()
-	if next.size.x < MIN_PIECE.x:
-		next.position.x = fixed.x - MIN_PIECE.x \
-			if pos.x < fixed.x else fixed.x
-		next.size.x = MIN_PIECE.x
-	if next.size.y < MIN_PIECE.y:
-		next.position.y = fixed.y - MIN_PIECE.y \
-			if pos.y < fixed.y else fixed.y
-		next.size.y = MIN_PIECE.y
-	next = next.intersection(Rect2(Vector2.ZERO, CANVAS_SIZE))
-	if next.size.x > 0.0 and next.size.y > 0.0:
-		piece["rect"] = next
+	points[hi] = pos
+	piece.erase("rect")
+	piece["shape"] = "loop"
+	piece["points"] = points
 
 
 ## Circle handles: index 0 moves the centre (radius kept, clamped
@@ -419,8 +421,8 @@ func _update_hover_handle(pos: Vector2) -> void:
 		for hi in handles.size():
 			if pos.distance_to(handles[hi]) <= best:
 				best = pos.distance_to(handles[hi])
-			_hover_piece = pi
-			_hover_handle = hi
+				_hover_piece = pi
+				_hover_handle = hi
 
 
 func _erase_at(pos: Vector2) -> void:

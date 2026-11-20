@@ -119,7 +119,7 @@ func _ready() -> void:
 	_back_button.grab_focus()
 	_ensure_levels_dir()
 	_refresh_file_list()
-	_set_status("drag ground shapes; EDIT POINTS resizes them")
+	_set_status("drag ground shapes; EDIT POINTS reshapes them")
 
 
 func _ensure_levels_dir() -> void:
