@@ -38,6 +38,16 @@ extends Control
 ## the circle edge handle sets the radius, loop/curve vertices move
 ## freely — all snapped to the same grid, kept inside the level space.
 ##
+## Issue #640 — the EDIT tool also ADDS points: a click on a
+## figure's OUTLINE (away from the handles) inserts a vertex right
+## there. A loop gains the point on the clicked edge; rect / tri /
+## circle / curve figures first become free loop polygons keeping
+## their current outline (a circle's disc is sampled to
+## ADD_DISC_SEGMENTS corners, a curve's ribbon to ADD_CURVE_SAMPLES
+## steps per side, so their shape survives) and then gain the point.
+## A ring preview follows the nearest edge under the cursor, so the
+## add spot is discoverable before the click.
+##
 ## Everything snaps to a 32 px grid. Box drags smaller than MIN_PIECE
 ## fall back to DEFAULT_SIZE centred on the click, so a single click
 ## still places a piece.
@@ -60,6 +70,12 @@ const CLOSE_RADIUS := 20.0
 ## (level-space pixels) and how big the handle dots draw.
 const HANDLE_GRAB := 18.0
 const HANDLE_SIZE := 4.0
+## Issue #640: how near the cursor must be to a figure's OUTLINE for
+## an add-point click, and how finely a circle's disc / a curve's
+## ribbon are sampled when such a figure becomes an editable loop.
+const EDGE_GRAB := 14.0
+const ADD_DISC_SEGMENTS := 12
+const ADD_CURVE_SAMPLES := 8
 ## Issue #632: the ground ribbon a bezier curve authors and how finely
 ## it is sampled (CustomLevel builds the same strip).
 const CURVE_THICKNESS := 48.0
@@ -96,6 +112,9 @@ var _grab_piece := -1
 var _grab_handle := -1
 var _hover_piece := -1
 var _hover_handle := -1
+## Issue #640: where an add-point click would land right now (the
+## snapped point on the nearest outline edge); negative = none.
+var _add_preview := Vector2(-1000, -1000)
 
 
 func _ready() -> void:
@@ -115,6 +134,7 @@ func set_tool(kind: String) -> void:
 	release_handle()
 	_hover_piece = -1
 	_hover_handle = -1
+	_add_preview = Vector2(-1000, -1000)
 	_cancel_pending()
 	queue_redraw()
 
@@ -141,6 +161,7 @@ func set_pieces(pieces: Array) -> void:
 			piece["shape"] = "rect"
 	if _grab_piece >= _pieces.size():
 		release_handle()
+	_add_preview = Vector2(-1000, -1000)
 	queue_redraw()
 
 
@@ -190,6 +211,7 @@ func clear_all() -> void:
 	_dragging = false
 	release_handle()
 	_cancel_pending()
+	_add_preview = Vector2(-1000, -1000)
 	queue_redraw()
 
 
@@ -201,9 +223,12 @@ func _gui_input(event: InputEvent) -> void:
 		if mb.pressed:
 			# Issue #639: the edit tool grabs a handle instead of
 			# authoring — searched with the RAW cursor position (the
-			# snap grid would shift the hit test).
+			# snap grid would shift the hit test). Issue #640: a click
+			# that lands on no handle but near a figure's OUTLINE adds
+			# a vertex there instead.
 			if _tool == "edit":
-				grab_handle_at(get_local_mouse_position())
+				if not grab_handle_at(get_local_mouse_position()):
+					add_point_at(get_local_mouse_position())
 			else:
 				_press(_local_snap_mouse())
 			accept_event()
@@ -357,6 +382,68 @@ func drag_handle_to(pos: Vector2) -> void:
 	queue_redraw()
 
 
+## Issue #640: the outline a piece's add-point click works on — the
+## closed polygon the drawn figure covers: the rect's corners, the
+## tri's vertices, the loop's points; a circle's disc and a curve's
+## ribbon are sampled (ADD_DISC_SEGMENTS corners / ADD_CURVE_SAMPLES
+## steps per side) so their shape survives the conversion.
+static func add_point_outline(piece: Dictionary) -> PackedVector2Array:
+	match str(piece.get("shape", "rect")):
+		"circle":
+			var crect: Rect2 = piece["rect"]
+			return _disc_points(crect.get_center(),
+				minf(crect.size.x, crect.size.y) * 0.5, ADD_DISC_SEGMENTS)
+		"curve":
+			return curve_strip_polygon(piece["points"],
+				CURVE_THICKNESS, ADD_CURVE_SAMPLES)
+		_:
+			return piece_handles(piece)
+
+
+## Issue #640: the nearest figure OUTLINE edge within EDGE_GRAB of
+## `pos`, as [piece index, insertion index, on-edge point]; an empty
+## array when no edge is near. Later pieces win ties, matching the
+## grab/erase topmost convention.
+func _nearest_edge(pos: Vector2) -> Array:
+	var best := EDGE_GRAB
+	var found: Array = [-1, -1, Vector2.ZERO]
+	for pi in _pieces.size():
+		var outline := add_point_outline(_pieces[pi])
+		var count := outline.size()
+		if count < 2:
+			continue
+		for hi in count:
+			var closest := Geometry2D.get_closest_point_to_segment(
+				pos, outline[hi], outline[(hi + 1) % count])
+			var dist := pos.distance_to(closest)
+			if dist <= best:
+				best = dist
+				found = [pi, hi + 1, closest]
+	return found if found[0] >= 0 else []
+
+
+## Issue #640: add a vertex to the figure whose outline passes near
+## `pos` — on the clicked edge, snapped to the grid like every other
+## authoring click. Loops gain the point directly; rect / tri /
+## circle / curve figures become free loop polygons keeping their
+## current outline (see add_point_outline) and then gain it. Returns
+## true when a point was added.
+func add_point_at(pos: Vector2) -> bool:
+	var edge := _nearest_edge(pos)
+	if edge.is_empty():
+		return false
+	var piece: Dictionary = _pieces[edge[0]]
+	var points := add_point_outline(piece)
+	points.insert(edge[1], (edge[2] as Vector2).snapped(
+		Vector2(SNAP, SNAP)).clamp(Vector2.ZERO, CANVAS_SIZE))
+	piece.erase("rect")
+	piece["shape"] = "loop"
+	piece["points"] = points
+	_add_preview = Vector2(-1000, -1000)
+	queue_redraw()
+	return true
+
+
 ## Issue #639: stop dragging (the piece keeps its new shape).
 func release_handle() -> void:
 	if _grab_piece >= 0:
@@ -415,6 +502,7 @@ func _apply_circle_handle(piece: Dictionary, hi: int, pos: Vector2) -> void:
 func _update_hover_handle(pos: Vector2) -> void:
 	_hover_piece = -1
 	_hover_handle = -1
+	_add_preview = Vector2(-1000, -1000)
 	var best := HANDLE_GRAB
 	for pi in _pieces.size():
 		var handles := piece_handles(_pieces[pi])
@@ -423,6 +511,13 @@ func _update_hover_handle(pos: Vector2) -> void:
 				best = pos.distance_to(handles[hi])
 				_hover_piece = pi
 				_hover_handle = hi
+	# Issue #640: near no handle but near an outline edge — preview
+	# where an add-point click would land (the handles win ties).
+	if _hover_piece < 0:
+		var edge := _nearest_edge(pos)
+		if not edge.is_empty():
+			_add_preview = (edge[2] as Vector2).snapped(
+				Vector2(SNAP, SNAP)).clamp(Vector2.ZERO, CANVAS_SIZE)
 
 
 func _erase_at(pos: Vector2) -> void:
@@ -529,13 +624,14 @@ func _draw_shape_fill(pts: PackedVector2Array, color: Color) -> void:
 	_draw_outline(pts, color)
 
 
-## A regular polygon disc — the picture fill's geometry for circles.
-static func _disc_points(center: Vector2, radius: float) \
-		-> PackedVector2Array:
+## A regular polygon disc — the picture fill's geometry for circles
+## (48 segments) and a converted circle's editable outline
+## (ADD_DISC_SEGMENTS).
+static func _disc_points(center: Vector2, radius: float,
+		segments: int = 48) -> PackedVector2Array:
 	var pts := PackedVector2Array()
-	const SEGMENTS := 48
-	for i in SEGMENTS:
-		var a := TAU * float(i) / float(SEGMENTS)
+	for i in segments:
+		var a := TAU * float(i) / float(segments)
 		pts.append(center + Vector2(cos(a), sin(a)) * radius)
 	return pts
 
@@ -574,6 +670,8 @@ func _draw_outline(pts: PackedVector2Array, color: Color) -> void:
 
 ## Issue #639: the edit-tool handle dots — a dark base circle keeps
 ## them readable on any fill; the grabbed/hovered one lights up.
+## Issue #640: with nothing grabbed or hovered, the ring on the
+## nearest outline edge previews where a click adds a vertex.
 func _draw_handles() -> void:
 	for pi in _pieces.size():
 		var handles := piece_handles(_pieces[pi])
@@ -585,6 +683,11 @@ func _draw_handles() -> void:
 			draw_circle(handles[hi], HANDLE_SIZE + 2.0,
 				Color(0.08, 0.09, 0.12, 0.9))
 			draw_circle(handles[hi], HANDLE_SIZE, color)
+	if _grab_piece < 0 and _hover_piece < 0 \
+			and _add_preview.x >= 0.0 and _add_preview.y >= 0.0:
+		draw_arc(_add_preview, HANDLE_SIZE + 3.0, 0.0, TAU, 24,
+			Color(SPAWN_COLOR, 0.9), 2.0)
+		draw_circle(_add_preview, 2.5, Color(SPAWN_COLOR, 0.9))
 
 
 func _draw_preview() -> void:
@@ -715,17 +818,18 @@ static func curve_tangent(pts: PackedVector2Array,
 	return d if d.length() > 0.001 else Vector2.RIGHT
 
 
-## The ground ribbon a curve authors: the bezier sampled CURVE_SAMPLES
+## The ground ribbon a curve authors: the bezier sampled `samples`
 ## times and offset CURVE_THICKNESS/2 to both sides of the tangent
 ## normals — a closed strip polygon.
 static func curve_strip_polygon(pts: PackedVector2Array,
-		thickness: float) -> PackedVector2Array:
+		thickness: float,
+		samples: int = CURVE_SAMPLES) -> PackedVector2Array:
 	if pts.size() < 3:
 		return PackedVector2Array()
 	var top := PackedVector2Array()
 	var bottom := PackedVector2Array()
-	for i in CURVE_SAMPLES + 1:
-		var t := float(i) / float(CURVE_SAMPLES)
+	for i in samples + 1:
+		var t := float(i) / float(samples)
 		var tangent := curve_tangent(pts, t)
 		var normal := Vector2(-tangent.y, tangent.x).normalized()
 		var p := curve_point(pts, t)

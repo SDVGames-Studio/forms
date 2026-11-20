@@ -10,6 +10,8 @@ extends Node
 ## ground and survives destructible carving), a CustomLevel
 ## build of all the shapes into playable ground, and BACK navigation
 ## to the main menu.
+## Issue #640: the EDIT POINTS tool also ADDS points — a click on a
+## figure's outline inserts a vertex there (checked for every shape).
 ##
 ## Run headless: godot --headless res://tests/test_level_editor_ui.tscn
 ## Exit code 0 = pass; the printed LEVELEDITOR ok= verdict is
@@ -194,6 +196,72 @@ class LevelEditorDriver extends Node:
 		edit_ok = edit_ok and not canvas.grab_handle_at(Vector2(20, 600))
 		print("LEVELEDITOR edit_handles=", edit_ok)
 		ok = ok and edit_ok
+
+		# --- Issue #640: EDIT POINTS — a click on a figure's OUTLINE adds
+		# a vertex there: loops gain the point on the clicked edge
+		# directly; rect / tri / circle / curve figures first become
+		# editable loop polygons keeping their current outline, then
+		# gain the point (snapped to the same grid as every authoring
+		# click). ---
+		canvas.set_pieces([
+			{"kind": "indestructible", "shape": "rect",
+				"rect": Rect2(Vector2(64, 64), Vector2(128, 64))},
+			{"kind": "indestructible", "shape": "loop",
+				"points": PackedVector2Array([Vector2(500, 100),
+					Vector2(600, 100), Vector2(600, 200)])},
+			{"kind": "destructible", "shape": "circle",
+				"rect": Rect2(Vector2(280, 280), Vector2(160, 160))},
+			{"kind": "destructible", "shape": "curve",
+				"points": PackedVector2Array([Vector2(100, 400),
+					Vector2(400, 400), Vector2(250, 300)])},
+		])
+		# rect: click the bottom edge's middle -> a five-point loop
+		# whose four corners stay exactly put, the new vertex between.
+		var add_ok: bool = canvas.add_point_at(Vector2(128, 128))
+		var added_rect: Dictionary = canvas.get_pieces()[0]
+		add_ok = add_ok and str(added_rect.get("shape", "")) == "loop" \
+			and (added_rect["points"] as PackedVector2Array) \
+			== PackedVector2Array([Vector2(64, 64), Vector2(192, 64),
+				Vector2(192, 128), Vector2(128, 128), Vector2(64, 128)])
+		# loop: the clicked edge gains the vertex, snapped to the grid
+		# (600 is not a grid multiple — the vertex lands on 608).
+		add_ok = add_ok and canvas.add_point_at(Vector2(600, 150))
+		var added_loop: Dictionary = canvas.get_pieces()[1]
+		add_ok = add_ok and (added_loop["points"] as PackedVector2Array) \
+			== PackedVector2Array([Vector2(500, 100), Vector2(600, 100),
+				Vector2(608, 160), Vector2(600, 200)])
+		# circle: the disc becomes an editable loop — ADD_DISC_SEGMENTS
+		# corners on the rim plus the snapped new vertex between the
+		# first two of them.
+		add_ok = add_ok and canvas.add_point_at(Vector2(434.64, 380.0))
+		var added_circle: Dictionary = canvas.get_pieces()[2]
+		var disc_want := PackedVector2Array()
+		for i in 12:
+			var angle := TAU * float(i) / 12.0
+			disc_want.append(Vector2(360.0, 360.0)
+				+ Vector2(cos(angle), sin(angle)) * 80.0)
+		disc_want.insert(1, Vector2(448, 384))
+		add_ok = add_ok and str(added_circle.get("shape", "")) == "loop" \
+			and (added_circle["points"] as PackedVector2Array) == disc_want
+		# curve: the ribbon becomes an editable loop — its strip outline
+		# plus the snapped new vertex on the clicked edge.
+		var curve_pts := PackedVector2Array([Vector2(100, 400),
+			Vector2(400, 400), Vector2(250, 300)])
+		var ribbon: PackedVector2Array = \
+				canvas.get_script().curve_strip_polygon(
+				curve_pts, 48.0, 8)
+		var ribbon_click: Vector2 = (ribbon[4] + ribbon[5]) * 0.5
+		add_ok = add_ok and canvas.add_point_at(ribbon_click)
+		var added_curve: Dictionary = canvas.get_pieces()[3]
+		var ribbon_want := ribbon.duplicate()
+		ribbon_want.insert(5, ribbon_click.snapped(Vector2(32, 32)))
+		add_ok = add_ok and str(added_curve.get("shape", "")) == "loop" \
+			and (added_curve["points"] as PackedVector2Array) == ribbon_want
+		# far from every outline -> nothing is added.
+		add_ok = add_ok and not canvas.add_point_at(Vector2(560, 560)) \
+			and canvas.get_pieces().size() == 4
+		print("LEVELEDITOR edit_add_points=", add_ok)
+		ok = ok and add_ok
 		var back_to_ground := editor.get_node("%IndestructibleTool") \
 			as BaseButton
 		back_to_ground.pressed.emit()

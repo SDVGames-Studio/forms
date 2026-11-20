@@ -7,6 +7,9 @@ extends Control
 ## and player spawn points — plus export/import of the result as a
 ## JSON level file under user://levels/.
 ##
+## Issue #640: the EDIT POINTS tool now also ADDS points — a click on
+## a figure's outline inserts a vertex there (see LevelEditorCanvas);
+##
 ## Issue #464 rework (file round-trip):
 ##  - SAVE keeps writing user://levels/<name>.json — the files the
 ##    levels menu turns into playable levels (CustomLevel.tscn) — but
@@ -119,7 +122,8 @@ func _ready() -> void:
 	_back_button.grab_focus()
 	_ensure_levels_dir()
 	_refresh_file_list()
-	_set_status("drag ground shapes; EDIT POINTS reshapes them")
+	_set_status("drag ground shapes; EDIT POINTS moves them "
+		+ "(click an outline to add a point)")
 
 
 func _ensure_levels_dir() -> void:
