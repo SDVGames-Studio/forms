@@ -210,6 +210,199 @@ func apply_blast(global_point: Vector2, radius: float) -> void:
 	_carve_rect(to_local(global_point), radius)
 
 
+## Issue #656 rework: DIG this chunk out with an exact upright ELLIPSE —
+## world centre `global_point`, half-axes `half_width` (across) and
+## `half_height` (along the world `up` vector). The first shovel
+## delivery stamped the dig as a fan of blast circles whose pole cap
+## under-carved the ellipse tips, and the ragged seams stayed behind as
+## floating ledges — the owner's rework: the removed ground must remain
+## an ELLIPSE. So rectangle and polygon chunks carve against the ellipse
+## itself, exactly like the circle recursion: disjoint pieces survive
+## untouched, covered pieces (every corner inside the convex ellipse) are
+## carved away and partial ones are halved until small enough to decide
+## by their centre. Ring sectors keep the shared blast-circle carver —
+## the ellipse is stamped there as a dense pole-to-pole fan of disks with
+## NO radius cap, a sub-pixel approximation on the one chunk kind whose
+## polar frame cannot cheaply test a tilted ellipse.
+func apply_dig(global_point: Vector2, half_width: float,
+		half_height: float, world_up: Vector2) -> void:
+	if ring_outer > 0.0:
+		var up := world_up.normalized()
+		var steps := 12
+		for i in steps + 1:
+			var fraction := -0.9 + 1.8 * float(i) / float(steps)
+			var radius := half_width \
+					* sqrt(maxf(0.0, 1.0 - fraction * fraction))
+			if radius < 2.0:
+				continue
+			apply_blast(global_point + up * (half_height * fraction), radius)
+		return
+	_dig_centre = to_local(global_point)
+	_dig_up = (to_local(global_point + world_up) \
+			- _dig_centre).normalized()
+	if _dig_up == Vector2.ZERO:
+		_dig_up = Vector2.UP
+	_dig_side = _dig_up.orthogonal()
+	_dig_a = maxf(half_width, 0.001)
+	_dig_b = maxf(half_height, 0.001)
+	# Exact AABB of the (possibly tilted) ellipse in this chunk's frame:
+	# the parametric extremes of x² and y² along the two axes.
+	var ex := sqrt(_dig_a * _dig_a * _dig_side.x * _dig_side.x \
+			+ _dig_b * _dig_b * _dig_up.x * _dig_up.x)
+	var ey := sqrt(_dig_a * _dig_a * _dig_side.y * _dig_side.y \
+			+ _dig_b * _dig_b * _dig_up.y * _dig_up.y)
+	_dig_bounds = Rect2(_dig_centre - Vector2(ex, ey),
+			Vector2(2.0 * ex, 2.0 * ey))
+	if polygon.size() >= 3:
+		_carve_polygon_dig(polygon)
+		return
+	_carve_rect_dig()
+
+
+## Dig context while carving this chunk — the ellipse centre/axes in
+## this chunk's local space and the ellipse's local AABB.
+var _dig_centre := Vector2.ZERO
+var _dig_up := Vector2.UP
+var _dig_side := Vector2.RIGHT
+var _dig_a := 1.0
+var _dig_b := 1.0
+var _dig_bounds := Rect2()
+
+
+## The ellipse metric of a local point — <= 1.0 sits inside the dig.
+func _dig_metric(point: Vector2) -> float:
+	var q := point - _dig_centre
+	var across := q.dot(_dig_side) / _dig_a
+	var along := q.dot(_dig_up) / _dig_b
+	return across * across + along * along
+
+
+## True when the dig ellipse cannot touch the rect at all. The AABB
+## pre-filter is always sound (the ellipse sits inside its bounds);
+## when the ellipse rides the chunk's own axes (an upright dig into an
+## unrotated chunk — the usual case) the metric is separable, so its
+## minimum over the rect sits at the clamped centre and the test is
+## exact, keeping whole chunks unsplit.
+func _dig_rect_disjoint(rect: Rect2) -> bool:
+	if not rect.intersects(_dig_bounds, true):
+		return true
+	if absf(_dig_side.x) < 0.001 or absf(_dig_side.y) < 0.001:
+		var nearest := Vector2(
+				clampf(_dig_centre.x, rect.position.x, rect.end.x),
+				clampf(_dig_centre.y, rect.position.y, rect.end.y))
+		return _dig_metric(nearest) > 1.0
+	return false
+
+
+## True when all four rect corners sit inside the (convex) ellipse —
+## convexity makes that exactly "the whole rect is carved away".
+func _dig_rect_covers(rect: Rect2) -> bool:
+	var corners: Array = [rect.position, rect.end,
+			Vector2(rect.position.x, rect.end.y),
+			Vector2(rect.end.x, rect.position.y)]
+	for corner in corners:
+		if _dig_metric(corner) > 1.0:
+			return false
+	return true
+
+
+## Issue #656 rework: carve a rectangle chunk with the dig ELLIPSE —
+## the rect twin of `_carve_rect`.
+func _carve_rect_dig() -> void:
+	var rect := Rect2(-rect_size / 2.0, rect_size)
+	if _dig_rect_disjoint(rect):
+		return
+	queue_free()
+	_split_rect_dig(get_parent(), rect)
+
+
+## Recursive halving for rect pieces against the dig ellipse — the
+## ellipse twin of `_split_or_keep_rect`.
+func _split_rect_dig(parent: Node, rect: Rect2) -> void:
+	if _dig_rect_disjoint(rect):
+		_spawn(rect.position, rect.size)
+		return
+	if _dig_rect_covers(rect):
+		return
+	var split_x := rect.size.x / 2.0 >= MIN_PIECE
+	var split_y := rect.size.y / 2.0 >= MIN_PIECE
+	if split_x or split_y:
+		var mid := rect.get_center()
+		var xs: Array = [rect.position.x]
+		var ws: Array = [rect.size.x]
+		if split_x:
+			xs = [rect.position.x, mid.x]
+			ws = [rect.size.x / 2.0, rect.size.x / 2.0]
+		var ys: Array = [rect.position.y]
+		var hs: Array = [rect.size.y]
+		if split_y:
+			ys = [rect.position.y, mid.y]
+			hs = [rect.size.y / 2.0, rect.size.y / 2.0]
+		for i in xs.size():
+			for j in ys.size():
+				_split_rect_dig(parent, Rect2(
+						Vector2(xs[i], ys[j]), Vector2(ws[i], hs[j])))
+		return
+	if _dig_metric(rect.get_center()) > 1.0:
+		_spawn(rect.position, rect.size)
+
+
+## Issue #656 rework: carve a convex polygon chunk with the dig
+## ELLIPSE — the polygon twin of `_carve_polygon`.
+func _carve_polygon_dig(pts: PackedVector2Array) -> void:
+	if not _dig_poly_disjoint(pts):
+		queue_free()
+		_split_or_keep_poly_dig(get_parent(), pts)
+
+
+## True when the dig ellipse cannot touch the polygon: the conservative
+## AABB test (the ellipse sits inside its bounds, so non-intersecting
+## bounds guarantee no contact; partial pieces are decided deeper in the
+## recursion, so being conservative here only splits a few extra pieces).
+func _dig_poly_disjoint(pts: PackedVector2Array) -> bool:
+	return not _polygon_aabb(pts).intersects(_dig_bounds, true)
+
+
+## True when every polygon vertex sits inside the (convex) ellipse.
+func _dig_poly_covers(pts: PackedVector2Array) -> bool:
+	for p in pts:
+		if _dig_metric(p) > 1.0:
+			return false
+	return true
+
+
+## Recursive halving for polygon pieces against the dig ellipse — the
+## twin of `_split_or_keep_poly`.
+func _split_or_keep_poly_dig(parent: Node, pts: PackedVector2Array) -> void:
+	if _dig_poly_disjoint(pts):
+		parent.add_child(_spawn_poly(pts))
+		return
+	if _dig_poly_covers(pts):
+		return
+	var aabb := Rect2(pts[0], Vector2.ZERO)
+	for p in pts:
+		aabb = aabb.expand(p)
+	var axis := 0 if aabb.size.x >= aabb.size.y else 1
+	if aabb.size[axis] < 2.0 * MIN_PIECE:
+		var centroid := Vector2.ZERO
+		for p in pts:
+			centroid += p
+		centroid /= float(pts.size())
+		if _dig_metric(centroid) > 1.0:
+			parent.add_child(_spawn_poly(pts))
+		return
+	var split := 0.0
+	for p in pts:
+		split += p[axis]
+	split /= float(pts.size())
+	var lo := _clip_half(pts, axis, split, false)
+	var hi := _clip_half(pts, axis, split, true)
+	if lo.size() >= 3:
+		_split_or_keep_poly_dig(parent, lo)
+	if hi.size() >= 3:
+		_split_or_keep_poly_dig(parent, hi)
+
+
 ## Issue #376: carve a convex polygon chunk with the blast CIRCLE —
 ## the polygon twin of `_carve_rect`: untouched chunks stay whole,
 ## everything else is halved along its longer axis (convex clipping)
