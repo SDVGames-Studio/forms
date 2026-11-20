@@ -25,7 +25,13 @@ extends Node
 ##     fan of capped circles, which under-carved the poles and left
 ##     ragged ledges (the owner's screenshot);
 ##  6. ENDLESS: uses_left stays -1 and can_spend stays true after many
-##     spends.
+##     spends;
+##  7. ENTERABLE (rework #2): the dig's horizontal diameter is the FULL
+##     figure width (64) — the issue text's "half of character's width"
+##     (32) was narrower than the figure's 48 px collider capsule, so
+##     the dug "tunnel" was a notch the character could never move
+##     into (the owner's screenshot). The mouth now spans the capsule's
+##     full 48 px shoulders with clearance.
 ##
 ## Run headless: godot --headless res://tests/test_issue656.tscn
 ## Exit code 0 = pass.
@@ -145,15 +151,16 @@ func _ready() -> void:
 	# 3) Dig (a FRESH weapon at a fresh stance — the melee swing above
 	# already fixed and carved this gun's anchor): the ellipse centre
 	# sits SHOVEL_DIG_OFFSET ahead; a chunk there is destroyed, chunks
-	# sideways (past half the ellipse width) and beyond the poles (past
-	# half its height) survive.
+	# sideways (past half the ellipse width — the FULL figure width
+	# since rework #2) and beyond the poles (past half its height)
+	# survive.
 	var gun_b := _make_weapon()
 	var shooter_b := gun_b.get_parent() as Node2D
 	shooter_b.position = Vector2(500.0, 0.0)
 	var dig_centre := shooter_b.global_position \
 			+ Vector2(WeaponScript.SHOVEL_DIG_OFFSET, 0.0)
 	var inside := _make_chunk(dig_centre, Vector2(20, 20))
-	var beside := _make_chunk(dig_centre + Vector2(40.0, 0.0), Vector2(20, 20))
+	var beside := _make_chunk(dig_centre + Vector2(56.0, 0.0), Vector2(20, 20))
 	var pole_up := _make_chunk(dig_centre + Vector2(0.0, 52.0), Vector2(20, 20))
 	var pole_down := _make_chunk(dig_centre + Vector2(0.0, -52.0), Vector2(20, 20))
 	gun_b._swing_shovel()
@@ -209,12 +216,13 @@ func _ready() -> void:
 	var half_h := WeaponScript.SHOVEL_DIG_HEIGHT / 2.0
 	for probe in [Vector2(0, 0), Vector2(0, 24), Vector2(0, -24),
 			Vector2(8, 0), Vector2(-8, 0), Vector2(8, 12), Vector2(-8, -12),
-			Vector2(4, 20), Vector2(-4, -20)]:
+			Vector2(4, 20), Vector2(-4, -20),
+			Vector2(24, 0), Vector2(-24, 0)]:
 		var p: Vector2 = shape_centre + probe
 		_check(not _covered(p), "probe %s must sit INSIDE the dug ellipse "
 				% probe + "(open ground after the dig)")
-	for probe in [Vector2(24, 0), Vector2(-24, 0), Vector2(0, 40),
-			Vector2(0, -40), Vector2(24, 24), Vector2(-24, -24)]:
+	for probe in [Vector2(40, 0), Vector2(-40, 0), Vector2(0, 40),
+			Vector2(0, -40), Vector2(40, 40), Vector2(-40, -40)]:
 		var p: Vector2 = shape_centre + probe
 		_check(_covered(p), "probe %s must stay OUTSIDE the dug ellipse "
 				% probe + "(still covered ground)")
@@ -222,8 +230,10 @@ func _ready() -> void:
 		var p: Vector2 = shape_centre + probe
 		_check(_covered(p), "the slab's far corner %s survives untouched"
 				% probe)
-	_check(half_w == 16.0 and half_h == 32.0,
-			"the dig ellipse keeps its spec half axes (16 x 32)")
+	_check(half_w == 32.0 and half_h == 32.0,
+			"the dig half axes are the full figure width/height (32 x 32) "
+			+ "— rework #2: a 16 px half width could never admit the "
+			+ "48 px collider capsule")
 
 	# 6) Endless budget re-check after the swings: still selectable.
 	_check(WeaponInventory.held_weapon_for(team) != WEAPON_SLOT_SHOVEL

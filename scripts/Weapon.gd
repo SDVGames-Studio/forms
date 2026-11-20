@@ -241,17 +241,24 @@ const SAW_MASS := 0.8
 ## like the spear).
 const SHOVEL_RANGE := 55.0
 const SHOVEL_DAMAGE := 5
-## The dig ellipse's diameters: one = the figure's HEIGHT (the 64 px
-## reference body, CharacterStats.BODY_SIZE), the other = HALF the
-## figure's width (32). The long axis rides the character's VERTICAL
-## (the gravity frame's up, _frame_up) wherever the aim points — the
-## dig stays upright in the wielder's own frame.
+## The dig ellipse's diameters: the figure's HEIGHT and the figure's
+## FULL WIDTH (the 64 px reference body, CharacterStats.BODY_SIZE).
+## The long axis rides the character's VERTICAL (the gravity frame's
+## up, _frame_up) wherever the aim points — the dig stays upright in
+## the wielder's own frame. Rework #2: the first delivery took the
+## issue text's "half of character's width" (32) as the horizontal
+## diameter, but the figure's collider is a 48 px wide capsule — that
+## hole could NEVER admit the body, so the dug "tunnel" was a notch
+## the character just bumped into (the owner's screenshot). The
+## horizontal diameter is the FULL body width: the capsule fits with
+## 8 px of clearance per side and the figure walks straight in.
 const SHOVEL_DIG_HEIGHT := 64.0
-const SHOVEL_DIG_WIDTH := 32.0
+const SHOVEL_DIG_WIDTH := 64.0
 ## How far ahead of the body CENTRE the dig ellipse sits — the body's
-## half width (32) plus the ellipse's half width (16): the hole starts
-## at the wielder's edge.
-const SHOVEL_DIG_OFFSET := 48.0
+## half width (32) plus the ellipse's half width (32): the hole starts
+## at the wielder's edge, so the mouth opens exactly where the figure
+## stands and it can step straight into the tunnel.
+const SHOVEL_DIG_OFFSET := 64.0
 ## Issue #656 rework: the dig spot is ANCHORED — the first swing of a
 ## dig fixes the ellipse (centre + upright) in WORLD space, and while
 ## the wielder stays within this distance of that stance every further
@@ -259,8 +266,9 @@ const SHOVEL_DIG_OFFSET := 48.0
 ## dig on the live aim every swing, so re-aiming between the five
 ## swings dragged the hole into a ragged trench — the owner's rework:
 ## the removed ground must remain an ellipse. Moving this far (one dig
-## width) starts a fresh dig at the new spot.
-const SHOVEL_DIG_REANCHOR := 32.0
+## width — the FULL body width since rework #2) starts a fresh dig at
+## the new spot.
+const SHOVEL_DIG_REANCHOR := 64.0
 
 var _facing := 1.0
 var _cooldown_left := 0.0
@@ -1093,7 +1101,11 @@ func _shovel_sweep_hit() -> void:
 ## aim at the body's edge (SHOVEL_DIG_OFFSET), its long axis (the
 ## figure's height) along the character's VERTICAL (_frame_up — the dig
 ## stays upright in the wielder's gravity frame wherever the aim
-## points), the short axis (half the figure's width) across it. Rework:
+## points), the short axis (the figure's FULL width, rework #2: the
+## original "half of character's width" (32) could never admit the
+## 48 px collider capsule, so the figure just bumped into the notch —
+## the dug hole must let the character MOVE INTO the tunnel) across
+## it. Rework:
 ## the ellipse is ANCHORED in world space by the first swing of the
 ## stance (see SHOVEL_DIG_REANCHOR) and carved EXACTLY via
 ## DestructibleGround.apply_dig — no fan of blast circles — so however
