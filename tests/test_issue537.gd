@@ -6,9 +6,10 @@ extends Node
 ##    member GRID: one square per member wearing the team's shape and
 ##    color, CENTERED in its recessed gray square.
 ##  - The grid is tiered with a fixed footprint: 3 members -> 1x4
-##    (cells 31.5 px), from the 4th member 2x8, from the 16th 4x16;
-##    64 teammates is the hard maximum (the top tier runs full, no "+"),
-##    1 the floor (a team always fields a figure).
+##    (cells 29.5 px — the #652 fit rework slimmed the 132 px
+##    footprint to 124 px), from the 4th member 2x8, from the 16th
+##    4x16; 64 teammates is the hard maximum (the top tier runs
+##    full, no "+"), 1 the floor (a team always fields a figure).
 ##  - FREE squares carry a "+"; _add_member appends, _remove_member
 ##    drops (click wiring is exercised via the same handlers).
 ##  - "+ Add team" PULLS from the game's team set: with the default
@@ -100,11 +101,11 @@ func _ready() -> void:
 			shape_cells == members.size() and plus_cells == 2)
 		_check("shapes are centered in their squares", centered)
 		_check("1x4 cells keep the grid footprint",
-			absf(grid.get_child(0).custom_minimum_size.x - 31.5) < 0.01)
+			absf(grid.get_child(0).custom_minimum_size.x - 29.5) < 0.01)
 
 	# Item 3: appending members — the 3rd still fits the 1x4 tier; the
 	# 4th member bumps the grid to 2x8 (16 squares, smaller cells, the
-	# same 132 px footprint).
+	# same 124 px footprint).
 	var count_before: int = members.size()
 	menu._add_member(0)
 	_check("add member appends a teammate",
@@ -121,7 +122,7 @@ func _ready() -> void:
 		_check("4th member bumps the grid to the 2x8 tier",
 			grid.get_child_count() == 16)
 		_check("2x8 cells shrink to keep the footprint",
-			absf(grid.get_child(0).custom_minimum_size.x - 14.75) < 0.01)
+			absf(grid.get_child(0).custom_minimum_size.x - 13.75) < 0.01)
 
 	# Item 2: clicking a filled square removes that teammate.
 	var before: int = GameConfig.teams[0]["names"].size()

@@ -95,7 +95,7 @@ class Driver extends Node:
 		await get_tree().process_frame
 		await get_tree().process_frame
 		var rows: VBoxContainer = menu.get_node(
-			"Layout/Columns/Nav/TeamsPanel/TeamsBox/TeamsScroll/TeamsList")
+			"Layout/Board/Content/TeamsPanel/TeamsBox/TeamsScroll/TeamsList")
 		if rows.get_child_count() < 2:
 			failures.append("no team rows in the lobby")
 		else:
@@ -160,7 +160,7 @@ class Driver extends Node:
 		if not menu._add_team_button.disabled:
 			failures.append("client may add teams")
 		var rows: VBoxContainer = menu.get_node(
-			"Layout/Columns/Nav/TeamsPanel/TeamsBox/TeamsScroll/TeamsList")
+			"Layout/Board/Content/TeamsPanel/TeamsBox/TeamsScroll/TeamsList")
 		var controller := _controller_of(rows.get_child(0))
 		if controller == null or not controller.disabled:
 			failures.append("client's driver picker is enabled")
@@ -182,7 +182,7 @@ class Driver extends Node:
 		await get_tree().process_frame
 		var failures: Array[String] = []
 		var rows: VBoxContainer = menu.get_node(
-			"Layout/Columns/Nav/TeamsPanel/TeamsBox/TeamsScroll/TeamsList")
+			"Layout/Board/Content/TeamsPanel/TeamsBox/TeamsScroll/TeamsList")
 		var controller := _controller_of(rows.get_child(0))
 		if controller == null or controller.item_count != 2 \
 				or controller.get_item_text(0) != "Computer" \
