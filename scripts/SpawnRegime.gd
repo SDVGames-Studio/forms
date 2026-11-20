@@ -21,12 +21,16 @@ extends RefCounted
 ##   the hand-placed staging IS the designer's spawn set.
 ## - REGIME_CHOOSE   — "choose after the start" (issue #547): the
 ##   level starts, the game pauses, and the player clicks every
-##   HERO-team figure onto a surface spot of their choosing (the
+##   FIRST-team figure onto a surface spot of their choosing (the
 ##   spot is validated exactly like the sampler's — floor under
 ##   local gravity + clearance), then the game runs. Computer and
-##   hot-seat teams keep their authored positions; with a
-##   computer-played hero team there is no human to click, so the
-##   designer regime runs instead.
+##   hot-seat teams keep their authored positions. Rework (owner
+##   2026-11-20, "this regime doesn't work"): the figures are placed
+##   by hand whether the first team plays as a human or as the
+##   computer — since the #617 rework v2 defaults EVERY team to the
+##   computer, the old "computer-played hero team → designer
+##   regime" fallback silently swallowed the regime in the default
+##   setup: the figures just spawned and the first turn began.
 ##
 ## The random regimes find spots in ANY level with an algorithm that
 ## never assumes flat ground: candidate points are sampled on a grid
@@ -56,8 +60,8 @@ const REGIME_RANDOM := 1
 ## Spawn points defined in the level by the level designer.
 const REGIME_DESIGNER := 2
 ## Issue #547 "choose after the start" — the player picks each
-## hero-team figure's spot interactively once the level runs
-## (see scripts/SpawnChooser.gd).
+## first-team figure's spot interactively once the level runs,
+## whatever plays the team (see scripts/SpawnChooser.gd).
 const REGIME_CHOOSE := 3
 
 ## Labels of the menu rows, index = regime constant.
@@ -133,17 +137,18 @@ static func apply(level: Node) -> void:
 			_apply_designer(level)
 
 
-## Issue #547 regime 4: hand-place the HERO team after the start. A
-## SpawnChooser child of the level pauses the tree and lets the
-## player click each player-team figure onto a validated surface
-## spot (hero first, see scripts/SpawnChooser.gd). Without a
-## human-played hero team — AI vs AI spectating, issue #121 — or with
-## an empty player team there is nobody to click: the designer
-## regime runs instead, exactly like the classic default.
+## Issue #547 regime 4: hand-place the FIRST team after the start.
+## A SpawnChooser child of the level pauses the tree and lets the
+## player click each first-team figure onto a validated surface
+## spot (hero first, see scripts/SpawnChooser.gd). Rework (owner
+## 2026-11-20): the placement runs whether the first team plays as
+## a human or as the computer — the chooser only needs the hand on
+## the mouse, and since the #617 rework v2 defaults every team to
+## the computer, the old controller fallback made the regime a
+## silent no-op in the default setup. A level with no first-team
+## figures at all (pure spectate staging) still falls back to the
+## designer regime — there is nothing on the player side to click.
 static func _apply_choose(level: Node) -> void:
-	if GameConfig.team_controller(0) != "player":
-		_apply_designer(level)
-		return
 	var figures: Array = []
 	for figure in level.get_tree().get_nodes_in_group("player_team"):
 		if _is_placeable(figure, level):

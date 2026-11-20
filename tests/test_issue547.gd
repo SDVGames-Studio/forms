@@ -15,8 +15,12 @@ extends Node
 ## - After the last figure the pause lifts and the chooser is gone;
 ##   computer/hot-seat teams and un-placed figures keep their authored
 ##   positions (Esc/cancel leaves the rest where they were staged).
-## - With a computer-played hero team (AI vs AI) no chooser appears —
-##   the designer regime runs instead.
+## - Rework (owner 2026-11-20, "this regime doesn't work"): with the
+##   #617-rework-v2 ALL-COMPUTER default the chooser still engages —
+##   the hand on the mouse places the first team whether the team
+##   plays as a human or as the computer. Only a level with NO
+##   first-team figures (pure spectate staging) falls back to the
+##   designer regime.
 ##
 ## The floor is thick so its underside is a second walkable surface
 ## (local gravity pulls up below the slab, like Level4's underside
@@ -165,11 +169,14 @@ func _ready() -> void:
 	level2.queue_free()
 	await _tick(2)
 
-	# --- AI vs AI: no human hero — the designer regime runs. ---
+	# --- All-computer set (the #617-rework-v2 DEFAULT): the chooser
+	# --- must STILL engage — the owner picked the regime, the default
+	# --- team set is all-computer, and the old controller fallback
+	# --- silently ran the designer regime instead (owner 2026-11-20).
 	GameConfig.teams = [{
 		"label": "Bots", "color": Color(0.7, 0.7, 0.7),
 		"controller": "computer", "shape": "square",
-		"members": ["B1", "B2", "B3"],
+		"names": ["B1", "B2", "B3"],
 	}]
 	if GameConfig.team_controller(0) != "computer":
 		_fail("computer hero team did not register")
@@ -178,15 +185,54 @@ func _ready() -> void:
 	add_child(level3)
 	SpawnRegime.apply(level3)
 	await _tick(8)
-	if level3.get_node_or_null("SpawnChooser") != null:
-		_fail("chooser appeared for a computer hero team")
+	var chooser3 := level3.get_node_or_null("SpawnChooser")
+	if chooser3 == null:
+		_fail("chooser skipped an all-computer first team (owner rework)")
 		failed = true
-	var designed := _players(level3)
+	else:
+		if not get_tree().paused:
+			_fail("all-computer chooser did not pause the tree")
+			failed = true
+		if chooser3.figures.size() != 3:
+			_fail("all-computer chooser got %d figures"
+					% chooser3.figures.size())
+			failed = true
+		if not chooser3.confirm_spot(Vector2(420.0, 80.0)):
+			_fail("all-computer spot was rejected")
+			failed = true
+		chooser3.cancel()
+		await _tick(4)
+		if get_tree().paused:
+			_fail("all-computer cancel did not lift the pause")
+			failed = true
+		var bots := _players(level3)
+		if bots.is_empty() \
+				or absf(bots[0].position.y - STAND_Y) > 1.0:
+			_fail("the all-computer figure was not placed by hand")
+			failed = true
+		for figure in bots.slice(1):
+			if figure.position != Vector2(60, 60):
+				_fail("all-computer cancel moved an un-placed figure")
+				failed = true
+	level3.queue_free()
+	await _tick(2)
+
+	# --- Pure spectate staging (no first-team figures at all): the
+	# --- designer regime keeps the authored cast — there is nothing
+	# --- on the player side to click.
+	var level4 := _build_level(true, false)
+	add_child(level4)
+	SpawnRegime.apply(level4)
+	await _tick(8)
+	if level4.get_node_or_null("SpawnChooser") != null:
+		_fail("chooser appeared with no first-team figures")
+		failed = true
+	var designed := _enemies(level4)
 	for i in mini(designed.size(), 3):
 		if designed[i].position != Vector2(200.0 + 100.0 * i, 150.0):
 			_fail("designer fallback did not fill marker %d" % i)
 			failed = true
-	level3.queue_free()
+	level4.queue_free()
 
 	# --- Restore the world the test found. ---
 	GameConfig.teams = saved_teams
@@ -208,10 +254,10 @@ func _tick(frames: int) -> void:
 
 
 ## A synthetic level: the shared indestructible-floor script (a real
-## gravity source, real collision), a 3-figure hero team staged in one
-## authored cluster and two enemies, plus (optionally) three
-## "spawn_points" markers for the designer-fallback check.
-func _build_level(with_markers := false) -> Node2D:
+## gravity source, real collision), optionally a 3-figure hero team
+## staged in one authored cluster and two enemies, plus (optionally)
+## three "spawn_points" markers for the designer-fallback check.
+func _build_level(with_markers := false, with_players := true) -> Node2D:
 	var level := Node2D.new()
 	level.name = "TestLevel"
 	var floor := StaticBody2D.new()
@@ -234,6 +280,11 @@ func _build_level(with_markers := false) -> Node2D:
 		figure.position = Vector2(60, 60)
 		figure.add_to_group("player_team")
 		level.add_child(figure)
+	if not with_players:
+		for figure in level.get_children():
+			if figure.is_in_group("player_team"):
+				level.remove_child(figure)
+				figure.queue_free()
 	for i in 2:
 		var enemy := DummyFigure.new()
 		enemy.name = "Npc%d" % i

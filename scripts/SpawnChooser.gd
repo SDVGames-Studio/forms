@@ -4,7 +4,7 @@ extends Node2D
 ##
 ## SpawnRegime.apply adds ONE chooser as a child of the level (after
 ## GameConfig.apply trimmed and dressed the live figures) and hands it
-## the hero team's figures in group order — hero first. The chooser
+## the first team's figures in group order — hero first. The chooser
 ## then lets the player pick each figure's standing spot AFTER the
 ## level has started:
 ##
@@ -24,9 +24,13 @@ extends Node2D
 ## - once the last figure is placed the pause lifts, the chooser frees
 ##   itself, and the (still running) roll hands the first turn over.
 ##
-## Only the HERO team is placed by hand. Computer-played hero teams
-## never reach a chooser (SpawnRegime._apply_choose falls back to the
-## designer regime), and hot-seat teams keep their authored spots.
+## Only the FIRST team is placed by hand. Rework (owner 2026-11-20):
+## the chooser runs whatever plays the team — since the #617 rework
+## v2 defaults every team to the computer, a computer-played first
+## team must still get its placement phase (the hand on the mouse
+## does the choosing; before, SpawnRegime._apply_choose silently
+## fell back to the designer regime and the feature looked dead).
+## Hot-seat teams keep their authored spots.
 ##
 ## The chooser and its hint run in PROCESS_MODE_ALWAYS (input, process
 ## and SceneTreeTimers keep working while the tree is paused); the
