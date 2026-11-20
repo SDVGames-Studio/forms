@@ -31,7 +31,15 @@ extends Node
 ##     (32) was narrower than the figure's 48 px collider capsule, so
 ##     the dug "tunnel" was a notch the character could never move
 ##     into (the owner's screenshot). The mouth now spans the capsule's
-##     full 48 px shoulders with clearance.
+##     full 48 px shoulders with clearance;
+##  8. ENTERABLE (rework #3): the bore must open ON the wielder — a
+##     64 px tall bore admits the 57.6 px tall capsule only within
+##     sqrt(32^2 - 28.8^2) ~ 13.9 px of its centre, so the dig offset
+##     (and the re-anchor step, so the tunnel CHAINS instead of
+##     dead-ending) must stay inside that window. The rework-#2 offset
+##     (64: the hole's near tip at the 64 px reference body's edge)
+##     left an intact lip plus a head-height brow between the capsule
+##     and the hole — the owner's screenshot again.
 ##
 ## Run headless: godot --headless res://tests/test_issue656.tscn
 ## Exit code 0 = pass.
@@ -176,25 +184,28 @@ func _ready() -> void:
 
 	# 4) ANCHOR: the first swing fixes the dig in world space. A second
 	# swing after a stance shift UNDER SHOVEL_DIG_REANCHOR must not open
-	# the hole the live aim now points at; a shift past the threshold
-	# re-anchors and digs at the new spot.
+	# the hole the live aim now points at (the aim is FLIPPED here — the
+	# would-be drag spot sits behind the stance, clear of the anchored
+	# ellipse); a shift past the threshold re-anchors and digs at the
+	# new spot.
 	var gun_c := _make_weapon()
 	var shooter_c := gun_c.get_parent() as Node2D
 	shooter_c.position = Vector2(1000.0, 0.0)
-	var first := _make_chunk(Vector2(1048.0, 0.0), Vector2(20, 20))
+	var first := _make_chunk(Vector2(1012.0, 0.0), Vector2(20, 20))
 	gun_c._swing_shovel()
 	await _settle()
 	_check(not is_instance_valid(first) or not first.is_inside_tree(),
 			"the first swing must dig at the anchored spot")
-	shooter_c.position = Vector2(1030.0, 0.0)
-	var dragged := _make_chunk(Vector2(1078.0, 0.0), Vector2(20, 20))
+	gun_c._facing = -1.0
+	shooter_c.position = Vector2(1005.0, 0.0)
+	var dragged := _make_chunk(Vector2(966.0, 0.0), Vector2(20, 20))
 	gun_c._swing_shovel()
 	await _settle()
 	_check(is_instance_valid(dragged) and dragged.is_inside_tree(),
 			"a swing within the re-anchor distance must NOT move the hole "
 			+ "to the new aim spot (the dig stays one ellipse)")
-	shooter_c.position = Vector2(1100.0, 0.0)
-	var fresh := _make_chunk(Vector2(1148.0, 0.0), Vector2(20, 20))
+	shooter_c.position = Vector2(1030.0, 0.0)
+	var fresh := _make_chunk(Vector2(1018.0, 0.0), Vector2(20, 20))
 	gun_c._swing_shovel()
 	await _settle()
 	_check(not is_instance_valid(fresh) or not fresh.is_inside_tree(),
@@ -234,6 +245,19 @@ func _ready() -> void:
 			"the dig half axes are the full figure width/height (32 x 32) "
 			+ "— rework #2: a 16 px half width could never admit the "
 			+ "48 px collider capsule")
+
+	# 8) ENTERABLE (rework #3): the bore opens ON the wielder — both the
+	# dig offset and the re-anchor step sit inside the capsule-fit
+	# window sqrt(32^2 - 28.8^2) of the bore centre, so the figure
+	# stands inside its own fresh bore and chained bores never pinch
+	# narrower than the capsule.
+	var fit_window := sqrt(32.0 * 32.0 - 28.8 * 28.8)
+	_check(WeaponScript.SHOVEL_DIG_OFFSET <= fit_window,
+			"the dig offset must keep the capsule inside the bore "
+			+ "(SHOVEL_DIG_OFFSET <= %.1f)" % fit_window)
+	_check(WeaponScript.SHOVEL_DIG_REANCHOR <= fit_window,
+			"the re-anchor step must re-dig before the bore's far end "
+			+ "blocks the figure (SHOVEL_DIG_REANCHOR <= %.1f)" % fit_window)
 
 	# 6) Endless budget re-check after the swings: still selectable.
 	_check(WeaponInventory.held_weapon_for(team) != WEAPON_SLOT_SHOVEL

@@ -254,21 +254,32 @@ const SHOVEL_DAMAGE := 5
 ## 8 px of clearance per side and the figure walks straight in.
 const SHOVEL_DIG_HEIGHT := 64.0
 const SHOVEL_DIG_WIDTH := 64.0
-## How far ahead of the body CENTRE the dig ellipse sits — the body's
-## half width (32) plus the ellipse's half width (32): the hole starts
-## at the wielder's edge, so the mouth opens exactly where the figure
-## stands and it can step straight into the tunnel.
-const SHOVEL_DIG_OFFSET := 64.0
+## Rework #3 (the owner's screenshot): how far ahead of the body
+## CENTRE the dig ellipse sits. The rework-#2 value (64: the
+## ellipse's near tip at the 64 px reference body's edge) still left
+## the figure OUTSIDE the hole — an intact lip of ground stood ahead
+## of the 48 px collider capsule, and even past that lip the bore's
+## curved mouth is a head-height BROW the capsule can never climb
+## over: a 64 px tall bore only admits the 57.6 px tall capsule while
+## the bore's centre stays within sqrt(32^2 - 28.8^2) = ~13.9 px of
+## the body centre. So the dig must open ON the wielder: the ellipse
+## rides a touch AHEAD of the body centre, carving the ground from
+## around the figure itself — the capsule sits inside its own fresh
+## bore (3 px of margin) and walks straight through the tunnel.
+const SHOVEL_DIG_OFFSET := 12.0
 ## Issue #656 rework: the dig spot is ANCHORED — the first swing of a
 ## dig fixes the ellipse (centre + upright) in WORLD space, and while
 ## the wielder stays within this distance of that stance every further
 ## swing re-carves the SAME ellipse. The first delivery re-centred the
 ## dig on the live aim every swing, so re-aiming between the five
 ## swings dragged the hole into a ragged trench — the owner's rework:
-## the removed ground must remain an ellipse. Moving this far (one dig
-## width — the FULL body width since rework #2) starts a fresh dig at
-## the new spot.
-const SHOVEL_DIG_REANCHOR := 64.0
+## the removed ground must remain an ellipse. Rework #3: the threshold
+## is one STEP of the dig chain — the figure walks ~this far into the
+## bore and the next swing opens the next ellipse (overlapping ~64-wide
+## bores 12 px apart leave a >= 58 px pinch the capsule fits through),
+## so the tunnel extends instead of dead-ending; a smaller stance
+## jitter still keeps the one anchored ellipse.
+const SHOVEL_DIG_REANCHOR := 12.0
 
 var _facing := 1.0
 var _cooldown_left := 0.0
@@ -1097,8 +1108,10 @@ func _shovel_sweep_hit() -> void:
 
 
 ## Issue #656: THE DIG — one use carves ONE upright ellipse out of
-## destructible ground in front of the wielder: centred ahead along the
-## aim at the body's edge (SHOVEL_DIG_OFFSET), its long axis (the
+## destructible ground in front of the wielder: centred a touch ahead
+## of the body along the aim (SHOVEL_DIG_OFFSET — rework #3: the bore
+## opens ON the wielder so the figure already stands inside it), its long
+## axis (the
 ## figure's height) along the character's VERTICAL (_frame_up — the dig
 ## stays upright in the wielder's gravity frame wherever the aim
 ## points), the short axis (the figure's FULL width, rework #2: the
