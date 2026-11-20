@@ -284,6 +284,11 @@ def main() -> int:
         default=None,
         help="PPO RNG seed; hyperparameter sweeps (issue #470) reuse one seed across combinations",
     )
+    parser.add_argument(
+        "--viz",
+        action="store_true",
+        help="Show the game window during training (slows down training)",
+    )
     args = parser.parse_args()
 
     # Be gentle on shared machines: the nets here are tiny (mirrors
@@ -300,6 +305,7 @@ def main() -> int:
         env_path=env_path,
         n_parallel=args.n_parallel,
         speedup=args.speedup,
+        show_window=args.viz,
     )
     # Issue #469: recover the NAMED action heads (move/aim/attack/target)
     # from the handshake's per-agent Dict spaces — the combined
