@@ -232,6 +232,19 @@ func _unhandled_input(event: InputEvent) -> void:
 				_apply_zoom(ZOOM_STEP)
 			MOUSE_BUTTON_WHEEL_DOWN:
 				_apply_zoom(1.0 / ZOOM_STEP)
+	# Issue #547 rework (owner 2026-11-21): while the spawn chooser
+	# holds its pause the LEFT click drops the figure being placed and
+	# a TAP does the same on touch — they must reach SpawnChooser, not
+	# start a camera drag. The RIGHT button still pans and the wheel
+	# and +/- still zoom, so the map can be inspected mid-placement
+	# (#456 pattern, like the armed teleport below).
+	if get_tree().get_first_node_in_group("spawn_chooser") != null:
+		if event is InputEventMouseButton and event.pressed \
+				and (event as InputEventMouseButton).button_index \
+				== MOUSE_BUTTON_LEFT:
+			return
+		if event is InputEventScreenTouch and event.pressed:
+			return
 	# Issue #170: while a teleport is armed the next LEFT click picks the
 	# destination — it must reach ToolInventory, not start a camera drag.
 	# Issue #456 (rework): the RIGHT button never picks a destination

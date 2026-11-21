@@ -15,6 +15,11 @@ extends Node
 ## - After the last figure the pause lifts and the chooser is gone;
 ##   computer/hot-seat teams and un-placed figures keep their authored
 ##   positions (Esc/cancel leaves the rest where they were staged).
+## - Camera unblock (owner rework 2026-11-21, "unblock camera in the
+##   spawn regime"): the chooser keeps every player_camera in
+##   PROCESS_MODE_ALWAYS through its pause (pan/zoom keep working)
+##   and restores the mode after; it also joins the "spawn_chooser"
+##   group so ZoomCamera can fall placement clicks through.
 ## - Rework (owner 2026-11-20, "this regime doesn't work"): with the
 ##   #617-rework-v2 ALL-COMPUTER default the chooser still engages —
 ##   the hand on the mouse places the first team whether the team
@@ -84,6 +89,14 @@ func _ready() -> void:
 
 	# --- apply() spawns a chooser that pauses the tree. ---
 	var level := _build_level()
+	# Owner rework 2026-11-21: a camera in the player_camera group —
+	# the chooser must keep it LIVE (PROCESS_MODE_ALWAYS) through the
+	# pause and restore its mode after the phase.
+	var camera := Camera2D.new()
+	camera.name = "Camera"
+	camera.process_mode = Node.PROCESS_MODE_PAUSABLE
+	camera.add_to_group("player_camera")
+	level.add_child(camera)
 	add_child(level)
 	var players: Array = _players(level)
 	GameConfig.spawn_regime = SpawnRegime.REGIME_CHOOSE
@@ -96,6 +109,12 @@ func _ready() -> void:
 	else:
 		if not get_tree().paused:
 			_fail("chooser did not pause the tree")
+			failed = true
+		if camera.process_mode != Node.PROCESS_MODE_ALWAYS:
+			_fail("camera stayed frozen during the choose phase")
+			failed = true
+		if not chooser.is_in_group("spawn_chooser"):
+			_fail("chooser is not in the spawn_chooser group")
 			failed = true
 		if chooser.figures.size() != 3 \
 				or chooser.figures[0].name != "Hero":
@@ -120,6 +139,9 @@ func _ready() -> void:
 		await _tick(4)
 		if get_tree().paused:
 			_fail("still paused after the last figure")
+			failed = true
+		if camera.process_mode != Node.PROCESS_MODE_PAUSABLE:
+			_fail("camera process mode not restored after the phase")
 			failed = true
 		if level.get_node_or_null("SpawnChooser") != null:
 			_fail("chooser still on the level after finishing")
