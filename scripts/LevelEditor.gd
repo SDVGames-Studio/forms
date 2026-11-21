@@ -29,8 +29,12 @@ extends Control
 ## box; loop/curve store their clicked points.
 ##
 ## Layout follows the shared menu pattern (MenuTheme, MenuBackground,
-## brand column on the left, canvas filling the remaining space); the
-## file operations sit in the bars under the canvas. The data model is
+## brand column on the left, canvas filling the remaining space).
+## Issue #676: the editor tools live in a PALETTE — a panel floating
+## over the canvas's top-left corner with the ground-tool column and
+## the #632 shape column side by side — so the brand column is just
+## the title and the canvas keeps the full height; the file operations
+## sit in the bars under the canvas. The data model is
 ## deliberately plain ({kind, shape, ...} pieces and {x, y} spawns in
 ## a fixed 1152x648 level space) so CustomLevel.gd can build a real
 ## playable scene from the files.
