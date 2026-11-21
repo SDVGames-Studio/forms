@@ -22,7 +22,13 @@ extends Node2D
 ## - Esc cancels the rest: the un-placed figures keep their authored
 ##   positions and the game starts with what was placed;
 ## - once the last figure is placed the pause lifts, the chooser frees
-##   itself, and the (still running) roll hands the first turn over.
+##   itself, and the (still running) roll hands the first turn over;
+## - the shared zoom camera stays LIVE through the pause (owner
+##   rework 2026-11-21, "unblock camera in the spawn regime"): every
+##   player_camera runs PROCESS_MODE_ALWAYS for the phase, so the
+##   view can be panned and zoomed while placing figures — the
+##   placement LEFT clicks and taps fall through ZoomCamera to the
+##   chooser, the right button pans and the wheel/± zoom.
 ##
 ## Only the FIRST team is placed by hand. Rework (owner 2026-11-20):
 ## the chooser runs whatever plays the team — since the #617 rework
@@ -78,6 +84,9 @@ var _done := false
 var _we_paused := false
 var _layer: CanvasLayer = null
 var _label: Label = null
+## Cameras flipped to PROCESS_MODE_ALWAYS for the phase, each with the
+## mode it had before — restored the moment the pause lifts.
+var _cameras: Array = []
 
 
 func _ready() -> void:
@@ -97,6 +106,11 @@ func _ready() -> void:
 			return
 	get_tree().paused = true
 	_we_paused = true
+	# The group makes the phase discoverable: ZoomCamera falls the
+	# placement clicks and taps through to the chooser (they must
+	# never start a camera drag) while everything else pans/zooms.
+	add_to_group("spawn_chooser")
+	_unblock_cameras()
 	_hint()
 
 
@@ -185,6 +199,7 @@ func _exit_tree() -> void:
 		_we_paused = false
 		if get_tree() != null:
 			get_tree().paused = false
+	_restore_cameras()
 
 
 func _finish() -> void:
@@ -192,6 +207,8 @@ func _finish() -> void:
 	if _we_paused:
 		_we_paused = false
 		get_tree().paused = false
+	_restore_cameras()
+	remove_from_group("spawn_chooser")
 	if _layer != null:
 		_layer.queue_free()
 		_layer = null
@@ -245,6 +262,31 @@ func _build_hud() -> void:
 	_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	panel.add_child(_label)
+
+
+## Owner rework 2026-11-21 ("unblock camera in the spawn regime"): the
+## pause used to freeze the shared zoom camera with the rest of the
+## tree, so a map wider than the view could not be panned or zoomed
+## while placing figures. Every player_camera runs PROCESS_MODE_ALWAYS
+## for the duration of the phase — input and process keep flowing
+## (ZoomCamera leaves the placement clicks to the chooser and pans
+## with the right button, zooms with wheel and +/-).
+func _unblock_cameras() -> void:
+	for camera in get_tree().get_nodes_in_group("player_camera"):
+		if camera == null or not is_instance_valid(camera):
+			continue
+		_cameras.append([camera, camera.process_mode])
+		camera.process_mode = Node.PROCESS_MODE_ALWAYS
+
+
+## The phase ends — every camera gets back the process mode it had
+## before (cameras freed with a swapped-out level are skipped).
+func _restore_cameras() -> void:
+	for entry in _cameras:
+		var camera := entry[0] as Node
+		if camera != null and is_instance_valid(camera):
+			camera.process_mode = entry[1]
+	_cameras = []
 
 
 ## A standing spot must be free of terrain AND still have its floor
