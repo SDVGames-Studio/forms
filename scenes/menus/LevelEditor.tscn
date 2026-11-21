@@ -63,129 +63,157 @@ custom_minimum_size = Vector2(260, 4)
 layout_mode = 2
 color = Color(0.655, 0.545, 0.98, 1)
 
-[node name="Tools" type="VBoxContainer" parent="Layout/MainBox/Top/Side"]
-layout_mode = 2
-theme_override_constants/separation = 8
-
-[node name="IndestructibleTool" type="Button" parent="Layout/MainBox/Top/Side/Tools"]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(340, 42)
-layout_mode = 2
-theme_override_font_sizes/font_size = 16
-toggle_mode = true
-button_group = SubResource("ButtonGroup_tools")
-text = "INDESTRUCTIBLE"
-
-[node name="DestructibleTool" type="Button" parent="Layout/MainBox/Top/Side/Tools"]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(340, 42)
-layout_mode = 2
-theme_override_font_sizes/font_size = 16
-toggle_mode = true
-button_group = SubResource("ButtonGroup_tools")
-text = "DESTRUCTIBLE"
-
-[node name="SpawnTool" type="Button" parent="Layout/MainBox/Top/Side/Tools"]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(340, 42)
-layout_mode = 2
-theme_override_font_sizes/font_size = 16
-toggle_mode = true
-button_group = SubResource("ButtonGroup_tools")
-text = "SPAWN POINT"
-
-[node name="EraseTool" type="Button" parent="Layout/MainBox/Top/Side/Tools"]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(340, 42)
-layout_mode = 2
-theme_override_font_sizes/font_size = 16
-toggle_mode = true
-button_group = SubResource("ButtonGroup_tools")
-text = "ERASE"
-
-[node name="EditTool" type="Button" parent="Layout/MainBox/Top/Side/Tools"]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(340, 42)
-layout_mode = 2
-theme_override_font_sizes/font_size = 16
-toggle_mode = true
-button_group = SubResource("ButtonGroup_tools")
-text = "EDIT POINTS"
-
 [node name="Spacer" type="Control" parent="Layout/MainBox/Top"]
 layout_mode = 2
 size_flags_horizontal = 3
 
-[node name="CanvasPanel" type="PanelContainer" parent="Layout/MainBox/Top"]
+[node name="CanvasArea" type="Control" parent="Layout/MainBox/Top"]
 layout_mode = 2
 size_flags_horizontal = 3
+
+[node name="CanvasPanel" type="PanelContainer" parent="Layout/MainBox/Top/CanvasArea"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
 clip_contents = true
 
-[node name="EditorCanvas" type="Control" parent="Layout/MainBox/Top/CanvasPanel"]
+[node name="EditorCanvas" type="Control" parent="Layout/MainBox/Top/CanvasArea/CanvasPanel"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(472, 212)
 layout_mode = 2
 clip_contents = true
 script = ExtResource("4_canvas")
 
-[node name="Shapes" type="HBoxContainer" parent="Layout/MainBox"]
-layout_mode = 2
-theme_override_constants/separation = 12
+[node name="Palette" type="PanelContainer" parent="Layout/MainBox/Top/CanvasArea"]
+layout_mode = 1
+offset_left = 12.0
+offset_top = 12.0
+offset_right = 324.0
+offset_bottom = 260.0
 
-[node name="ShapesLabel" type="Label" parent="Layout/MainBox/Shapes"]
+[node name="PaletteMargin" type="MarginContainer" parent="Layout/MainBox/Top/CanvasArea/Palette"]
+layout_mode = 2
+theme_override_constants/margin_left = 10
+theme_override_constants/margin_top = 10
+theme_override_constants/margin_right = 10
+theme_override_constants/margin_bottom = 10
+
+[node name="PaletteColumns" type="HBoxContainer" parent="Layout/MainBox/Top/CanvasArea/Palette/PaletteMargin"]
+layout_mode = 2
+theme_override_constants/separation = 14
+
+[node name="ToolsColumn" type="VBoxContainer" parent="Layout/MainBox/Top/CanvasArea/Palette/PaletteMargin/PaletteColumns"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="ToolsLabel" type="Label" parent="Layout/MainBox/Top/CanvasArea/Palette/PaletteMargin/PaletteColumns/ToolsColumn"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.467, 0.49, 0.545, 1)
-theme_override_font_sizes/font_size = 14
+theme_override_font_sizes/font_size = 12
+text = "TOOLS"
+
+[node name="IndestructibleTool" type="Button" parent="Layout/MainBox/Top/CanvasArea/Palette/PaletteMargin/PaletteColumns/ToolsColumn"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(150, 34)
+layout_mode = 2
+theme_override_font_sizes/font_size = 13
+toggle_mode = true
+button_group = SubResource("ButtonGroup_tools")
+text = "INDESTRUCTIBLE"
+
+[node name="DestructibleTool" type="Button" parent="Layout/MainBox/Top/CanvasArea/Palette/PaletteMargin/PaletteColumns/ToolsColumn"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(150, 34)
+layout_mode = 2
+theme_override_font_sizes/font_size = 13
+toggle_mode = true
+button_group = SubResource("ButtonGroup_tools")
+text = "DESTRUCTIBLE"
+
+[node name="SpawnTool" type="Button" parent="Layout/MainBox/Top/CanvasArea/Palette/PaletteMargin/PaletteColumns/ToolsColumn"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(150, 34)
+layout_mode = 2
+theme_override_font_sizes/font_size = 13
+toggle_mode = true
+button_group = SubResource("ButtonGroup_tools")
+text = "SPAWN POINT"
+
+[node name="EraseTool" type="Button" parent="Layout/MainBox/Top/CanvasArea/Palette/PaletteMargin/PaletteColumns/ToolsColumn"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(150, 34)
+layout_mode = 2
+theme_override_font_sizes/font_size = 13
+toggle_mode = true
+button_group = SubResource("ButtonGroup_tools")
+text = "ERASE"
+
+[node name="EditTool" type="Button" parent="Layout/MainBox/Top/CanvasArea/Palette/PaletteMargin/PaletteColumns/ToolsColumn"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(150, 34)
+layout_mode = 2
+theme_override_font_sizes/font_size = 13
+toggle_mode = true
+button_group = SubResource("ButtonGroup_tools")
+text = "EDIT POINTS"
+
+[node name="ShapesColumn" type="VBoxContainer" parent="Layout/MainBox/Top/CanvasArea/Palette/PaletteMargin/PaletteColumns"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="ShapesLabel" type="Label" parent="Layout/MainBox/Top/CanvasArea/Palette/PaletteMargin/PaletteColumns/ShapesColumn"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.467, 0.49, 0.545, 1)
+theme_override_font_sizes/font_size = 12
 text = "GROUND SHAPE"
 
-[node name="RectTool" type="Button" parent="Layout/MainBox/Shapes"]
+[node name="RectTool" type="Button" parent="Layout/MainBox/Top/CanvasArea/Palette/PaletteMargin/PaletteColumns/ShapesColumn"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(150, 44)
+custom_minimum_size = Vector2(122, 34)
 layout_mode = 2
-theme_override_font_sizes/font_size = 16
+theme_override_font_sizes/font_size = 13
 toggle_mode = true
 button_group = SubResource("ButtonGroup_shapes")
 text = "RECTANGLE"
 
-[node name="TriangleTool" type="Button" parent="Layout/MainBox/Shapes"]
+[node name="TriangleTool" type="Button" parent="Layout/MainBox/Top/CanvasArea/Palette/PaletteMargin/PaletteColumns/ShapesColumn"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(150, 44)
+custom_minimum_size = Vector2(122, 34)
 layout_mode = 2
-theme_override_font_sizes/font_size = 16
+theme_override_font_sizes/font_size = 13
 toggle_mode = true
 button_group = SubResource("ButtonGroup_shapes")
 text = "TRIANGLE"
 
-[node name="CircleTool" type="Button" parent="Layout/MainBox/Shapes"]
+[node name="CircleTool" type="Button" parent="Layout/MainBox/Top/CanvasArea/Palette/PaletteMargin/PaletteColumns/ShapesColumn"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(150, 44)
+custom_minimum_size = Vector2(122, 34)
 layout_mode = 2
-theme_override_font_sizes/font_size = 16
+theme_override_font_sizes/font_size = 13
 toggle_mode = true
 button_group = SubResource("ButtonGroup_shapes")
 text = "CIRCLE"
 
-[node name="LoopTool" type="Button" parent="Layout/MainBox/Shapes"]
+[node name="LoopTool" type="Button" parent="Layout/MainBox/Top/CanvasArea/Palette/PaletteMargin/PaletteColumns/ShapesColumn"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(150, 44)
+custom_minimum_size = Vector2(122, 34)
 layout_mode = 2
-theme_override_font_sizes/font_size = 16
+theme_override_font_sizes/font_size = 13
 toggle_mode = true
 button_group = SubResource("ButtonGroup_shapes")
 text = "LOOP"
 
-[node name="CurveTool" type="Button" parent="Layout/MainBox/Shapes"]
+[node name="CurveTool" type="Button" parent="Layout/MainBox/Top/CanvasArea/Palette/PaletteMargin/PaletteColumns/ShapesColumn"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(150, 44)
+custom_minimum_size = Vector2(122, 34)
 layout_mode = 2
-theme_override_font_sizes/font_size = 16
+theme_override_font_sizes/font_size = 13
 toggle_mode = true
 button_group = SubResource("ButtonGroup_shapes")
 text = "CURVE"
-
-[node name="ShapeSpacer" type="Control" parent="Layout/MainBox/Shapes"]
-layout_mode = 2
-size_flags_horizontal = 3
 
 [node name="FileOps" type="HBoxContainer" parent="Layout/MainBox"]
 layout_mode = 2
