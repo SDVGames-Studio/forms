@@ -4,10 +4,19 @@ extends Control
 ## Pure visual authoring: ground pieces and spawn points are stored as
 ## data (no physics) and drawn in code with the same colors the ground
 ## scripts use for themselves. The canvas shows a fixed 1152x648
-## logical level space (the game's base viewport) and scales itself to
-## fit whatever rectangle its container gives it — mouse input is
-## translated back into level coordinates, so drawing feels the same
-## at any scale.
+## logical level space (the game's base viewport) through a movable,
+## zoomable CAMERA (issue #675) that by default fits the rectangle its
+## container gives it — mouse input is translated back into level
+## coordinates, so drawing feels the same at any scale.
+##
+## Issue #675 — the view CAMERA over the level map: the mouse wheel
+## zooms toward the cursor (clamped to 0.5x–4x of the fitted view) and
+## a MIDDLE- or RIGHT-button drag pans. Zoomed out the level stays
+## centered; zoomed in the offset clamps so the map never leaves the
+## viewport. Edit hit distances (handles, outlines, the loop-closing
+## radius) and the handle dots keep their ON-SCREEN size at any zoom,
+## and the editor's RESET VIEW button restores the fitted whole-map
+## view.
 ##
 ## Ground tools (set_tool, driven by the editor's tool palette):
 ##  - "indestructible": the drawn pieces are purple gravity ground;
@@ -82,6 +91,13 @@ const CURVE_THICKNESS := 48.0
 const CURVE_SAMPLES := 24
 const ERASE_RADIUS := 20.0
 const BG_COLOR := Color(0.08, 0.09, 0.12, 1)
+## Issue #675: the void behind the level map when the camera looks
+## past its edges, and the camera's zoom limits / wheel step (1.0 =
+## the whole level fitted into the canvas).
+const VOID_COLOR := Color(0.05, 0.055, 0.08, 1)
+const ZOOM_MIN := 0.5
+const ZOOM_MAX := 4.0
+const ZOOM_STEP := 1.2
 const GRID_COLOR := Color(1, 1, 1, 0.05)
 const GRID_MAJOR_COLOR := Color(1, 1, 1, 0.1)
 const BORDER_COLOR := Color(0.655, 0.545, 0.98, 0.6)
@@ -115,18 +131,88 @@ var _hover_handle := -1
 ## Issue #640: where an add-point click would land right now (the
 ## snapped point on the nearest outline edge); negative = none.
 var _add_preview := Vector2(-1000, -1000)
+## Issue #675: the view camera — a zoom multiplier over the fitted
+## view (1.0 = whole level), the level-space point at the canvas's
+## top-left corner, and whether a middle/right drag is panning now.
+var _view_zoom := 1.0
+var _view_offset := Vector2.ZERO
+var _panning := false
 
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
-	resized.connect(_rescale)
-	_rescale()
+	resized.connect(_update_view)
+	_update_view()
 	queue_redraw()
 
 
-func _rescale() -> void:
-	if size.x > 1.0 and size.y > 1.0:
-		scale = size / CANVAS_SIZE
+## Issue #675: canvas pixels per level pixel under the camera — the
+## container's fit scale times the zoom (ONE until laid out).
+func _view_scale() -> Vector2:
+	if size.x <= 1.0 or size.y <= 1.0:
+		return Vector2.ONE
+	return size / CANVAS_SIZE * _view_zoom
+
+
+## Issue #675: clamp the camera. Zoomed OUT the visible span exceeds
+## the level, so the map centers; zoomed IN the offset pans inside it
+## and the map always covers the viewport.
+func _update_view() -> void:
+	var visible := CANVAS_SIZE / _view_zoom
+	if visible.x >= CANVAS_SIZE.x:
+		_view_offset.x = (CANVAS_SIZE.x - visible.x) * 0.5
+	else:
+		_view_offset.x = clampf(_view_offset.x, 0.0,
+			CANVAS_SIZE.x - visible.x)
+	if visible.y >= CANVAS_SIZE.y:
+		_view_offset.y = (CANVAS_SIZE.y - visible.y) * 0.5
+	else:
+		_view_offset.y = clampf(_view_offset.y, 0.0,
+			CANVAS_SIZE.y - visible.y)
+	queue_redraw()
+
+
+func get_view_zoom() -> float:
+	return _view_zoom
+
+
+func get_view_offset() -> Vector2:
+	return _view_offset
+
+
+## Issue #675: back to the fitted whole-map view (RESET VIEW).
+func reset_view() -> void:
+	_view_zoom = 1.0
+	_view_offset = Vector2.ZERO
+	_update_view()
+
+
+## Issue #675: zoom by `factor`, keeping the level point under
+## `anchor_view` (canvas-local pixels) under the cursor still.
+func _zoom_at(factor: float, anchor_view: Vector2) -> void:
+	var anchor_level := anchor_view / _view_scale() + _view_offset
+	_view_zoom = clampf(_view_zoom * factor, ZOOM_MIN, ZOOM_MAX)
+	_view_offset = anchor_level - anchor_view / _view_scale()
+	_update_view()
+
+
+## Issue #675: the level→canvas transform the whole map draws under
+## (scale from the fit view + zoom, offset as the origin shift).
+func _view_transform() -> Transform2D:
+	var s := _view_scale()
+	return Transform2D(Vector2(s.x, 0.0), Vector2(0.0, s.y),
+		-_view_offset * s)
+
+
+## Issue #675: the cursor in LEVEL coordinates under the camera.
+func _level_mouse_position() -> Vector2:
+	return get_local_mouse_position() / _view_scale() + _view_offset
+
+
+## Issue #675: an edit hit distance in level px that stays the same
+## SIZE ON SCREEN whatever the zoom (`px` is a screen-space radius).
+func _screen_hit(px: float) -> float:
+	return px / maxf(_view_scale().x, 0.001)
 
 
 func set_tool(kind: String) -> void:
@@ -218,6 +304,25 @@ func clear_all() -> void:
 func _gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton:
 		var mb := event as InputEventMouseButton
+		# Issue #675: the camera — the wheel zooms toward the cursor;
+		# a middle/right press-and-drag pans (and any authoring drag in
+		# progress is dropped so the two never fight over the click).
+		if mb.pressed and mb.button_index == MOUSE_BUTTON_WHEEL_UP:
+			_zoom_at(ZOOM_STEP, get_local_mouse_position())
+			accept_event()
+			return
+		if mb.pressed and mb.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+			_zoom_at(1.0 / ZOOM_STEP, get_local_mouse_position())
+			accept_event()
+			return
+		if mb.button_index == MOUSE_BUTTON_MIDDLE \
+				or mb.button_index == MOUSE_BUTTON_RIGHT:
+			_panning = mb.pressed
+			if _panning:
+				_dragging = false
+				release_handle()
+			accept_event()
+			return
 		if mb.button_index != MOUSE_BUTTON_LEFT:
 			return
 		if mb.pressed:
@@ -227,25 +332,34 @@ func _gui_input(event: InputEvent) -> void:
 			# that lands on no handle but near a figure's OUTLINE adds
 			# a vertex there instead.
 			if _tool == "edit":
-				if not grab_handle_at(get_local_mouse_position()):
-					add_point_at(get_local_mouse_position())
+				if not grab_handle_at(_level_mouse_position()):
+					add_point_at(_level_mouse_position())
 			else:
-				_press(_local_snap_mouse())
+				_press(_level_snap_mouse())
 			accept_event()
 		elif _dragging:
-			_release(_local_snap_mouse())
+			_release(_level_snap_mouse())
 			accept_event()
 		elif _grab_piece >= 0:
 			release_handle()
 			accept_event()
 	elif event is InputEventMouseMotion:
-		_hover = get_local_mouse_position()
+		# Issue #675: a middle/right drag pans the map instead of
+		# authoring — the offset moves against the drag, like sliding
+		# the paper under a magnifier.
+		if _panning:
+			_view_offset -= (event as InputEventMouseMotion).relative \
+				/ _view_scale()
+			_update_view()
+			accept_event()
+			return
+		_hover = _level_mouse_position()
 		if _dragging:
-			_drag_end = _local_snap_mouse()
+			_drag_end = _level_snap_mouse()
 		elif _grab_piece >= 0:
-			drag_handle_to(_local_snap_mouse())
+			drag_handle_to(_level_snap_mouse())
 		elif _tool == "edit":
-			_update_hover_handle(get_local_mouse_position())
+			_update_hover_handle(_level_mouse_position())
 		queue_redraw()
 
 
@@ -268,9 +382,10 @@ func _press(pos: Vector2) -> void:
 
 
 func _press_pending(pos: Vector2) -> void:
-	# Loop: clicking back on the marked first vertex closes the shape.
+	# Loop: clicking back on the marked first vertex closes the shape
+	# (CLOSE_RADIUS keeps its size on screen whatever the zoom).
 	if _shape == "loop" and _pending.size() >= 3 \
-			and pos.distance_to(_pending[0]) <= CLOSE_RADIUS:
+			and pos.distance_to(_pending[0]) <= _screen_hit(CLOSE_RADIUS):
 		_pieces.append({"kind": _tool, "shape": "loop",
 			"points": _pending.duplicate()})
 		_cancel_pending()
@@ -356,7 +471,7 @@ static func piece_handles(piece: Dictionary) -> PackedVector2Array:
 func grab_handle_at(pos: Vector2) -> bool:
 	_grab_piece = -1
 	_grab_handle = -1
-	var best := HANDLE_GRAB
+	var best := _screen_hit(HANDLE_GRAB)
 	for pi in _pieces.size():
 		var handles := piece_handles(_pieces[pi])
 		for hi in handles.size():
@@ -405,7 +520,7 @@ static func add_point_outline(piece: Dictionary) -> PackedVector2Array:
 ## array when no edge is near. Later pieces win ties, matching the
 ## grab/erase topmost convention.
 func _nearest_edge(pos: Vector2) -> Array:
-	var best := EDGE_GRAB
+	var best := _screen_hit(EDGE_GRAB)
 	var found: Array = [-1, -1, Vector2.ZERO]
 	for pi in _pieces.size():
 		var outline := add_point_outline(_pieces[pi])
@@ -503,7 +618,7 @@ func _update_hover_handle(pos: Vector2) -> void:
 	_hover_piece = -1
 	_hover_handle = -1
 	_add_preview = Vector2(-1000, -1000)
-	var best := HANDLE_GRAB
+	var best := _screen_hit(HANDLE_GRAB)
 	for pi in _pieces.size():
 		var handles := piece_handles(_pieces[pi])
 		for hi in handles.size():
@@ -552,8 +667,8 @@ func _piece_has_point(piece: Dictionary, pos: Vector2) -> bool:
 			return (piece["rect"] as Rect2).has_point(pos)
 
 
-func _local_snap_mouse() -> Vector2:
-	return get_local_mouse_position().snapped(Vector2(SNAP, SNAP))
+func _level_snap_mouse() -> Vector2:
+	return _level_mouse_position().snapped(Vector2(SNAP, SNAP))
 
 
 func _tool_color() -> Color:
@@ -563,6 +678,10 @@ func _tool_color() -> Color:
 
 
 func _draw() -> void:
+	# Issue #675: the void behind the map first (screen space), then
+	# every level-space drawing under the camera transform.
+	draw_rect(Rect2(Vector2.ZERO, size), VOID_COLOR)
+	draw_set_transform_matrix(_view_transform())
 	draw_rect(Rect2(Vector2.ZERO, CANVAS_SIZE), BG_COLOR)
 	_draw_grid()
 	for piece in _pieces:
@@ -576,6 +695,7 @@ func _draw() -> void:
 	if _tool == "edit":
 		_draw_handles()
 	draw_rect(Rect2(Vector2.ZERO, CANVAS_SIZE), BORDER_COLOR, false, 2.0)
+	draw_set_transform_matrix(Transform2D())
 
 
 func _draw_piece(piece: Dictionary) -> void:
@@ -673,6 +793,8 @@ func _draw_outline(pts: PackedVector2Array, color: Color) -> void:
 ## Issue #640: with nothing grabbed or hovered, the ring on the
 ## nearest outline edge previews where a click adds a vertex.
 func _draw_handles() -> void:
+	# Issue #675: the dots keep their on-screen size at any zoom.
+	var handle_size := HANDLE_SIZE / _view_zoom
 	for pi in _pieces.size():
 		var handles := piece_handles(_pieces[pi])
 		for hi in handles.size():
@@ -680,12 +802,12 @@ func _draw_handles() -> void:
 				or (pi == _hover_piece and hi == _hover_handle)
 			var color := Color(SPAWN_COLOR, 1.0) if active \
 				else Color(1, 1, 1, 0.95)
-			draw_circle(handles[hi], HANDLE_SIZE + 2.0,
+			draw_circle(handles[hi], handle_size + 2.0,
 				Color(0.08, 0.09, 0.12, 0.9))
-			draw_circle(handles[hi], HANDLE_SIZE, color)
+			draw_circle(handles[hi], handle_size, color)
 	if _grab_piece < 0 and _hover_piece < 0 \
 			and _add_preview.x >= 0.0 and _add_preview.y >= 0.0:
-		draw_arc(_add_preview, HANDLE_SIZE + 3.0, 0.0, TAU, 24,
+		draw_arc(_add_preview, handle_size + 3.0, 0.0, TAU, 24,
 			Color(SPAWN_COLOR, 0.9), 2.0)
 		draw_circle(_add_preview, 2.5, Color(SPAWN_COLOR, 0.9))
 

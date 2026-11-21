@@ -38,6 +38,11 @@ extends Control
 ## deliberately plain ({kind, shape, ...} pieces and {x, y} spawns in
 ## a fixed 1152x648 level space) so CustomLevel.gd can build a real
 ## playable scene from the files.
+##
+## Issue #675: the canvas is a movable, zoomable CAMERA over the level
+## map — the wheel zooms toward the cursor, a middle/right drag pans
+## (see LevelEditorCanvas) — and RESET VIEW in the bar under the
+## canvas restores the fitted whole-map view.
 
 const LEVELS_DIR := "user://levels"
 const FORMAT := "forms-level/1"
@@ -68,6 +73,7 @@ const MAX_PICTURE_SIDE := 1152
 @onready var _save_dialog: FileDialog = %SaveDialog
 @onready var _picture_button: Button = %PictureButton
 @onready var _no_picture_button: Button = %NoPictureButton
+@onready var _reset_view_button: Button = %ResetViewButton
 @onready var _picture_dialog: FileDialog = %PictureDialog
 @onready var _clear_button: Button = %ClearButton
 @onready var _back_button: Button = %BackButton
@@ -116,6 +122,7 @@ func _ready() -> void:
 	_save_dialog.file_selected.connect(_on_save_dialog_selected)
 	_picture_button.pressed.connect(_on_picture_pressed)
 	_no_picture_button.pressed.connect(_on_no_picture_pressed)
+	_reset_view_button.pressed.connect(_on_reset_view_pressed)
 	_picture_dialog.file_selected.connect(_on_picture_selected)
 	_clear_button.pressed.connect(_on_clear_pressed)
 	_back_button.pressed.connect(_on_back_pressed)
@@ -127,7 +134,8 @@ func _ready() -> void:
 	_ensure_levels_dir()
 	_refresh_file_list()
 	_set_status("drag ground shapes; EDIT POINTS moves them "
-		+ "(click an outline to add a point)")
+		+ "(click an outline to add a point); wheel zooms, "
+		+ "middle/right-drag pans")
 
 
 func _ensure_levels_dir() -> void:
@@ -417,6 +425,12 @@ func _on_load_pressed() -> void:
 		_set_status("select a level file first")
 		return
 	_load_from_path("%s/%s" % [LEVELS_DIR, _files[id]])
+
+
+## Issue #675: RESET VIEW — back to the fitted whole-map camera.
+func _on_reset_view_pressed() -> void:
+	_canvas.reset_view()
+	_set_status("view reset to the whole map")
 
 
 func _on_clear_pressed() -> void:
