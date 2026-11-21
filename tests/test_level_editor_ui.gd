@@ -12,6 +12,9 @@ extends Node
 ## to the main menu.
 ## Issue #640: the EDIT POINTS tool also ADDS points — a click on a
 ## figure's outline inserts a vertex there (checked for every shape).
+## Issue #675: the view CAMERA — the wheel zooms (clamped; zoomed out
+## the map centers, offset goes negative), a middle-drag pans (offset
+## moves inside the level) and RESET VIEW restores the fitted map.
 ##
 ## Run headless: godot --headless res://tests/test_level_editor_ui.tscn
 ## Exit code 0 = pass; the printed LEVELEDITOR ok= verdict is
@@ -104,7 +107,8 @@ class LevelEditorDriver extends Node:
 				"EditorCanvas",
 				"FileNameEdit", "SaveButton", "LoadButton", "FileSelect",
 				"ClearButton", "BackButton", "StatusText",
-				"PictureButton", "NoPictureButton", "PictureDialog"]:
+				"PictureButton", "NoPictureButton", "ResetViewButton",
+				"PictureDialog"]:
 			var found: Node = editor.get_node_or_null("%" + unique)
 			print("LEVELEDITOR node ", unique, " ok=", found != null)
 			ok = ok and found != null
@@ -262,6 +266,45 @@ class LevelEditorDriver extends Node:
 			and canvas.get_pieces().size() == 4
 		print("LEVELEDITOR edit_add_points=", add_ok)
 		ok = ok and add_ok
+
+		# --- Issue #675: the view CAMERA — the wheel zooms toward the
+		# cursor (clamped; zoomed out the map CENTERS, so the offset
+		# goes past the map's top-left corner), a middle-drag pans the
+		# map (the offset moves inside it), and RESET VIEW restores the
+		# fitted whole-map view. ---
+		var view_ok: bool = is_equal_approx(canvas.get_view_zoom(), 1.0) \
+				and canvas.get_view_offset() == Vector2.ZERO
+		var wheel_up := InputEventMouseButton.new()
+		wheel_up.button_index = MOUSE_BUTTON_WHEEL_UP
+		wheel_up.pressed = true
+		canvas._gui_input(wheel_up)
+		view_ok = view_ok and is_equal_approx(canvas.get_view_zoom(), 1.2)
+		var wheel_down := InputEventMouseButton.new()
+		wheel_down.button_index = MOUSE_BUTTON_WHEEL_DOWN
+		wheel_down.pressed = true
+		canvas._gui_input(wheel_down)
+		canvas._gui_input(wheel_down)
+		view_ok = view_ok and canvas.get_view_zoom() < 1.0 \
+				and canvas.get_view_offset().x < 0.0
+		canvas._gui_input(wheel_up)
+		canvas._gui_input(wheel_up)
+		var pan_press := InputEventMouseButton.new()
+		pan_press.button_index = MOUSE_BUTTON_MIDDLE
+		pan_press.pressed = true
+		canvas._gui_input(pan_press)
+		var pan_drag := InputEventMouseMotion.new()
+		pan_drag.button_mask = MOUSE_BUTTON_MASK_MIDDLE
+		pan_drag.relative = Vector2(-40.0, -20.0)
+		canvas._gui_input(pan_drag)
+		pan_press.pressed = false
+		canvas._gui_input(pan_press)
+		view_ok = view_ok and canvas.get_view_offset().x > 0.0 \
+				and canvas.get_view_offset().y > 0.0
+		(editor.get_node("%ResetViewButton") as Button).pressed.emit()
+		view_ok = view_ok and is_equal_approx(canvas.get_view_zoom(), 1.0) \
+				and canvas.get_view_offset() == Vector2.ZERO
+		print("LEVELEDITOR camera=", view_ok)
+		ok = ok and view_ok
 		var back_to_ground := editor.get_node("%IndestructibleTool") \
 			as BaseButton
 		back_to_ground.pressed.emit()

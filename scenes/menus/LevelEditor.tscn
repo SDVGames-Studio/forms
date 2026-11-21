@@ -293,6 +293,13 @@ layout_mode = 2
 theme_override_font_sizes/font_size = 16
 text = "NO PIC"
 
+[node name="ResetViewButton" type="Button" parent="Layout/MainBox/FileOps"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(140, 44)
+layout_mode = 2
+theme_override_font_sizes/font_size = 16
+text = "RESET VIEW"
+
 [node name="StatusText" type="Label" parent="Layout/MainBox"]
 unique_name_in_owner = true
 layout_mode = 2
