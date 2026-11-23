@@ -33,6 +33,11 @@ extends Control
 ## in the ground kind the tool column selects; a cell paints only
 ## where no piece covers it yet (see LevelEditorCanvas).
 ##
+## Issue #638: same-kind ground pieces that overlap or share a
+## boundary UNITE into one shape automatically (see
+## LevelEditorCanvas) — including a brush stroke's cells when the
+## stroke ends.
+##
 ## Layout follows the shared menu pattern (MenuTheme, MenuBackground)
 ## with the canvas filling the whole editor.
 ## Issue #676: the editor tools live in a PALETTE pinned to the
