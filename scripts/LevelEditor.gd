@@ -28,13 +28,17 @@ extends Control
 ## start, end and bend. Rect/tri/circle serialise as the {x,y,w,h}
 ## box; loop/curve store their clicked points.
 ##
-## Layout follows the shared menu pattern (MenuTheme, MenuBackground,
-## brand column on the left, canvas filling the remaining space).
-## Issue #676: the editor tools live in a PALETTE — a panel floating
-## over the canvas's top-left corner with the ground-tool column and
-## the #632 shape column side by side — so the brand column is just
-## the title and the canvas keeps the full height; the file operations
-## sit in the bars under the canvas. The data model is
+## Layout follows the shared menu pattern (MenuTheme, MenuBackground)
+## with the canvas filling the whole editor.
+## Issue #676: the editor tools live in a PALETTE pinned to the
+## editor's TOP-LEFT corner — the ground-tool column, the #632 shape
+## column and a GROUND & VIEW column (ground picture on/off, reset
+## view) side by side — with no brand column beside it, so the
+## palette sits in the true corner and the canvas keeps the full
+## size. The FILE operations (level name, save/load, load from disk,
+## download) live in a panel pinned to the canvas's BOTTOM-RIGHT
+## corner; CLEAR, BACK and the status line stay in the slim bar
+## under the canvas. The data model is
 ## deliberately plain ({kind, shape, ...} pieces and {x, y} spawns in
 ## a fixed 1152x648 level space) so CustomLevel.gd can build a real
 ## playable scene from the files.
