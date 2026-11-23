@@ -252,7 +252,10 @@ func _unhandled_input(event: InputEvent) -> void:
 	# to the pan code below and moves the camera while the player is still
 	# choosing where to teleport. Touch presses keep falling through — on a
 	# touchscreen the tap IS the destination pick.
-	if ToolInventory.armed_tool == ToolInventory.TOOL_TELEPORT:
+	# Issue #690: an armed Talk tool reserves the click the same way —
+	# the pick goes to the figure under the cursor, never to the pan.
+	if ToolInventory.armed_tool == ToolInventory.TOOL_TELEPORT \
+			or ToolInventory.armed_tool == ToolInventory.TOOL_TALK:
 		var teleport_pick_press := false
 		if event is InputEventMouseButton and event.pressed \
 				and (event as InputEventMouseButton).button_index \

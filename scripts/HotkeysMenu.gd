@@ -32,6 +32,7 @@ const ACTION_LABELS: Dictionary = {
 	"tool_2": "Tool 2",
 	"tool_3": "Tool 3",
 	"tool_4": "Tool 4",
+	"tool_5": "Tool 5",
 }
 
 const LISTEN_TEXT := "Press a key…"

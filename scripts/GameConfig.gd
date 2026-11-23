@@ -184,7 +184,7 @@ const HOTKEY_ACTIONS: Array[String] = [
 	"move_left", "move_right", "jump", "view_up", "view_down", "shoot",
 	"camera_switch", "switch_next", "switch_prev",
 	"weapon_1", "weapon_2", "weapon_3", "weapon_4", "weapon_5",
-	"tool_1", "tool_2", "tool_3", "tool_4",
+	"tool_1", "tool_2", "tool_3", "tool_4", "tool_5",
 ]
 
 ## Issue #252: the debug-mode switch persists in its own settings file,

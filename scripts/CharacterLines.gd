@@ -57,6 +57,18 @@ const LINES := {
 			"So it's just me now...", "For the team!",
 			"You picked the wrong figure!", "I'll carry this.",
 		],
+		# Issue #690: the Talk tool — the opener the active figure says to
+		# the chosen figure, and the response it gets back.
+		"talk": [
+			"Hey, got a second?", "Nice corners today!",
+			"You look worried...", "Cold out here, huh?",
+			"Seen my rocket anywhere?", "Good luck out there!",
+		],
+		"reply": [
+			"Not now, I'm busy!", "You're blocking my sun.",
+			"Thanks, you too!", "Tell it to the crater.",
+			"Nice talk, now go!", "Ha! Classic you.",
+		],
 	},
 	"Spanish": {
 		"damage": [
@@ -78,6 +90,17 @@ const LINES := {
 		"alone": [
 			"Así que solo quedo yo...", "¡Por el equipo!",
 			"¡Elegiste a la figura equivocada!", "Yo cargo con esto.",
+		],
+		# Issue #690: the Talk tool — opener and response (Spanish).
+		"talk": [
+			"¿Tienes un segundo?", "¡Qué esquinas hoy!",
+			"Pareces nervioso...", "Hace frío aquí, ¿eh?",
+			"¿Viste mi cohete?", "¡Suerte ahí fuera!",
+		],
+		"reply": [
+			"¡Ahora no, estoy ocupado!", "Me tapas el sol.",
+			"¡Gracias, tú también!", "Cuéntaselo al cráter.",
+			"¡Buena charla, ahora vete!", "¡Ja! Típico de ti.",
 		],
 	},
 	"Russian": {
@@ -101,6 +124,17 @@ const LINES := {
 			"Значит, остался только я...", "За команду!",
 			"Ты выбрал не ту фигуру!", "Я вытяну этот бой.",
 		],
+		# Issue #690: the Talk tool — opener and response (Russian).
+		"talk": [
+			"Есть минутка?", "Красивые углы сегодня!",
+			"Ты выглядишь встревоженным...", "Холодно тут, да?",
+			"Не видел мой реактивный снаряд?", "Удачи там!",
+		],
+		"reply": [
+			"Не сейчас, я занят!", "Ты мне солнце загораживаешь.",
+			"Спасибо, и тебе!", "Расскажи это кратеру.",
+			"Приятно поговорить, но уходи!", "Ха! Это в твоём стиле.",
+		],
 	},
 	"French": {
 		"damage": [
@@ -122,6 +156,17 @@ const LINES := {
 		"alone": [
 			"Donc il ne reste que moi...", "Pour l'équipe !",
 			"Tu as choisi la mauvaise figure !", "Je vais porter l'équipe.",
+		],
+		# Issue #690: the Talk tool — opener and response (French).
+		"talk": [
+			"Tu as une seconde ?", "Belles arêtes aujourd'hui !",
+			"Tu sembles inquiet...", "Il fait froid ici, non ?",
+			"Tu as vu ma fusée ?", "Bonne chance là-bas !",
+		],
+		"reply": [
+			"Pas maintenant, je suis occupé !", "Tu me bloques le soleil.",
+			"Merci, toi aussi !", "Raconte ça au cratère.",
+			"Belle discussion, maintenant file !", "Ha ! Typique de toi.",
 		],
 	},
 	"Arabic": {
@@ -145,6 +190,17 @@ const LINES := {
 			"إذن بقيت أنا وحدي...", "من أجل الفريق!",
 			"اخترت الجندي الخطأ!", "سأحمل الفريق على كتفي.",
 		],
+		# Issue #690: the Talk tool — opener and response (Arabic).
+		"talk": [
+			"هل لديك لحظة؟", "زوايا جميلة اليوم!",
+			"تبدو قلقاً...", "الجو بارد هنا، أليس كذلك؟",
+			"هل رأيت صاروخي؟", "حظاً موفقاً هناك!",
+		],
+		"reply": [
+			"ليس الآن، أنا مشغول!", "تحجب الشمس عني.",
+			"شكراً، وأنت أيضاً!", "احكِ ذلك للحفرة.",
+			"حديث جميل، الآن اذهب!", "ها! هذا أسلوبك دائماً.",
+		],
 	},
 }
 
@@ -156,6 +212,13 @@ const KIND_ALLY := "ally"
 const KIND_BOAST := "boast"
 const KIND_IDLE := "idle"
 const KIND_ALONE := "alone"
+## Issue #690: the Talk tool's two-line dialogue — the active figure's
+## opener (talk) and the chosen figure's response (reply).
+const KIND_TALK := "talk"
+const KIND_REPLY := "reply"
+## Issue #690: pause between the opener and the response — long enough
+## to read the opener, short enough to read as one dialogue.
+const REPLY_DELAY := 1.6
 
 ## figure -> engine seconds of its last line (AGAIN cooldown).
 static var _last_line_at := {}
@@ -244,6 +307,27 @@ static func tick_idle(delta: float) -> void:
 static func note_action() -> void:
 	_idle_seconds = 0.0
 	_idle_spoken = false
+
+
+## Issue #690: the Talk tool's exchange — `speaker` tells a random
+## phrase to `listener`, and `listener` responds with its own after a
+## short pause. Each figure speaks ITS OWN team's language (#524) and
+## the pair lands in the action log like every other line (say).
+static func exchange(speaker: Node, listener: Node) -> void:
+	if speaker == null or not is_instance_valid(speaker) \
+			or listener == null or not is_instance_valid(listener) \
+			or speaker == listener:
+		return
+	say(speaker, _pick(speaker, KIND_TALK), Bubble.Kind.SPEECH)
+	var tree := speaker.get_tree()
+	if tree == null:
+		return
+	tree.create_timer(REPLY_DELAY).timeout.connect(
+		func() -> void:
+			# The listener may die during the pause — say() would be safe
+			# on a null argument, but _pick() must not touch a freed figure.
+			if listener != null and is_instance_valid(listener):
+				say(listener, _pick(listener, KIND_REPLY), Bubble.Kind.SPEECH))
 
 
 ## Same team: the player-team group, or (for AI teams) the same

@@ -18,6 +18,12 @@ extends Node
 ##     Weapon.gd) and throws it with the grenade's full aiming mechanics
 ##     (view aiming + hold-F charge); the quota is spent only when the
 ##     rock actually leaves the hand (rock_thrown).
+##  5 Talk     — issue #690: choosing mechanics, first action — an
+##     ENDLESS tool: no per-turn quota, no team budget, never locks the
+##     weapons. Arming it (slot/key) makes the next left click (or tap)
+##     on another figure start a two-line dialogue with it
+##     (CharacterLines.exchange): the active figure tells a random
+##     phrase, the chosen one (teammate OR enemy) responds.
 ##
 ## Issue #179: tools and weapons share ONE HUD panel — the slots are
 ## rendered by the WeaponInventory autoload (weapons in keys 1-4, tools
@@ -29,7 +35,21 @@ const TOOL_SWITCH := 0
 const TOOL_TELEPORT := 1
 const TOOL_SHIELD := 2
 const TOOL_ROCK := 3
-const TOOLS := ["Switch", "Teleport", "Shield", "Rock"]
+const TOOL_TALK := 4
+const TOOLS := ["Switch", "Teleport", "Shield", "Rock", "Talk"]
+
+## Issue #690: true for the tools whose uses are ENDLESS — the Talk
+## tool has no quota and no team budget (free banter).
+func tool_is_endless(tool: int) -> bool:
+	return tool == TOOL_TALK
+
+## Issue #690: reach of the Talk tool's figure pick — the click (or
+## tap) may miss a figure's origin by up to one character width and
+## still pick it (mirrors _character_width's 48 px figure default).
+const TALK_PICK_RADIUS := 48.0
+## Issue #690: the figure layers the Talk pick queries — Player figures
+## sit on layer value 8, Npc figures on 2 (mask 2|8 = 10).
+const TALK_FIGURE_MASK := 10
 
 ## Issue #475 (godot-sound-work skill): the teleport hop sound —
 ## preloaded once, never loaded per teleport at runtime.
@@ -87,6 +107,9 @@ func reset_turn() -> void:
 func _can_use(character: Node, tool: int) -> bool:
 	if character == null or _used.get(character, []).has(tool):
 		return false
+	# Issue #690: the Talk tool is ENDLESS — no team budget to spend.
+	if tool_is_endless(tool):
+		return true
 	# Issue #305: the TEAM's budget for this tool must have a use left.
 	return WeaponInventory.can_spend_tool(TurnController.team_id_of(character), tool)
 
@@ -125,8 +148,9 @@ func use_tool(tool: int, direction := 1) -> bool:
 	if member == null or not is_instance_valid(member):
 		return false
 	# Issue #207: this character already FIRED this turn — its tools are
-	# locked for the rest of the turn (tool or weapon, never both).
-	if WeaponInventory.is_locked_for(member):
+	# locked for the rest of the turn (tool or weapon, never both). The
+	# Talk tool is ENDLESS banter (issue #690) — never locked.
+	if tool != TOOL_TALK and WeaponInventory.is_locked_for(member):
 		refresh_slots()
 		return false
 	if not _can_use(member, tool):
@@ -157,8 +181,15 @@ func use_tool(tool: int, direction := 1) -> bool:
 			# hand. Pressing the slot/key again puts the rock back.
 			armed_tool = TOOL_ROCK if armed_tool != TOOL_ROCK else -1
 			done = true
+		TOOL_TALK:
+			# Issue #690: arm the Talk tool like the teleport — the next
+			# left click (or tap) on another figure starts the two-line
+			# dialogue. Endless: nothing is ever spent (see _can_use and
+			# the use branch below).
+			armed_tool = TOOL_TALK if armed_tool != TOOL_TALK else -1
+			done = true
 	if done and tool != TOOL_TELEPORT and tool != TOOL_ROCK \
-			and tool != TOOL_SWITCH:
+			and tool != TOOL_SWITCH and tool != TOOL_TALK:
 		_mark_used(member, tool)
 		armed_tool = -1
 	refresh_slots()
@@ -258,7 +289,8 @@ func can_use_now(tool: int) -> bool:
 	if member == null or not is_instance_valid(member):
 		return false
 	# Issue #207: a character that fired this turn cannot use tools.
-	if WeaponInventory.is_locked_for(member):
+	# The Talk tool is ENDLESS banter (issue #690) — never locked.
+	if tool != TOOL_TALK and WeaponInventory.is_locked_for(member):
 		return false
 	return _can_use(member, tool)
 
@@ -326,6 +358,26 @@ func _unhandled_input(event: InputEvent) -> void:
 			refresh_slots()
 			get_viewport().set_input_as_handled()
 
+	# Armed Talk tool: the next left click (or tap — the emulated mouse
+	# press from a touch) on another FIGURE starts the two-line dialogue.
+	# A click that hits no figure keeps the tool armed (try again), the
+	# same tolerance as a buried teleport click (issue #328).
+	if armed_tool == TOOL_TALK and event is InputEventMouseButton \
+			and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		var talker: Node = TurnController.active_member
+		if talker != null and is_instance_valid(talker) and talker is Node2D:
+			var talk_world: Vector2 = get_viewport().get_canvas_transform().affine_inverse() * event.position
+			var listener := _figure_at(talk_world, talker as Node2D)
+			if listener != null:
+				CharacterLines.exchange(talker, listener)
+				armed_tool = -1
+			refresh_slots()
+			get_viewport().set_input_as_handled()
+			return
+		refresh_slots()
+		get_viewport().set_input_as_handled()
+		return
+
 
 ## Issue #179: ask the unified panel to redraw tool slot states.
 func refresh_slots() -> void:
@@ -390,3 +442,40 @@ func _character_width(member: Node2D) -> float:
 		if shape is RectangleShape2D:
 			return (shape as RectangleShape2D).size.x
 	return 48.0
+
+
+## Issue #690: the alive FIGURE nearest to the clicked point within
+## TALK_PICK_RADIUS — the Talk tool's pick (a teammate OR an enemy,
+## never the active member itself). A physics shape query over the
+## figure layers finds the body under the cursor however tall the
+## figure is; the hits are then filtered down to real, living figures
+## of either team and the closest one to the click wins.
+func _figure_at(world: Vector2, self_figure: Node2D) -> Node:
+	var space := self_figure.get_world_2d().direct_space_state
+	var query := PhysicsShapeQueryParameters2D.new()
+	var shape := CircleShape2D.new()
+	shape.radius = TALK_PICK_RADIUS
+	query.shape = shape
+	query.transform = Transform2D(0.0, world)
+	query.collision_mask = TALK_FIGURE_MASK
+	query.collide_with_areas = false
+	query.collide_with_bodies = true
+	var best: Node = null
+	var best_distance := INF
+	for hit in space.intersect_shape(query, 16):
+		var figure: Node = hit.get("collider")
+		if figure == null or not is_instance_valid(figure) \
+				or figure == self_figure or not figure is Node2D:
+			continue
+		if not (figure.is_in_group("player_team") \
+				or figure.is_in_group("enemy_team")):
+			continue
+		var hp = figure.get("health")
+		if not (hp is int) or hp <= 0:
+			continue
+		var distance: float = world.distance_to(
+				(figure as Node2D).global_position)
+		if distance < best_distance:
+			best_distance = distance
+			best = figure
+	return best
