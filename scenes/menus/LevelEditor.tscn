@@ -241,70 +241,63 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 0
 grow_vertical = 0
-offset_left = -500.0
-offset_top = -124.0
+offset_left = -190.0
+offset_top = -238.0
 offset_right = -12.0
 offset_bottom = -12.0
 
 [node name="FileMargin" type="MarginContainer" parent="Layout/MainBox/CanvasArea/FilePanel"]
 layout_mode = 2
-theme_override_constants/margin_left = 10
-theme_override_constants/margin_top = 10
-theme_override_constants/margin_right = 10
-theme_override_constants/margin_bottom = 10
+theme_override_constants/margin_left = 8
+theme_override_constants/margin_top = 8
+theme_override_constants/margin_right = 8
+theme_override_constants/margin_bottom = 8
 
 [node name="FileBox" type="VBoxContainer" parent="Layout/MainBox/CanvasArea/FilePanel/FileMargin"]
 layout_mode = 2
-theme_override_constants/separation = 8
+theme_override_constants/separation = 6
 
-[node name="NameRow" type="HBoxContainer" parent="Layout/MainBox/CanvasArea/FilePanel/FileMargin/FileBox"]
-layout_mode = 2
-theme_override_constants/separation = 8
-
-[node name="FileNameEdit" type="LineEdit" parent="Layout/MainBox/CanvasArea/FilePanel/FileMargin/FileBox/NameRow"]
+[node name="FileNameEdit" type="LineEdit" parent="Layout/MainBox/CanvasArea/FilePanel/FileMargin/FileBox"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(220, 36)
+custom_minimum_size = Vector2(150, 28)
 layout_mode = 2
-theme_override_font_sizes/font_size = 13
+theme_override_font_sizes/font_size = 12
 size_flags_horizontal = 3
 placeholder_text = "level name"
 
-[node name="FileSelect" type="OptionButton" parent="Layout/MainBox/CanvasArea/FilePanel/FileMargin/FileBox/NameRow"]
+[node name="FileSelect" type="OptionButton" parent="Layout/MainBox/CanvasArea/FilePanel/FileMargin/FileBox"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(160, 36)
+custom_minimum_size = Vector2(150, 28)
 layout_mode = 2
-theme_override_font_sizes/font_size = 13
+theme_override_font_sizes/font_size = 12
+size_flags_horizontal = 3
 
-[node name="ButtonsRow" type="HBoxContainer" parent="Layout/MainBox/CanvasArea/FilePanel/FileMargin/FileBox"]
-layout_mode = 2
-theme_override_constants/separation = 8
-
-[node name="SaveButton" type="Button" parent="Layout/MainBox/CanvasArea/FilePanel/FileMargin/FileBox/ButtonsRow"]
+[node name="SaveButton" type="Button" parent="Layout/MainBox/CanvasArea/FilePanel/FileMargin/FileBox"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(96, 36)
+custom_minimum_size = Vector2(118, 28)
 layout_mode = 2
-theme_override_font_sizes/font_size = 13
+theme_override_font_sizes/font_size = 12
 text = "SAVE"
 
-[node name="LoadButton" type="Button" parent="Layout/MainBox/CanvasArea/FilePanel/FileMargin/FileBox/ButtonsRow"]
+[node name="LoadButton" type="Button" parent="Layout/MainBox/CanvasArea/FilePanel/FileMargin/FileBox"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(88, 36)
+custom_minimum_size = Vector2(118, 28)
 layout_mode = 2
-theme_override_font_sizes/font_size = 13
+theme_override_font_sizes/font_size = 12
 text = "LOAD"
 
-[node name="LoadFileButton" type="Button" parent="Layout/MainBox/CanvasArea/FilePanel/FileMargin/FileBox/ButtonsRow"]
+[node name="LoadFileButton" type="Button" parent="Layout/MainBox/CanvasArea/FilePanel/FileMargin/FileBox"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(136, 36)
+custom_minimum_size = Vector2(118, 28)
 layout_mode = 2
-theme_override_font_sizes/font_size = 13
+theme_override_font_sizes/font_size = 12
 text = "LOAD FILE…"
 
-[node name="DownloadButton" type="Button" parent="Layout/MainBox/CanvasArea/FilePanel/FileMargin/FileBox/ButtonsRow"]
+[node name="DownloadButton" type="Button" parent="Layout/MainBox/CanvasArea/FilePanel/FileMargin/FileBox"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(120, 36)
+custom_minimum_size = Vector2(118, 28)
 layout_mode = 2
-theme_override_font_sizes/font_size = 13
+theme_override_font_sizes/font_size = 12
 text = "DOWNLOAD"
 
 [node name="Bottom" type="HBoxContainer" parent="Layout/MainBox"]
