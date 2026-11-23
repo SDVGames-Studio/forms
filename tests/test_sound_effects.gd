@@ -74,9 +74,10 @@ class SoundEffectsDriver extends Node:
 		# --- Projectile blast path: player child on the SFX bus with the
 		# preloaded stream; _explode() is the REAL blast entry (ground
 		# and damage lookups are group-based — empty outside a level, so
-		# the call is safe headless) and must start playback. The check
-		# happens synchronously: _explode() queue_free()s the projectile
-		# and its player at the end. ---
+		# the call is safe headless) and must start playback. Issue #686:
+		# the detonation runs one deferred step after _explode(); the
+		# player is re-homed to this driver first, so playback is still
+		# running after the projectile queue_free()s. ---
 		var proj: Projectile = Projectile.new()
 		proj.setup(Projectile.Type.ROCKET, Vector2(400, 0), 30, 2.0,
 			Vector2(12, 6), Color.WHITE, 40.0)
@@ -88,7 +89,9 @@ class SoundEffectsDriver extends Node:
 			and p_player.bus == "SFX" \
 			and p_player.stream == boom
 		proj._explode()
-		var p_plays: bool = p_player != null and p_player.playing
+		await get_tree().process_frame
+		var p_plays: bool = p_player != null and is_instance_valid(p_player) \
+			and p_player.playing
 		print("SFX projectile_wired=", p_wired, " plays_on_explode=",
 			p_plays)
 		ok = ok and p_wired and p_plays

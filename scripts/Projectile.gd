@@ -27,6 +27,7 @@ const EXPLOSION_SOUND := preload("res://assets/audio/explosions/explosion.wav")
 ## projectile owns its player so simultaneous blasts never cut each
 ## other short; it is freed together with the projectile.
 var _explosion_player: AudioStreamPlayer
+var _exploded := false
 
 
 func setup(p_type: int, p_velocity: Vector2, p_damage: int, p_lifetime: float, p_size: Vector2, p_color: Color, p_blast_radius: float = 0.0) -> void:
@@ -139,10 +140,31 @@ func _on_body_entered(body: Node2D) -> void:
 ## sound. Fixed 1.0 pitch — blasts are one-per-projectile, so the
 ## rapid-fire pitch variation the skill allows does not apply.
 func _play_explosion_sound() -> void:
+	if _explosion_player == null or _explosion_player.stream == null:
+		return
+	# Issue #686 (same re-homing ProjectileBody._play_blast_sound got
+	# in #475): the detonation is deferred, so the sound can start one
+	# step before the body's queue_free() — re-home the player to the
+	# level first or the sound is cut to a single frame.
+	if get_parent() != null:
+		_explosion_player.reparent(get_parent())
+		_explosion_player.finished.connect(_explosion_player.queue_free)
 	_explosion_player.play()
 
 
 func _explode() -> void:
+	if _exploded:
+		return
+	_exploded = true
+	# Issue #686: contact detonation fires inside the physics callback
+	# (body_entered, while the space is still flushing queries); carving
+	# ground there adds collision shapes mid-flush, which Godot rejects
+	# with "Can't change this state while flushing queries". The real
+	# detonation runs one deferred step later, outside the flush.
+	_explode_now.call_deferred()
+
+
+func _explode_now() -> void:
 	# Owner task 2026-11-11: the explosion sound plays from the real
 	# blast entry path — ground carving, area damage and chain reactions
 	# all happen below while the sound runs.

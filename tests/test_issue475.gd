@@ -49,11 +49,13 @@ class Issue475Driver extends Node:
 
 		# --- ProjectileBody wiring: one SFX-bus player per projectile
 		# whose stream is picked by kind; _explode() is the REAL blast
-		# entry (ground/damage lookups are group-based — empty outside a
-		# level, so the call is safe headless) and must start playback.
-		# The check happens synchronously after _explode(): the player
-		# was re-homed to this driver, so it stays valid even though the
-		# body queue_free()s at the end of the frame. ---
+		# entry (group/damage lookups are empty outside a level, so the
+		# call is safe headless) and must start playback. Issue #686: the
+		# detonation — and with it the blast sound — runs one deferred
+		# step after _explode() (outside the physics query flush), so
+		# playback is checked AFTER that step: the player was re-homed to
+		# this driver, so it must still be playing even though the body
+		# has queue_free()d by then. ---
 		var cases := {
 			ProjectileBody.Kind.GRENADE: grenade,
 			ProjectileBody.Kind.MINE: mine,
@@ -70,7 +72,9 @@ class Issue475Driver extends Node:
 				and player.bus == "SFX" \
 				and player.stream == cases[kind]
 			body._explode()
-			var plays: bool = player != null and player.playing
+			await get_tree().process_frame
+			var plays: bool = player != null and is_instance_valid(player) \
+				and player.playing
 			print("SFX475 kind=", kind, " wired=", wired,
 				" plays_on_explode=", plays)
 			ok = ok and wired and plays
