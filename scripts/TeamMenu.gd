@@ -233,7 +233,10 @@ func _build_shape_picker() -> void:
 		button.pressed.connect(func() -> void: _on_shape_picked(picked))
 		var visual: Control = load("res://scripts/ModularCharacterVisual.gd").new()
 		visual.size = Vector2(56, 56)
-		visual.set_anchors_preset(Control.PRESET_CENTER)
+		# Issue #394: anchors-only centering kept the stale offsets, so the
+		# figure's top-left sat on the button's center and spilled out of
+		# the square. KEEP_SIZE recenters while preserving the figure size.
+		visual.set_anchors_and_offsets_preset(Control.PRESET_CENTER, Control.PRESET_MODE_KEEP_SIZE)
 		visual.set_team_look(Color(0.9, 0.9, 0.95), shape)
 		visual.set_expression("neutral")
 		button.add_child(visual)
@@ -267,7 +270,9 @@ func _rebuild_members() -> void:
 				if names.size() > 1 else "A team keeps at least one member"
 		var visual: Control = load("res://scripts/ModularCharacterVisual.gd").new()
 		visual.size = Vector2(72, 72)
-		visual.set_anchors_preset(Control.PRESET_CENTER)
+		# Issue #394: center the figure inside its square button (see the
+		# shape-picker note above for why KEEP_SIZE is required).
+		visual.set_anchors_and_offsets_preset(Control.PRESET_CENTER, Control.PRESET_MODE_KEEP_SIZE)
 		# Issue #560: the card shows the REAL in-game figure — team color,
 		# team silhouette and this member's resting personality (the same
 		# member index the gameplay figures pass to apply_team_look).
