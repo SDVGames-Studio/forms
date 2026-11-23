@@ -22,7 +22,8 @@ extends CanvasLayer
 ## (issue #359), the pistol on key P (issue #526) and the baseball bat
 ## on key B (issue #527), the circular saw on key C (issue #570), the
 ## entrenching shovel on key E (issue #656), tools on keys 5-8 (issue
-## #227 added the fourth tool, Rock).
+## #227 added the fourth tool, Rock), the Talk tool on key T
+## (issue #690 added the fifth tool — endless, like the spear).
 ## The tool LOGIC stays in the ToolInventory autoload; this script only
 ## renders the shared slots.
 
@@ -118,11 +119,13 @@ var _infinity_text := "∞"
 ## Issue #179: per-tool icon shapes (mirrors the old ToolInventory
 ## panel): switch = yellow bar pair, teleport = cyan ring, shield =
 ## blue vertical bar. Issue #227: rock = gray boulder circle.
+## Issue #690: talk = warm speech balloon.
 const TOOL_ICONS: Array = [
 	{"shape": "rect", "size": Vector2(30, 6), "color": Color(0.9, 0.9, 0.4, 1)},
 	{"shape": "ring", "radius": 9.0, "color": Color(0.2, 0.7, 0.95, 1)},
 	{"shape": "rect", "size": Vector2(16, 22), "color": Color(0.25, 0.4, 0.95, 1)},
 	{"shape": "circle", "radius": 10.0, "color": Color(0.55, 0.5, 0.45, 1)},
+	{"shape": "bubble", "radius": 10.0, "color": Color(0.98, 0.88, 0.55, 1)},
 ]
 
 ## Issue #64: icon shapes per weapon, mirroring the held-weapon visuals
@@ -336,6 +339,12 @@ func uses_are_infinite(weapon: int) -> bool:
 	return weapon == WEAPON_SPEAR or weapon == WEAPON_SHOVEL
 
 
+## Issue #690: the tool twin of uses_are_infinite — the Talk tool is
+## ENDLESS (no quota, no team budget, ∞ in the HUD counter).
+func tools_are_endless(tool: int) -> bool:
+	return tool == ToolState.TOOL_TALK
+
+
 ## Issue #305: uses of a weapon the team may still fire (-1 = infinite,
 ## the spear and the shovel).
 func weapon_uses_left(team_id: String, weapon: int) -> int:
@@ -345,8 +354,11 @@ func weapon_uses_left(team_id: String, weapon: int) -> int:
 	return int(_budget(team_id)["weapons"][w])
 
 
-## Issue #305: uses of a tool the team may still spend.
+## Issue #305: uses of a tool the team may still spend (-1 = infinite,
+## the endless Talk tool).
 func tool_uses_left(team_id: String, tool: int) -> int:
+	if tools_are_endless(tool):
+		return -1
 	var t := clampi(tool, 0, ToolState.TOOLS.size() - 1)
 	return int(_budget(team_id)["tools"][t])
 
@@ -368,9 +380,10 @@ func held_weapon_for(team_id: String) -> int:
 	return selected_weapon
 
 
-## Issue #305: true while the team may still use this tool.
+## Issue #305: true while the team may still use this tool (always
+## true for the endless Talk tool).
 func can_spend_tool(team_id: String, tool: int) -> bool:
-	return tool_uses_left(team_id, tool) > 0
+	return tools_are_endless(tool) or tool_uses_left(team_id, tool) > 0
 
 
 ## Issue #305: spend one weapon use; false (and no spend) when the
@@ -398,10 +411,13 @@ func spend_weapon(team_id: String, weapon: int) -> bool:
 
 
 ## Issue #305: spend one tool use; false (and no spend) when the
-## budget is exhausted.
+## budget is exhausted. The endless Talk tool spends nothing and
+## always succeeds (issue #690).
 func spend_tool(team_id: String, tool: int) -> bool:
 	if not can_spend_tool(team_id, tool):
 		return false
+	if tools_are_endless(tool):
+		return true
 	var t := clampi(tool, 0, ToolState.TOOLS.size() - 1)
 	_budget(team_id)["tools"][t] = maxi(0, tool_uses_left(team_id, t) - 1)
 	# Issue #327: an armed tool whose last use just left the team budget
@@ -427,8 +443,11 @@ func grant_weapon(team_id: String, weapon: int) -> void:
 
 
 ## Issue #364: the tool twin of grant_weapon — +1 use of the rolled
-## tool to the team's budget.
+## tool to the team's budget. An endless tool (the Talk tool) never
+## gains anything from a bundle (issue #690).
 func grant_tool(team_id: String, tool: int) -> void:
+	if tools_are_endless(tool):
+		return
 	var t := clampi(tool, 0, ToolState.TOOLS.size() - 1)
 	_budget(team_id)["tools"][t] = tool_uses_left(team_id, t) + 1
 	refresh_counts()
@@ -451,7 +470,9 @@ func refresh_counts() -> void:
 		_slot_counts[i].text = _infinity_text if uses_are_infinite(i) \
 			else str(weapon_uses_left(TurnController.TEAM_PLAYER, i))
 	for i in _tool_slot_counts.size():
-		_tool_slot_counts[i].text = str(tool_uses_left(TurnController.TEAM_PLAYER, i))
+		_tool_slot_counts[i].text = _infinity_text \
+				if tools_are_endless(i) \
+				else str(tool_uses_left(TurnController.TEAM_PLAYER, i))
 
 
 ## Issue #271: a weapon slot's hover hint — the weapon name plus its
@@ -612,6 +633,15 @@ class ShapeIcon extends Control:
 		elif shape == "ring":
 			# Issue #179: outlined circle (teleport tool icon).
 			draw_arc(c, icon.get("radius", 8.0) * icon_scale, 0.0, TAU, 32, col, 4.0, true)
+		elif shape == "bubble":
+			# Issue #690: speech balloon (talk tool icon) — circle body
+			# with a little tail down-left toward the speaker.
+			var r: float = icon.get("radius", 8.0) * icon_scale
+			draw_circle(c + Vector2(0.0, -r * 0.2), r, col)
+			draw_colored_polygon(PackedVector2Array([
+				c + Vector2(-r * 0.45, r * 0.55),
+				c + Vector2(r * 0.25, r * 0.4),
+				c + Vector2(-r * 0.35, r * 1.3)]), col)
 		else:
 			var s: Vector2 = icon.get("size", Vector2(20, 6)) * icon_scale
 			draw_rect(Rect2(c - s / 2.0, s), col)
