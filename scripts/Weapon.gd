@@ -408,6 +408,11 @@ static func is_charged_weapon(slot: int) -> bool:
 ## Issue #68: visual of the weapon currently held "in hands".
 var _held: ColorRect
 var _held_style := -1
+## Issue #680: the sprite-rendered held weapon (a textured HELD_STYLES
+## entry — the rocket launcher prototype). One shared node, configured
+## per style in _update_held, positioned and rotated by the aim in
+## _physics_process just like the rectangle above.
+var _held_sprite: Sprite2D
 
 ## Issue #354: true while THIS member is the one acting — the active
 ## member of the currently running turn. Only that figure takes a
@@ -466,9 +471,19 @@ func _held_style_index() -> int:
 ## Issue #68: size and color of the held weapon per selected weapon index.
 ## Issue #234: index 4 is the ROCK TOOL held in hands — a gray boulder,
 ## shown while the rock tool is armed for this member (see _rock_armed).
+## Issue #680 (roadmap part 1 — weapon art prototype): an entry with a
+## `texture` renders as a centered Sprite2D at the entry's in-game
+## `size` instead of the plain ColorRect fill — the rocket launcher is
+## the prototype of the new cartoon weapon art (bold dark outline, flat
+## vivid fills, shading bands), matching the modular character style.
+## Positioning and rotation ride the aim exactly like every rectangle
+## weapon (see _physics_process) — the sprite is visual only.
+const ROCKET_LAUNCHER_TEX := preload(
+		"res://assets/weapons/rocket_launcher.png")
 const HELD_STYLES: Array = [
 	{"size": Vector2(26, 6), "color": Color(0.95, 0.85, 0.3, 1)},   # shotgun
-	{"size": Vector2(30, 8), "color": Color(0.9, 0.35, 0.15, 1)},   # rocket
+	{"size": Vector2(52, 20), "color": Color(0.9, 0.35, 0.15, 1),
+		"texture": ROCKET_LAUNCHER_TEX},  # rocket launcher (#680)
 	{"size": Vector2(12, 12), "color": Color(0.3, 0.7, 0.3, 1)},    # grenade
 	{"size": Vector2(40, 4), "color": Color(0.8, 0.8, 0.9, 1)},     # spear
 	{"size": Vector2(14, 14), "color": Color(0.55, 0.5, 0.45, 1)},  # rock (tool)
@@ -507,6 +522,11 @@ func _ready() -> void:
 	_held = ColorRect.new()
 	_held.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_held)
+	# Issue #680: the sprite counterpart for textured styles (rocket
+	# launcher prototype) — configured by the _update_held call below.
+	_held_sprite = Sprite2D.new()
+	_held_sprite.visible = false
+	add_child(_held_sprite)
 	# Issue #114: charge meter shown above the wielder while holding F.
 	_charge_bar = ColorRect.new()
 	_charge_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -518,7 +538,8 @@ func _ready() -> void:
 	_update_held()
 	# Issue #354: start EMPTY-HANDED — the weapon enters the hands only
 	# when this member becomes the acting one (see _is_acting).
-	_held.visible = _is_acting()
+	_held.visible = _is_acting() and not _held_textured()
+	_held_sprite.visible = _is_acting() and _held_textured()
 	# Owner task 2026-11-11: shot SFX player on the SFX bus (default 0 dB;
 	# volume tweaks only if a sound measures out of line — see the skill).
 	_shot_player = AudioStreamPlayer.new()
@@ -681,8 +702,11 @@ func _physics_process(delta: float) -> void:
 		_update_held()
 	# Issue #354: an IDLE character carries no weapon — only the acting
 	# member holds one in hands (see _is_acting); everyone else stands
-	# empty-handed until their own turn comes.
-	_held.visible = _is_acting()
+	# empty-handed until their own turn comes. Issue #680: a textured
+	# style carries its Sprite2D instead of the plain ColorRect.
+	var show_held := _is_acting()
+	_held.visible = show_held and not _held_textured()
+	_held_sprite.visible = show_held and _held_textured()
 	# Issue #67: keep the held weapon aligned with the character's view.
 	if _held != null and parent != null and parent.has_method("aim_dir"):
 		var aim: Vector2 = parent.aim_dir(_facing, 1.0)
@@ -747,6 +771,15 @@ func _physics_process(delta: float) -> void:
 		# while the charge builds (the aim itself wobbles via sight_shake).
 		if is_charging_railgun():
 			_held.position += Vector2(randf_range(-1.5, 1.5), randf_range(-1.5, 1.5))
+		# Issue #680: a textured style mirrors the very same anchor,
+		# rotation and thrust/swing/shake offsets on its Sprite2D
+		# (visual only). flip_v keeps the grip below the tube once the
+		# aim swings past vertical — a plain rectangle fill is symmetric
+		# and never had that problem, a drawn sprite is not.
+		if _held_textured():
+			_held_sprite.position = _held.position + style["size"] / 2.0
+			_held_sprite.rotation = _held.rotation
+			_held_sprite.flip_v = absf(_held.rotation) > PI / 2.0
 
 
 ## Issue #322: the charge bar (the power indicator) is authored above
@@ -769,6 +802,14 @@ func _align_charge_bar_to_view() -> void:
 	_charge_bar.rotation = view_rotation - global_rotation
 
 
+## Issue #680: true while the CURRENT held style renders through the
+## Sprite2D (a textured HELD_STYLES entry — the rocket launcher
+## prototype) instead of the plain ColorRect fill.
+func _held_textured() -> bool:
+	return _held_style >= 0 and _held_style < HELD_STYLES.size() \
+			and HELD_STYLES[_held_style].has("texture")
+
+
 ## Issue #68: draw the currently selected weapon in front of the wielder.
 func _update_held() -> void:
 	if _held == null:
@@ -776,6 +817,20 @@ func _update_held() -> void:
 	_held_style = _held_style_index()
 	var style: Dictionary = HELD_STYLES[_held_style]
 	var size: Vector2 = style["size"]
+	# Issue #680: the textured style draws the sprite at the style's
+	# in-game size; the ColorRect stays hidden. Everything downstream
+	# (anchor, aim rotation, thrust/swing offsets) is shared with the
+	# rectangle weapons in _physics_process.
+	if style.has("texture"):
+		_held.visible = false
+		_held_sprite.visible = _is_acting()
+		var tex: Texture2D = style["texture"]
+		_held_sprite.texture = tex
+		_held_sprite.scale = size / Vector2(
+				tex.get_width(), tex.get_height())
+		_held_sprite.position = Vector2(_facing * HELD_ANCHOR, 0.0)
+		return
+	_held.visible = true
 	_held.size = size
 	_held.position = Vector2(_facing * HELD_ANCHOR, 0.0) - size / 2.0
 	_held.color = style["color"]
