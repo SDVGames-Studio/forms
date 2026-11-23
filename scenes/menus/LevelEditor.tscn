@@ -201,6 +201,15 @@ toggle_mode = true
 button_group = SubResource("ButtonGroup_shapes")
 text = "CURVE"
 
+[node name="BrushTool" type="Button" parent="Layout/MainBox/CanvasArea/Palette/PaletteMargin/PaletteColumns/ShapesColumn"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(122, 34)
+layout_mode = 2
+theme_override_font_sizes/font_size = 13
+toggle_mode = true
+button_group = SubResource("ButtonGroup_shapes")
+text = "BRUSH"
+
 [node name="ViewColumn" type="VBoxContainer" parent="Layout/MainBox/CanvasArea/Palette/PaletteMargin/PaletteColumns"]
 layout_mode = 2
 theme_override_constants/separation = 6

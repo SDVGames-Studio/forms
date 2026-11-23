@@ -34,6 +34,15 @@ extends Control
 ##  - "curve": click the bezier's start, end and then its bend — a
 ##    quadratic curve stored as the three points in click order.
 ##
+## Issue #673 — the BRUSH shape: a click-drag stroke paints ground
+## cell by cell (one snapped 32 px grid cell per step, the drag
+## interpolated so fast strokes leave no gaps) in the ground kind
+## the tool column selects. A cell paints only where no piece
+## covers it yet (any kind), so strokes never stack duplicates or
+## overlap existing ground — erase first to repaint a cell in the
+## other kind. (Uniting the painted cells into bigger pieces is
+## issue #638, a separate work order.)
+##
 ## Issue #639 EDIT tool — every placed figure gets clickable, movable
 ## points: with the tool active each piece draws its handles (the
 ## figure's own points: four corners for a rect, the three vertices
@@ -355,7 +364,11 @@ func _gui_input(event: InputEvent) -> void:
 			return
 		_hover = _level_mouse_position()
 		if _dragging:
-			_drag_end = _level_snap_mouse()
+			if _shape == "brush":
+				# Issue #673: the stroke keeps painting while dragged.
+				brush_stroke_to(_level_snap_mouse())
+			else:
+				_drag_end = _level_snap_mouse()
 		elif _grab_piece >= 0:
 			drag_handle_to(_level_snap_mouse())
 		elif _tool == "edit":
@@ -374,6 +387,8 @@ func _press(pos: Vector2) -> void:
 			match _shape:
 				"loop", "curve":
 					_press_pending(pos)
+				"brush":
+					brush_stroke_start(pos)
 				_:
 					_dragging = true
 					_drag_start = pos
@@ -403,6 +418,8 @@ func _release(pos: Vector2) -> void:
 		return
 	_dragging = false
 	match _shape:
+		"brush":
+			pass  # the stroke painted its cells during the drag
 		"circle":
 			_release_circle(pos)
 		"tri":
@@ -438,6 +455,58 @@ func _cancel_pending() -> void:
 	if not _pending.is_empty():
 		_pending.clear()
 		queue_redraw()
+
+
+## Issue #673: start a brush stroke at level-space `pos` — the cell
+## under the click paints immediately, the drag continues it (public:
+## the UI test drives strokes directly, like the edit-tool handles).
+func brush_stroke_start(pos: Vector2) -> void:
+	_dragging = true
+	_drag_start = pos.snapped(Vector2(SNAP, SNAP))
+	_drag_end = _drag_start
+	_brush_paint_to(_drag_start)
+
+
+## Issue #673: continue the stroke to `pos` — paints every cell the
+## straight segment from the last painted point crosses (half-cell
+## steps, so a fast drag leaves no gap in the staircase).
+func brush_stroke_to(pos: Vector2) -> void:
+	if not _dragging:
+		return
+	_brush_paint_to(pos.snapped(Vector2(SNAP, SNAP)))
+
+
+## Issue #673: finish the stroke (the painted cells stay).
+func brush_stroke_end() -> void:
+	if _dragging:
+		_dragging = false
+		queue_redraw()
+
+
+func _brush_paint_to(pos: Vector2) -> void:
+	var steps := int(_drag_end.distance_to(pos) / (SNAP * 0.5))
+	for i in steps + 1:
+		_brush_paint_cell(_drag_end.lerp(pos,
+			float(i) / float(maxi(steps, 1))))
+	_drag_end = pos
+
+
+## Issue #673: paint one grid cell at `pos` — skipped when any piece
+## already covers the cell's centre, so a stroke never overlaps
+## ground (its own earlier cells included); the cell clips to the
+## level space like every authoring shape.
+func _brush_paint_cell(pos: Vector2) -> void:
+	var origin := pos.snapped(Vector2(SNAP, SNAP))
+	var cell := Rect2(origin, Vector2(SNAP, SNAP)).intersection(
+		Rect2(Vector2.ZERO, CANVAS_SIZE))
+	if cell.size.x <= 0.0 or cell.size.y <= 0.0:
+		return
+	var center := cell.get_center()
+	for piece in _pieces:
+		if _piece_has_point(piece, center):
+			return
+	_pieces.append({"kind": _tool, "shape": "rect", "rect": cell})
+	queue_redraw()
 
 
 ## Issue #639: the editable points of a piece — the figure's OWN
@@ -828,6 +897,12 @@ func _draw_preview() -> void:
 		elif _tool != "erase" and _tool != "edit":
 			var color := _tool_color()
 			match _shape:
+				"brush":
+					var ghost := Rect2(snapped, Vector2(SNAP, SNAP)) \
+						.intersection(Rect2(Vector2.ZERO, CANVAS_SIZE))
+					if ghost.size.x > 0.0 and ghost.size.y > 0.0:
+						draw_rect(ghost, Color(color, 0.3))
+						draw_rect(ghost, Color(color, 0.7), false, 1.0)
 				"circle":
 					draw_circle(snapped, DEFAULT_RADIUS,
 						Color(color, 0.15))
@@ -850,6 +925,8 @@ func _draw_preview() -> void:
 
 func _draw_drag_preview() -> void:
 	var color := _tool_color()
+	if _shape == "brush":
+		return  # the live stroke paints cells — they are the preview
 	match _shape:
 		"circle":
 			var radius := _drag_start.distance_to(_drag_end)

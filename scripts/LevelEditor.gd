@@ -28,6 +28,11 @@ extends Control
 ## start, end and bend. Rect/tri/circle serialise as the {x,y,w,h}
 ## box; loop/curve store their clicked points.
 ##
+## Issue #673: the BRUSH shape joins the palette — a click-drag
+## stroke paints ground cell by cell (one 32 px grid cell per step)
+## in the ground kind the tool column selects; a cell paints only
+## where no piece covers it yet (see LevelEditorCanvas).
+##
 ## Layout follows the shared menu pattern (MenuTheme, MenuBackground)
 ## with the canvas filling the whole editor.
 ## Issue #676: the editor tools live in a PALETTE pinned to the
@@ -66,6 +71,7 @@ const MAX_PICTURE_SIDE := 1152
 @onready var _circle_tool: Button = %CircleTool
 @onready var _loop_tool: Button = %LoopTool
 @onready var _curve_tool: Button = %CurveTool
+@onready var _brush_tool: Button = %BrushTool
 @onready var _canvas: Control = %EditorCanvas
 @onready var _file_name_edit: LineEdit = %FileNameEdit
 @onready var _save_button: Button = %SaveButton
@@ -118,6 +124,9 @@ func _ready() -> void:
 		func() -> void: _canvas.set_shape("loop"))
 	_curve_tool.pressed.connect(
 		func() -> void: _canvas.set_shape("curve"))
+	# Issue #673: the BRUSH shape — drag-paints ground grid cells.
+	_brush_tool.pressed.connect(
+		func() -> void: _canvas.set_shape("brush"))
 	_save_button.pressed.connect(_on_save_pressed)
 	_load_button.pressed.connect(_on_load_pressed)
 	_load_file_button.pressed.connect(_on_load_file_pressed)
@@ -137,9 +146,9 @@ func _ready() -> void:
 	_back_button.grab_focus()
 	_ensure_levels_dir()
 	_refresh_file_list()
-	_set_status("drag ground shapes; EDIT POINTS moves them "
-		+ "(click an outline to add a point); wheel zooms, "
-		+ "middle/right-drag pans")
+	_set_status("drag ground shapes; BRUSH paints cells by dragging; "
+		+ "EDIT POINTS moves them (click an outline to add a point); "
+		+ "wheel zooms, middle/right-drag pans")
 
 
 func _ensure_levels_dir() -> void:
