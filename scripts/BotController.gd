@@ -84,6 +84,14 @@ const JUMP_CD_MAX := 1.0
 ## speaks for the nearest alive figure in the current level.
 @export var figure_path: NodePath
 
+## Issue #688: production levels inject this controller at runtime and
+## let the match END on its win — the framework's auto reset (the
+## training/eval episode loop) would revive the field and call
+## TurnController.reset_game, replaying the level forever. Authored
+## training/eval scenes keep the default (true); the runtime injector
+## (GameConfig._inject_rl_bots) sets this to false.
+@export var auto_reset := true
+
 ## Issue #409: spawn snapshot — whose clean pose was captured, and where.
 ## The FIRST resolution of a figure happens at its clean starting state
 ## (the framework observes before any action is applied), so that pose
@@ -1010,7 +1018,10 @@ func reset() -> void:
 ## base reset_if_done() only clears core bookkeeping, which would leave a
 ## stale command and a battered figure behind at a reset_after boundary.
 func reset_if_done() -> void:
-	if get_done():
+	# Issue #688: an injected production bot never auto-resets — the
+	# level's win flow owns the scene change, and a reset here would
+	# revive the figures and restart the match mid-celebration.
+	if auto_reset and get_done():
 		reset()
 
 ## Issue #409: which figure reset() restores — the LINKED figure even
@@ -1075,6 +1086,20 @@ func get_action_space() -> Dictionary:
 	# §2: move (6), aim (3), attack (11), target (4), tool (5) = 29 integer
 	# slots per decision step. Sizes are enum-driven so the declaration can
 	# never drift from the translation below.
+	# Issue #688: the DEPLOYED ncnn policy emits its heads ALPHABETICALLY
+	# (aim, attack, move, target, tool — the SB3 MultiDiscrete export order,
+	# the same convention the #506 deploy twin pinned for the previous net).
+	# Native inference slices the flat output per key in insertion order, so
+	# the NCNN_INFERENCE declaration must list the heads in that order;
+	# set_action() reads heads BY NAME, so actuation is order-independent.
+	if control_mode == ControlModes.NCNN_INFERENCE:
+		return {
+			"aim": {"size": AimCommand.size(), "action_type": "discrete"},
+			"attack": {"size": AttackCommand.size(), "action_type": "discrete"},
+			"move": {"size": MoveCommand.size(), "action_type": "discrete"},
+			"target": {"size": TargetCommand.size(), "action_type": "discrete"},
+			"tool": {"size": ToolCommand.size(), "action_type": "discrete"},
+		}
 	return {
 		"move": {"size": MoveCommand.size(), "action_type": "discrete"},
 		"aim": {"size": AimCommand.size(), "action_type": "discrete"},

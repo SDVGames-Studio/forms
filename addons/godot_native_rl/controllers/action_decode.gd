@@ -11,6 +11,14 @@ extends RefCounted
 #                 action_dist {"std": [...]} sidecar is supplied (PPO DiagGaussian); std is applied
 #                 positionally across the continuous dims, then the optional tanh squash.
 #                 -> Array[float]  (godot_rl continuous convention is [-1, 1], so tanh suffices)
+# Issue #688 (Forms) adds the COMPACT per-head-index layout: retrained policies export their
+# MultiDiscrete heads with the argmax BAKED INTO the graph (per-head Softmax+ArgMax, Concat to
+# out0) — output.size() equals the NUMBER of heads and each value IS that head's chosen index,
+# not logits. SB3 exports sort the head names alphabetically, so the compact walk maps
+# output[i] onto the i-th key in SORTED key order — the same alphabetical convention the flat
+# logit layouts of the previous exports follow. Entered only when every head is discrete, the
+# per-head sizes do NOT sum to output.size() (the flat path), and the head COUNT equals
+# output.size(); anything else keeps the error paths below.
 # The total consumed length must equal output.size(); a mismatch (train/deploy shape error) or an
 # unknown action_type -> push_error + {} (the empty-dict sentinel the controller checks).
 # Mirrors NcnnSync.extract_action_dict's key-walk and a standard policy head's output layout.
@@ -18,6 +26,28 @@ extends RefCounted
 const InferenceMath = preload("res://addons/godot_native_rl/controllers/inference_math.gd")
 
 static func decode_actions(output: PackedFloat32Array, action_space: Dictionary, deterministic: bool = true, rng: RandomNumberGenerator = null, action_dist: Dictionary = {}) -> Dictionary:
+	# Issue #688: compact in-graph-argmax layout — one chosen index per
+	# discrete head, heads alphabetical (see the file comment). Selection
+	# already happened inside the net, so deterministic/rng play no role;
+	# a corrupt value clamps into the head's legal range instead of
+	# erroring every decision step.
+	var flat_total := 0
+	var all_discrete := true
+	for key in action_space.keys():
+		flat_total += int(action_space[key]["size"])
+		if str(action_space[key]["action_type"]) != "discrete":
+			all_discrete = false
+	if all_discrete and output.size() > 0 \
+			and output.size() != flat_total \
+			and output.size() == action_space.size():
+		var compact := {}
+		var sorted_keys: Array = action_space.keys()
+		sorted_keys.sort()
+		for i in sorted_keys.size():
+			var head: String = sorted_keys[i]
+			var size: int = action_space[head]["size"]
+			compact[head] = clampi(roundi(output[i]), 0, size - 1)
+		return compact
 	var result := {}
 	var index := 0
 	var cont_index := 0  # advances per continuous value consumed; indexes action_dist["std"] positionally
