@@ -509,6 +509,18 @@ var selected_weapon := 0
 ## see ModularCharacterVisual), so expressions and weapons never affect
 ## each other.
 const HELD_ANCHOR := 32.0
+## Issue #680 rework (owner 2026-11-23): the SPRITE weapon (the drawn
+## launcher) rides LOWER than the bare aim anchor. Its height along
+## the wielder's stance-gravity axis is pulled toward the body's
+## vertical middle: the lift the aim anchor produces is damped
+## (LIFT_KEEP is the fraction kept) and a fixed drop shifts the
+## launcher below the mid line, so the drawn tube reads as held at
+## the waist instead of orbiting the aim up at head height. Visual
+## only — plain rectangle weapons keep the historic anchor, the
+## rotation still follows the aim exactly, and every gameplay number
+## (projectile spawn at _aim() * 36) is untouched.
+const HELD_SPRITE_LIFT_KEEP := 0.4
+const HELD_SPRITE_DROP := 6.0
 ## Issue #559: the spearhead position the DAMAGE corridor uses stays at
 ## its authored reach — weapon mechanics are frozen by this issue (no
 ## damage, firing or balance changes). The drawn spear now floats
@@ -776,8 +788,24 @@ func _physics_process(delta: float) -> void:
 		# (visual only). flip_v keeps the grip below the tube once the
 		# aim swings past vertical — a plain rectangle fill is symmetric
 		# and never had that problem, a drawn sprite is not.
+		# Issue #680 rework (owner 2026-11-23): a textured style starts
+		# from the same shared anchor, then moves LOWER and closer to the
+		# body's vertical middle — the launcher's height along the stance
+		# gravity axis becomes lift * LIFT_KEEP - DROP instead of the raw
+		# aim lift (see the constants above). Flat gravity keeps the
+		# fallback DOWN so the math stays defined before the first tick.
 		if _held_textured():
-			_held_sprite.position = _held.position + style["size"] / 2.0
+			var sprite_pos: Vector2 = _held.position + style["size"] / 2.0
+			var grav := Vector2.DOWN
+			if parent.has_method("current_gravity"):
+				grav = parent.current_gravity()
+			if grav.length_squared() > 0.5:
+				grav = grav.normalized()
+				var lift := -sprite_pos.dot(grav)
+				sprite_pos += grav \
+						* (lift * (1.0 - HELD_SPRITE_LIFT_KEEP) \
+						+ HELD_SPRITE_DROP)
+			_held_sprite.position = sprite_pos
 			_held_sprite.rotation = _held.rotation
 			_held_sprite.flip_v = absf(_held.rotation) > PI / 2.0
 
@@ -828,7 +856,8 @@ func _update_held() -> void:
 		_held_sprite.texture = tex
 		_held_sprite.scale = size / Vector2(
 				tex.get_width(), tex.get_height())
-		_held_sprite.position = Vector2(_facing * HELD_ANCHOR, 0.0)
+		_held_sprite.position = Vector2(_facing * HELD_ANCHOR,
+				HELD_SPRITE_DROP)
 		return
 	_held.visible = true
 	_held.size = size

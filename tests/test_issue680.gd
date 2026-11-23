@@ -9,7 +9,11 @@ extends Node
 ##     plain ColorRect;
 ##  2. AIM: the sprite's rotation follows the aim axis both ways —
 ##     right (no flip) and left (flip_v keeps the grip below the
-##     tube), so aiming stays independent of the artwork;
+##     tube), so aiming stays independent of the artwork. Rework
+##     (owner 2026-11-23): the launcher also rides LOWER — its height
+##     along the wielder's stance-gravity axis is damped toward the
+##     body's vertical middle plus a fixed drop, flat AND tilted
+##     stances;
 ##  3. MECHANICS: the rocket's speed, damage, quota and the spawned
 ##     rigid body are byte-for-byte the pre-#680 values — the sprite
 ##     is visual only.
@@ -33,12 +37,17 @@ func _check(condition: bool, message: String) -> void:
 	push_error("FAIL: %s" % message)
 
 
-## A shooter whose aim_dir answers the test's live aim vector.
+## A shooter whose aim_dir answers the test's live aim vector. The
+## optional stance gravity (default: straight down) answers
+## current_gravity() the way Character does.
 class AimShooter:
 	extends CharacterBody2D
 	var aim := Vector2(1, 0)
+	var grav := Vector2.DOWN
 	func aim_dir(_facing: float, _grav: float = 1.0) -> Vector2:
 		return aim
+	func current_gravity() -> Vector2:
+		return grav
 
 
 func _make_weapon(aim: Vector2) -> Node2D:
@@ -104,6 +113,44 @@ func _ready() -> void:
 			"aiming right must not flip the launcher")
 	_check(aimer._held_sprite.position.length() >= WeaponScript.HELD_ANCHOR - 0.5,
 			"the sprite must float at the held anchor, clear of the body")
+	# Issue #680 rework (owner 2026-11-23): the launcher sits LOWER —
+	# at a flat horizontal aim its height is exactly the fixed drop
+	# below the stance mid line, not the old on-axis anchor.
+	_check(absf(aimer._held_sprite.position.x - WeaponScript.HELD_ANCHOR) < 0.1,
+			"the horizontal reach must stay at the held anchor (got %s)"
+			% aimer._held_sprite.position.x)
+	_check(absf(aimer._held_sprite.position.y - WeaponScript.HELD_SPRITE_DROP) < 0.1,
+			"a flat aim must drop the launcher below the mid line (got %s)"
+			% aimer._held_sprite.position.y)
+	# Aiming 45 degrees up: the old anchor lifted the launcher 22.6 px
+	# along gravity; the rework keeps it within a few px of the body's
+	# vertical middle (lift * LIFT_KEEP - DROP = 9.05 - 6 = 3.05 up).
+	(aimer.get_parent() as AimShooter).aim = Vector2(1, -1).normalized()
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	var lifted: float = -aimer._held_sprite.position.dot(Vector2.DOWN)
+	_check(absf(lifted - (WeaponScript.HELD_ANCHOR * sqrt(0.5)
+				* WeaponScript.HELD_SPRITE_LIFT_KEEP
+				- WeaponScript.HELD_SPRITE_DROP)) < 0.1,
+			"an aimed-up launcher must stay near the vertical middle (got %s px up)"
+			% lifted)
+	_check(lifted < WeaponScript.HELD_ANCHOR * 0.25,
+			"the damped lift must stay far below the raw anchor lift")
+	# A TILTED stance (gravity down-right 45 degrees) drops along the
+	# stance axis, not the world axis: height along stance gravity is
+	# lift * LIFT_KEEP - DROP with lift = anchor . (up-along-stance).
+	(aimer.get_parent() as AimShooter).aim = Vector2(1, 0)
+	(aimer.get_parent() as AimShooter).grav = Vector2(1, 1).normalized()
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	var stance_g := (aimer.get_parent() as AimShooter).grav
+	var stance_h: float = -aimer._held_sprite.position.dot(stance_g)
+	_check(absf(stance_h - (-WeaponScript.HELD_ANCHOR * sqrt(0.5)
+				* WeaponScript.HELD_SPRITE_LIFT_KEEP
+				- WeaponScript.HELD_SPRITE_DROP)) < 0.1,
+			"a tilted stance must measure the drop along the stance axis (got %s)"
+			% stance_h)
+	(aimer.get_parent() as AimShooter).grav = Vector2.DOWN
 	(aimer.get_parent() as AimShooter).aim = Vector2(-1, 0)
 	await get_tree().physics_frame
 	await get_tree().physics_frame
