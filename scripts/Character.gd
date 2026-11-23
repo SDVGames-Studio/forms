@@ -467,8 +467,25 @@ func _move_speed() -> float:
 ## Slew the view (aim) angle by `delta_angle` radians — positive raises
 ## the muzzle away from the floor, negative lowers it — clamped to
 ## ±VIEW_MAX. The weapon faces aim_dir(), so the whole arsenal follows.
+## Issue #682: the jackhammer is the exception — it must be able to
+## point STRAIGHT DOWN so the wielder can dig a shaft UNDER itself
+## (entrench, Worms-style). While the jackhammer is the selected weapon
+## — or a drill is already running and being steered by the aim keys —
+## the clamp widens to the full vertical; every other weapon keeps the
+## ±VIEW_MAX limit.
 func aim(delta_angle: float) -> void:
-	view_angle = clampf(view_angle + delta_angle, -VIEW_MAX, VIEW_MAX)
+	view_angle = clampf(view_angle + delta_angle, -_view_max(), _view_max())
+
+
+## Issue #682: the live view-angle limit — PI/2 (straight down/up along
+## the gravity frame) with the jackhammer selected or drilling, the
+## arsenal-wide Stats.VIEW_MAX otherwise.
+func _view_max() -> float:
+	var weapon := get_node_or_null("Weapon")
+	if weapon != null and weapon.has_method("is_drilling") \
+			and (weapon.get("selected_weapon") == 5 or weapon.is_drilling()):
+		return PI / 2.0
+	return VIEW_MAX
 
 
 ## Jump away from the floor along the CURRENT gravity frame
