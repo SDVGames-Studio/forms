@@ -495,6 +495,19 @@ func _explode() -> void:
 	if _exploded:
 		return
 	_exploded = true
+	# Issue #686: contact detonation fires inside the physics callback
+	# (body_entered, while the space is still flushing queries). Carving
+	# ground there adds collision shapes to physics bodies mid-flush,
+	# which Godot rejects with "Can't change this state while flushing
+	# queries" (body_set_shape_as_one_way_collision). The actual
+	# detonation runs one deferred step later, outside the flush — fuse
+	# timers and chain reactions ride the same safety. `_exploded` is
+	# set SYNCHRONOUSLY so re-entry within the same physics step is
+	# ignored exactly as before.
+	_explode_now.call_deferred()
+
+
+func _explode_now() -> void:
 	# Issue #495: a mine detonated mid-fuse (damaged by another blast)
 	# must not stack its timer beep on the detonation — stop it first.
 	if _timer_player != null and _timer_player.playing:

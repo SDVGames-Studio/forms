@@ -65,7 +65,10 @@ class Issue495Driver extends Node:
 
 		# --- Rocket blast: wired by kind on the SFX bus, played by the
 		# REAL _explode() entry (group lookups are empty outside a level,
-		# so the call is safe headless — same as the issue #475 checks). ---
+		# so the call is safe headless — same as the issue #475 checks).
+		# Issue #686: the detonation runs one deferred step after
+		# _explode() — playback is checked after that step; the player
+		# is re-homed, so it survives the body's queue_free(). ---
 		var rocket_body: ProjectileBody = ProjectileBody.new()
 		rocket_body.setup(ProjectileBody.Kind.ROCKET, Vector2(200, 0), 30, 2.0,
 			Vector2(22, 8), Color.WHITE, 100.0, 1.0)
@@ -75,7 +78,9 @@ class Issue495Driver extends Node:
 		var r_wired: bool = r_player != null and r_player.is_inside_tree() \
 			and r_player.bus == "SFX" and r_player.stream == rocket
 		rocket_body._explode()
-		var r_plays: bool = r_player != null and r_player.playing
+		await get_tree().process_frame
+		var r_plays: bool = r_player != null and is_instance_valid(r_player) \
+			and r_player.playing
 		print("SFX495 rocket wired=", r_wired, " plays_on_explode=", r_plays)
 		ok = ok and r_wired and r_plays
 		await get_tree().process_frame
@@ -101,10 +106,18 @@ class Issue495Driver extends Node:
 		var m_beeps: bool = m_timer != null and m_timer.is_inside_tree() \
 			and m_timer.bus == "SFX" and m_timer.stream == mine_timer \
 			and m_timer.playing
-		mine_body._explode()
-		var m_stopped: bool = m_timer != null and not m_timer.playing
+		# Issue #686: the detonation runs one deferred step after
+		# _explode() — capture the blast player BEFORE it (the body
+		# queue_free()s during that step), then check after the step:
+		# the blast player is re-homed (still playing), the timer player
+		# dies with the body (the beep is gone either way).
 		var m_blast: AudioStreamPlayer = mine_body.get("_blast_player")
-		var m_booms: bool = m_blast != null and m_blast.playing
+		mine_body._explode()
+		await get_tree().process_frame
+		var m_stopped: bool = m_timer == null \
+				or not is_instance_valid(m_timer) or not m_timer.playing
+		var m_booms: bool = m_blast != null and is_instance_valid(m_blast) \
+			and m_blast.playing
 		print("SFX495 mine armed=", m_armed, " timer_beeps=", m_beeps,
 			" stops_on_explode=", m_stopped, " blast_plays=", m_booms)
 		ok = ok and m_armed and m_beeps and m_stopped and m_booms
