@@ -40,8 +40,19 @@ extends Control
 ## the tool column selects. A cell paints only where no piece
 ## covers it yet (any kind), so strokes never stack duplicates or
 ## overlap existing ground — erase first to repaint a cell in the
-## other kind. (Uniting the painted cells into bigger pieces is
-## issue #638, a separate work order.)
+## other kind; the stroke's touching cells UNITE into one piece
+## (issue #638) when the stroke ends.
+##
+## Issue #638 — automatic ground UNITING: pieces of the SAME kind
+## that overlap or share a common boundary (a whole edge segment,
+## not just a corner point) become ONE free loop polygon. The union
+## runs after every placement (box / circle / loop / curve), when a
+## brush stroke ends and when an EDIT POINTS drag releases, so the
+## canvas never holds two same-kind pieces that overlap or border
+## each other. Different kinds never unite (destructible dirt and
+## indestructible slabs stay separate materials), and loading a
+## file is untouched — uniting works on what the user authors, not
+## on data merely opened.
 ##
 ## Issue #639 EDIT tool — every placed figure gets clickable, movable
 ## points: with the tool active each piece draws its handles (the
@@ -94,6 +105,13 @@ const HANDLE_SIZE := 4.0
 const EDGE_GRAB := 14.0
 const ADD_DISC_SEGMENTS := 12
 const ADD_CURVE_SAMPLES := 8
+## Issue #638: how finely a circle's rim / a curve's ribbon are
+## sampled for a union (draw fidelity — the same 48/24 the canvas
+## draws), and the collinearity tolerance of the shared-boundary
+## test (snapped authoring coordinates make shared edges exact).
+const UNITE_DISC_SEGMENTS := 48
+const UNITE_CURVE_SAMPLES := 24
+const EDGE_EPS := 0.01
 ## Issue #632: the ground ribbon a bezier curve authors and how finely
 ## it is sampled (CustomLevel builds the same strip).
 const CURVE_THICKNESS := 48.0
@@ -403,6 +421,7 @@ func _press_pending(pos: Vector2) -> void:
 			and pos.distance_to(_pending[0]) <= _screen_hit(CLOSE_RADIUS):
 		_pieces.append({"kind": _tool, "shape": "loop",
 			"points": _pending.duplicate()})
+		unite_pieces()  # Issue #638: the new loop may join a neighbour
 		_cancel_pending()
 		return
 	_pending.append(pos)
@@ -410,6 +429,7 @@ func _press_pending(pos: Vector2) -> void:
 	if _shape == "curve" and _pending.size() == 3:
 		_pieces.append({"kind": _tool, "shape": "curve",
 			"points": _pending.duplicate()})
+		unite_pieces()  # Issue #638: the new ribbon may join a neighbour
 		_cancel_pending()
 
 
@@ -419,7 +439,8 @@ func _release(pos: Vector2) -> void:
 	_dragging = false
 	match _shape:
 		"brush":
-			pass  # the stroke painted its cells during the drag
+			# Issue #638: the stroke is over — unite its cells.
+			unite_pieces()
 		"circle":
 			_release_circle(pos)
 		"tri":
@@ -436,6 +457,7 @@ func _release_box(pos: Vector2, shape: String) -> void:
 	rect = rect.intersection(Rect2(Vector2.ZERO, CANVAS_SIZE))
 	if rect.size.x > 0.0 and rect.size.y > 0.0:
 		_pieces.append({"kind": _tool, "shape": shape, "rect": rect})
+		unite_pieces()  # Issue #638: the new box may join a neighbour
 
 
 func _release_circle(pos: Vector2) -> void:
@@ -449,6 +471,7 @@ func _release_circle(pos: Vector2) -> void:
 	_pieces.append({"kind": _tool, "shape": "circle",
 		"rect": Rect2(center - Vector2(radius, radius),
 			Vector2(radius * 2.0, radius * 2.0))})
+	unite_pieces()  # Issue #638: the new disc may join a neighbour
 
 
 func _cancel_pending() -> void:
@@ -476,10 +499,12 @@ func brush_stroke_to(pos: Vector2) -> void:
 	_brush_paint_to(pos.snapped(Vector2(SNAP, SNAP)))
 
 
-## Issue #673: finish the stroke (the painted cells stay).
+## Issue #673: finish the stroke (the painted cells stay — and the
+## stroke's touching cells UNITE, issue #638).
 func brush_stroke_end() -> void:
 	if _dragging:
 		_dragging = false
+		unite_pieces()
 		queue_redraw()
 
 
@@ -507,6 +532,114 @@ func _brush_paint_cell(pos: Vector2) -> void:
 			return
 	_pieces.append({"kind": _tool, "shape": "rect", "rect": cell})
 	queue_redraw()
+
+
+## Issue #638: unite every pair of same-kind pieces that overlaps
+## or shares a boundary into one loop shape, repeating until the
+## canvas holds no such pair (a merged blob can grow further into
+## more pieces, so one pass is not always enough). Public: the
+## authoring flows call it after their changes and the UI test
+## drives it directly.
+func unite_pieces() -> void:
+	var changed := false
+	var again := true
+	while again:
+		again = false
+		var i := 0
+		while i < _pieces.size() and not again:
+			var j := i + 1
+			while j < _pieces.size() and not again:
+				if str(_pieces[i].get("kind", "")) \
+						== str(_pieces[j].get("kind", "")) \
+						and _unite_pair(i, j):
+					changed = true
+					again = true
+				else:
+					j += 1
+			if not again:
+				i += 1
+	if changed:
+		queue_redraw()
+
+
+## Issue #638: try to merge piece j into piece i (same kind, both
+## whole shapes): when their outlines overlap or share a boundary
+## the pair becomes one free loop polygon — Geometry2D's Clipper
+## union. Returns true when the pair merged (j is gone, i is the
+## union).
+func _unite_pair(i: int, j: int) -> bool:
+	var outline_a := _unite_outline(_pieces[i])
+	var outline_b := _unite_outline(_pieces[j])
+	if not _overlaps_or_shares_boundary(outline_a, outline_b):
+		return false
+	# A union that comes back in several polygons did not really
+	# join (Clipper leaves corner-touching shapes split) — keep both.
+	var merged: Array = Geometry2D.merge_polygons(
+		outline_a, outline_b)
+	if merged.size() != 1:
+		return false
+	var points: PackedVector2Array = merged[0]
+	if points.size() < 3:
+		return false
+	_pieces[i] = {"kind": _pieces[i]["kind"], "shape": "loop",
+		"points": points}
+	_pieces.remove_at(j)
+	return true
+
+
+## Issue #638: the closed outline a piece contributes to a union —
+## the same geometry it draws with (a circle's rim and a curve's
+## ribbon sampled at DRAW fidelity, not the coarser edit-tool one).
+static func _unite_outline(piece: Dictionary) -> PackedVector2Array:
+	match str(piece.get("shape", "rect")):
+		"circle":
+			var crect: Rect2 = piece["rect"]
+			return _disc_points(crect.get_center(),
+				minf(crect.size.x, crect.size.y) * 0.5,
+				UNITE_DISC_SEGMENTS)
+		"curve":
+			return curve_strip_polygon(piece["points"],
+				CURVE_THICKNESS, UNITE_CURVE_SAMPLES)
+		_:
+			return add_point_outline(piece)
+
+
+## Issue #638: do the polygons OVERLAP (a real area intersection —
+## containment included) or SHARE a boundary (collinear edges whose
+## spans overlap)? Shapes touching at a single point do not
+## qualify: a point is not a common boundary.
+static func _overlaps_or_shares_boundary(a: PackedVector2Array,
+		b: PackedVector2Array) -> bool:
+	if not Geometry2D.intersect_polygons(a, b).is_empty():
+		return true
+	for i in a.size():
+		var p1: Vector2 = a[i]
+		var p2: Vector2 = a[(i + 1) % a.size()]
+		for k in b.size():
+			var q1: Vector2 = b[k]
+			var q2: Vector2 = b[(k + 1) % b.size()]
+			if _edges_share_boundary(p1, p2, q1, q2):
+				return true
+	return false
+
+
+## Issue #638: are edges p1→p2 and q1→q2 collinear with overlapping
+## spans (a shared boundary segment)? Both q ends must sit on p's
+## line, and their projections onto p's direction must overlap p
+## itself by a positive length.
+static func _edges_share_boundary(p1: Vector2, p2: Vector2,
+		q1: Vector2, q2: Vector2) -> bool:
+	var d := p2 - p1
+	var len_sq := d.length_squared()
+	if len_sq < 0.0001:
+		return false
+	if absf((q1 - p1).cross(d)) > EDGE_EPS \
+			or absf((q2 - p1).cross(d)) > EDGE_EPS:
+		return false
+	var s1 := (q1 - p1).dot(d)
+	var s2 := (q2 - p1).dot(d)
+	return minf(maxf(s1, s2), len_sq) - maxf(minf(s1, s2), 0.0) \
+			> EDGE_EPS
 
 
 ## Issue #639: the editable points of a piece — the figure's OWN
@@ -628,11 +761,14 @@ func add_point_at(pos: Vector2) -> bool:
 	return true
 
 
-## Issue #639: stop dragging (the piece keeps its new shape).
+## Issue #639: stop dragging (the piece keeps its new shape — and
+## a reshape that newly touches or overlaps a same-kind neighbour
+## unites with it, issue #638).
 func release_handle() -> void:
 	if _grab_piece >= 0:
 		_grab_piece = -1
 		_grab_handle = -1
+		unite_pieces()
 		queue_redraw()
 
 

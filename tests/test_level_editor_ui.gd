@@ -15,6 +15,10 @@ extends Node
 ## Issue #675: the view CAMERA — the wheel zooms (clamped; zoomed out
 ## the map centers, offset goes negative), a middle-drag pans (offset
 ## moves inside the level) and RESET VIEW restores the fitted map.
+## Issue #638: automatic ground UNITING — same-kind pieces that
+## overlap or share a boundary become ONE loop shape (driven
+## directly and through a brush stroke's cells); different kinds
+## and point-only touches never unite.
 ##
 ## Run headless: godot --headless res://tests/test_level_editor_ui.tscn
 ## Exit code 0 = pass; the printed LEVELEDITOR ok= verdict is
@@ -82,6 +86,13 @@ class LevelEditorDriver extends Node:
 
 	## Emits are received by an alive node (this driver), so quit always
 	## lands — see _ready.
+	## Issue #638 test helper — the bounding box of a point cloud.
+	static func _points_bbox(points: PackedVector2Array) -> Rect2:
+		var box := Rect2(points[0], Vector2.ZERO)
+		for p in points:
+			box = box.expand(p)
+		return box
+
 	func _on_done(ok: bool) -> void:
 		get_tree().quit(0 if ok else 1)
 
@@ -346,19 +357,86 @@ class LevelEditorDriver extends Node:
 		canvas.brush_stroke_to(Vector2(300, 96))
 		canvas.brush_stroke_end()
 		var brushed: Array = canvas.get_pieces()
-		brush_ok = brush_ok and brushed.size() == 5
-		var cell_origins: Array = []
-		for piece in brushed.slice(1):
-			cell_origins.append((piece["rect"] as Rect2).position)
-		brush_ok = brush_ok and cell_origins == [Vector2(192, 96),
-			Vector2(224, 96), Vector2(256, 96), Vector2(288, 96)] \
-			and str(brushed[1]["kind"]) == "destructible"
+		# Issue #638: the stroke's touching cells UNITE into ONE loop
+		# piece spanning the painted run (the covered 64..192 column
+		# under the indestructible rect never paints).
+		brush_ok = brush_ok and brushed.size() == 2
+		var painted: Dictionary = brushed[1]
+		var painted_pts: PackedVector2Array = painted["points"]
+		brush_ok = brush_ok \
+				and str(painted.get("kind", "")) == "destructible" \
+				and str(painted.get("shape", "")) == "loop" \
+				and _points_bbox(painted_pts) \
+					== Rect2(Vector2(192, 96), Vector2(128, 32))
 		canvas.brush_stroke_start(Vector2(300, 96))
 		canvas.brush_stroke_to(Vector2(96, 96))
 		canvas.brush_stroke_end()
-		brush_ok = brush_ok and canvas.get_pieces().size() == 5
+		brush_ok = brush_ok and canvas.get_pieces().size() == 2
 		print("LEVELEDITOR brush=", brush_ok)
 		ok = ok and brush_ok
+
+		# --- Issue #638: automatic ground UNITING — same-kind pieces
+		# that overlap or share a boundary become ONE loop shape;
+		# different kinds and point-only touches never unite. ---
+		var unite_ok := true
+		canvas.set_tool("indestructible")
+		canvas.set_pieces([
+			{"kind": "indestructible", "shape": "rect",
+				"rect": Rect2(Vector2(64, 64), Vector2(128, 64))},
+			# shares the first rect's whole right edge -> unites.
+			{"kind": "indestructible", "shape": "rect",
+				"rect": Rect2(Vector2(192, 64), Vector2(128, 64))},
+			# touches the first rect only at corner (64, 128) -> apart.
+			{"kind": "indestructible", "shape": "rect",
+				"rect": Rect2(Vector2(32, 128), Vector2(32, 32))},
+			# overlaps the joined rects -> joins the union.
+			{"kind": "indestructible", "shape": "tri",
+				"rect": Rect2(Vector2(224, 96), Vector2(128, 96))},
+			# a DIFFERENT kind overlapping the union -> stays apart.
+			{"kind": "destructible", "shape": "rect",
+				"rect": Rect2(Vector2(96, 64), Vector2(64, 32))},
+		])
+		canvas.unite_pieces()
+		var united: Array = canvas.get_pieces()
+		unite_ok = unite_ok and united.size() == 3
+		var blob: Dictionary = united[0]
+		var blob_pts: PackedVector2Array = blob["points"]
+		unite_ok = unite_ok \
+				and str(blob.get("kind", "")) == "indestructible" \
+				and str(blob.get("shape", "")) == "loop" \
+				and _points_bbox(blob_pts) \
+					== Rect2(Vector2(64, 64), Vector2(288, 128)) \
+				and Geometry2D.is_point_in_polygon(
+					Vector2(100, 100), blob_pts) \
+				and Geometry2D.is_point_in_polygon(
+					Vector2(280, 150), blob_pts)
+		unite_ok = unite_ok \
+				and (united[1]["rect"] as Rect2) \
+					== Rect2(Vector2(32, 128), Vector2(32, 32)) \
+				and (united[2]["rect"] as Rect2) \
+					== Rect2(Vector2(96, 64), Vector2(64, 32)) \
+				and str(united[2].get("kind", "")) == "destructible"
+		# a circle overlapping a rect unites too (rim at draw
+		# fidelity — the union covers both figures).
+		canvas.set_pieces([
+			{"kind": "destructible", "shape": "rect",
+				"rect": Rect2(Vector2(400, 400), Vector2(128, 64))},
+			{"kind": "destructible", "shape": "circle",
+				"rect": Rect2(Vector2(464, 368), Vector2(128, 128))},
+		])
+		canvas.unite_pieces()
+		united = canvas.get_pieces()
+		var dome: PackedVector2Array = united[0]["points"] \
+				if united.size() == 1 else PackedVector2Array()
+		unite_ok = unite_ok and united.size() == 1 \
+				and str(united[0].get("shape", "")) == "loop" \
+				and str(united[0].get("kind", "")) == "destructible" \
+				and Geometry2D.is_point_in_polygon(
+					Vector2(480, 420), dome) \
+				and Geometry2D.is_point_in_polygon(
+					Vector2(528, 430), dome)
+		print("LEVELEDITOR unite=", unite_ok)
+		ok = ok and unite_ok
 
 		# --- Authoring data -> save. ---
 		var pieces: Array = [
