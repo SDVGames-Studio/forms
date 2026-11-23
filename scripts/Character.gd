@@ -31,6 +31,10 @@ const BAR_WIDTH := Stats.BAR_WIDTH
 const BAR_HEIGHT := Stats.BAR_HEIGHT
 const VIEW_SPEED := Stats.VIEW_SPEED
 const VIEW_MAX := Stats.VIEW_MAX
+## Weapon slot order (Weapon.gd's fire dispatch): 5 = jackhammer,
+## 10 = entrenching shovel (#656).
+const WEAPON_SLOT_JACKHAMMER := 5
+const WEAPON_SLOT_SHOVEL := 10
 
 ## Issue #161/#611: health changes are observable — the HUD (and the
 ## tests) listen for the updated health/max pair.
@@ -467,24 +471,31 @@ func _move_speed() -> float:
 ## Slew the view (aim) angle by `delta_angle` radians — positive raises
 ## the muzzle away from the floor, negative lowers it — clamped to
 ## ±VIEW_MAX. The weapon faces aim_dir(), so the whole arsenal follows.
-## Issue #682: the jackhammer is the exception — it must be able to
-## point STRAIGHT DOWN so the wielder can dig a shaft UNDER itself
-## (entrench, Worms-style). While the jackhammer is the selected weapon
-## — or a drill is already running and being steered by the aim keys —
-## the clamp widens to the full vertical; every other weapon keeps the
-## ±VIEW_MAX limit.
+## Issue #682: the jackhammer and the entrenching shovel are the
+## exceptions — they must be able to point STRAIGHT DOWN so the
+## wielder can dig a shaft UNDER itself (entrench, Worms-style).
+## While the jackhammer is the selected weapon — or a drill is already
+## running and being steered by the aim keys — the clamp widens to the
+## full vertical; issue #682 rework: the entrenching shovel is a
+## DISTINCT tool with the same need, so it gets the widened clamp too
+## (its dig bore opens 12 px ahead along the aim, see Weapon's
+## _shovel_dig). Every other weapon keeps the ±VIEW_MAX limit.
 func aim(delta_angle: float) -> void:
 	view_angle = clampf(view_angle + delta_angle, -_view_max(), _view_max())
 
 
 ## Issue #682: the live view-angle limit — PI/2 (straight down/up along
 ## the gravity frame) with the jackhammer selected or drilling, the
-## arsenal-wide Stats.VIEW_MAX otherwise.
+## entrenching shovel selected (#682 rework — a distinct tool that
+## digs the same under-the-feet shaft), the arsenal-wide
+## Stats.VIEW_MAX otherwise.
 func _view_max() -> float:
 	var weapon := get_node_or_null("Weapon")
-	if weapon != null and weapon.has_method("is_drilling") \
-			and (weapon.get("selected_weapon") == 5 or weapon.is_drilling()):
-		return PI / 2.0
+	if weapon != null and weapon.has_method("is_drilling"):
+		var slot: int = weapon.get("selected_weapon")
+		if slot == WEAPON_SLOT_JACKHAMMER or slot == WEAPON_SLOT_SHOVEL \
+				or weapon.is_drilling():
+			return PI / 2.0
 	return VIEW_MAX
 
 

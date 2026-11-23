@@ -23,6 +23,12 @@ extends Node
 ##  6. LIVE DRILL, DOWN: _start_jackhammer at a straight-down aim
 ##     produces a drill direction that points along gravity, so the
 ##     carve point lands directly under the wielder.
+##  7. SHOVEL SELECTED (rework — the entrenching shovel is a DISTINCT
+##     tool with the same need): aiming down/up saturates at ∓PI/2
+##     and aim_dir() points along gravity;
+##  8. SHOVEL DIG UNDER THE FEET: with the shovel aimed straight down,
+##     a swing carves the bore straight UNDER the wielder — the probe
+##     below the feet is open ground, the probe past the bore survives.
 ##
 ## Run headless: godot --headless res://tests/test_issue682.tscn
 ## Exit code 0 = pass.
@@ -30,9 +36,11 @@ extends Node
 const CharacterScript := preload("res://scripts/Character.gd")
 const WeaponScript := preload("res://scripts/Weapon.gd")
 
-## Weapon slot order (WeaponInventory.WEAPONS): 5 = jackhammer.
+## Weapon slot order (WeaponInventory.WEAPONS): 5 = jackhammer,
+## 10 = entrenching shovel (#656).
 const SLOT_SHOTGUN := 0
 const SLOT_JACKHAMMER := 5
+const SLOT_SHOVEL := 10
 
 var failures := 0
 
@@ -58,7 +66,41 @@ func _make_figure() -> CharacterBody2D:
 	return figure
 
 
+## A slab of destructible ground (the test_issue656 stub pattern).
+func _make_chunk(at: Vector2, size: Vector2) -> Node:
+	var chunk: Node2D = load("res://scripts/DestructibleGround.gd").new()
+	chunk.rect_size = size
+	chunk.position = at
+	add_child(chunk)
+	return chunk
+
+
+## True when some surviving destructible piece still covers the point
+## (rectangle pieces only — the dig spawns no polygon/ring pieces).
+func _covered(point: Vector2) -> bool:
+	for ground in get_tree().get_nodes_in_group("destructible_ground"):
+		var piece := ground as Node2D
+		if piece == null or not is_instance_valid(piece):
+			continue
+		if not (piece.get("ring_outer") > 0.0) \
+				and piece.get("polygon") != null \
+				and piece.get("polygon").size() < 3:
+			var rect := Rect2(piece.position - piece.rect_size / 2.0,
+					piece.rect_size)
+			if rect.has_point(point):
+				return true
+	return false
+
+
+func _settle() -> void:
+	for i in 4:
+		await get_tree().physics_frame
+
+
 func _ready() -> void:
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+
 	var view_max: float = CharacterScript.VIEW_MAX
 
 	# 1. Jackhammer selected — aiming down must reach the vertical.
@@ -118,8 +160,43 @@ func _ready() -> void:
 	starter.get_node("Weapon").call("_end_jackhammer")
 	starter.queue_free()
 
+	# 7. Issue #682 rework: the entrenching shovel is a DISTINCT tool —
+	# selected, it must get the SAME widened clamp so its bore opens
+	# under the wielder, not diagonally ahead.
+	var shoveler := _make_figure()
+	shoveler.get_node("Weapon").set("selected_weapon", SLOT_SHOVEL)
+	shoveler.aim(-10.0)
+	_check(absf(shoveler.view_angle + PI / 2.0) < 0.0001,
+			"shovel aim must saturate at -PI/2 (got %f)" % shoveler.view_angle)
+	var shovel_down: Vector2 = shoveler.aim_dir(1.0, 1.0)
+	_check(shovel_down.dot(Vector2.DOWN) > 0.9999,
+			"straight-down shovel aim_dir must point along gravity (got %s)"
+				% str(shovel_down))
+	shoveler.aim(20.0)
+	_check(absf(shoveler.view_angle - PI / 2.0) < 0.0001,
+			"shovel aim must saturate at +PI/2 (got %f)" % shoveler.view_angle)
+	shoveler.queue_free()
+
+	# 8. THE DIG UNDER THE FEET: with the shovel aimed straight down, a
+	# swing carves the bore straight under the wielder (anchor = feet +
+	# aim * 12, radii 32) — the probe at (0, 36) inside the bore is open
+	# ground, the probe at (0, 70) past it survives.
+	var digger2 := _make_figure()
+	digger2.global_position = Vector2.ZERO
+	digger2.get_node("Weapon").set("selected_weapon", SLOT_SHOVEL)
+	digger2.aim(-10.0)
+	_make_chunk(Vector2(0, 60), Vector2(240, 160))
+	await _settle()
+	digger2.get_node("Weapon").call("_swing_shovel")
+	await _settle()
+	_check(not _covered(Vector2(0, 36)),
+			"the point straight under the feet must be dug open")
+	_check(_covered(Vector2(0, 70)),
+			"the point past the straight-down bore must survive")
+	digger2.queue_free()
+
 	if failures == 0:
-		print("PASS: issue #682 jackhammer digs under the character")
+		print("PASS: issue #682 jackhammer and shovel dig under the character")
 		get_tree().quit(0)
 	else:
 		print("FAIL: %d check(s) failed" % failures)
