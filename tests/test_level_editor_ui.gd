@@ -91,7 +91,7 @@ class LevelEditorDriver extends Node:
 	const SHAPE_TOOLS := {
 		"rect": "%RectTool", "tri": "%TriangleTool",
 		"circle": "%CircleTool", "loop": "%LoopTool",
-		"curve": "%CurveTool",
+		"curve": "%CurveTool", "brush": "%BrushTool",
 	}
 
 	func run() -> void:
@@ -104,6 +104,7 @@ class LevelEditorDriver extends Node:
 		for unique in ["IndestructibleTool", "DestructibleTool",
 				"SpawnTool", "EraseTool", "EditTool", "RectTool",
 				"TriangleTool", "CircleTool", "LoopTool", "CurveTool",
+				"BrushTool",
 				"EditorCanvas",
 				"FileNameEdit", "SaveButton", "LoadButton", "FileSelect",
 				"ClearButton", "BackButton", "StatusText",
@@ -329,6 +330,35 @@ class LevelEditorDriver extends Node:
 			shape_wiring = shape_wiring and canvas.get_shape() == key
 		print("LEVELEDITOR shape_wiring=", shape_wiring)
 		ok = ok and shape_wiring
+
+		# --- Issue #673: BRUSH — a drag paints grid cells in the
+		# selected ground kind; cells under existing ground stay
+		# untouched, and repainting the same stroke adds nothing. ---
+		var brush_ok := true
+		(editor.get_node("%BrushTool") as BaseButton).pressed.emit()
+		brush_ok = brush_ok and canvas.get_shape() == "brush"
+		canvas.set_tool("destructible")
+		canvas.set_pieces([
+			{"kind": "indestructible", "shape": "rect",
+				"rect": Rect2(Vector2(64, 64), Vector2(128, 64))},
+		])
+		canvas.brush_stroke_start(Vector2(96, 96))
+		canvas.brush_stroke_to(Vector2(300, 96))
+		canvas.brush_stroke_end()
+		var brushed: Array = canvas.get_pieces()
+		brush_ok = brush_ok and brushed.size() == 5
+		var cell_origins: Array = []
+		for piece in brushed.slice(1):
+			cell_origins.append((piece["rect"] as Rect2).position)
+		brush_ok = brush_ok and cell_origins == [Vector2(192, 96),
+			Vector2(224, 96), Vector2(256, 96), Vector2(288, 96)] \
+			and str(brushed[1]["kind"]) == "destructible"
+		canvas.brush_stroke_start(Vector2(300, 96))
+		canvas.brush_stroke_to(Vector2(96, 96))
+		canvas.brush_stroke_end()
+		brush_ok = brush_ok and canvas.get_pieces().size() == 5
+		print("LEVELEDITOR brush=", brush_ok)
+		ok = ok and brush_ok
 
 		# --- Authoring data -> save. ---
 		var pieces: Array = [
