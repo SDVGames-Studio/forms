@@ -113,10 +113,21 @@ func _ready() -> void:
 		await get_tree().process_frame
 	else:
 		await get_tree().root.ready
-	get_tree().set_pause(true)
+	# Issue #688 (Forms): hold the SceneTree by reference across the awaits —
+	# a node freed mid-pause (a level disposed within its first second) has
+	# get_tree() == null, and the original unpause would never run, leaving
+	# the whole game paused forever. The boot pause itself is a TRAINING aid
+	# (hold the world while the Python handshake settles); inference and
+	# heuristic modes have no handshake to wait for, so they boot unpaused.
+	var tree := get_tree()
+	var boot_pause: bool = control_mode == ControlModes.TRAINING \
+			or control_mode == ControlModes.RECORD_EXPERT_DEMOS
+	if boot_pause:
+		tree.set_pause(true)
 	_initialize()
-	await get_tree().create_timer(1.0).timeout
-	get_tree().set_pause(false)
+	if boot_pause:
+		await tree.create_timer(1.0).timeout
+		tree.set_pause(false)
 
 func _initialize() -> void:
 	_get_agents()
@@ -265,6 +276,11 @@ func _heuristic_process() -> void:
 		_reset_agents_if_done(agents_heuristic)
 
 func _inference_process() -> void:
+	# Issue #688 (Forms): agents may be freed mid-episode (a figure dies and its
+	# runtime-injected controller goes with it) — prune them before stepping so
+	# the loop never calls into a freed instance.
+	if agents_inference.any(func(a) -> bool: return not is_instance_valid(a)):
+		agents_inference = agents_inference.filter(is_instance_valid)
 	for agent in agents_inference:
 		agent.infer_and_act()
 	_reset_agents_if_done(agents_inference)

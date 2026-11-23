@@ -58,6 +58,12 @@ const SEPARATION := 90.0
 ## avoidance checks are applied probabilistically per shot).
 @export_range(0, 10) var ai_friendly_fire := 0
 
+## Issue #688: the RL policy drives this figure through its runtime-
+## injected BotController child — the scripted AI below stands down
+## (see _control). Set by GameConfig._inject_rl_bots together with the
+## controller attach; authored scenes keep the scripted brain.
+@export var rl_controlled := false
+
 var _target: Node2D
 var _cooldown_left := 0.0
 var _visual: ColorRect
@@ -285,6 +291,24 @@ func _ready() -> void:
 ## old Npc._physics_process, now issuing Character API calls (move/jump)
 ## inside the base's shared tick.
 func _control(delta: float) -> void:
+	# Issue #688: a policy-driven figure (runtime-injected BotController
+	# child) is actuated by that controller's turn executor, which ticks
+	# AFTER this figure in physics order (children after parents) — the
+	# scripted AI must stand down entirely or its own move(0)/aim calls
+	# would clobber the executor's orders before move_and_slide. Off-turn
+	# the figure still plants like every idle figure, with the same
+	# running-drill exception as the inactive branch below (a running
+	# jackhammer owns its velocity until the drill ends).
+	if rl_controlled:
+		var rl_team := TurnController.team_id_of(self)
+		var rl_active: bool = not TurnController.game_over \
+				and TurnController.active_team == rl_team \
+				and TurnController.active_member == self \
+				and not TurnController.is_input_frozen()
+		if not rl_active \
+				and (_weapon == null or not _weapon.is_drilling()):
+			move(0.0)
+		return
 	_cooldown_left = maxf(0.0, _cooldown_left - delta)
 	_jump_left = maxf(0.0, _jump_left - delta)
 	# Issue #65/#121: only the active character of the team on turn may

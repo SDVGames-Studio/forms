@@ -757,6 +757,108 @@ static func apply(level: Node) -> void:
 	# of replaying a stale count.
 	team_size = 0
 	enemy_count = 0
+	# Issue #688: runtime BotController injection — every computer-played
+	# figure receives its RL policy controller for native ncnn inference
+	# (the production deploy path; authored training/eval scenes manage
+	# their own agents and are skipped).
+	_inject_rl_bots(level)
+
+
+## Issue #688: paths of the deployed ncnn policy — retrained on this
+## controller's 54-float observation, heads emitted alphabetically with
+## the argmax baked into the graph (see ActionDecode's compact layout) —
+## plus its VecNormalize sidecar: without the stats the net would read
+## raw, unnormalized floats.
+const RL_MODEL_PARAM := "res://models/policy.ncnn.param"
+const RL_MODEL_BIN := "res://models/policy.ncnn.bin"
+const RL_OBS_NORM_STATS := "res://models/vecnormalize_stats.json"
+
+
+## Issue #688: give every computer-played figure of the level its RL
+## brain — a BotController created in code (the editor's Inspector is
+## bypassed for dynamically spawned characters), pinned to the figure
+## and configured for native ncnn inference, plus ONE NcnnSync in
+## NCNN_INFERENCE mode to step the agents without any Python server.
+## Human-played teams keep their input brain and get no controller.
+static func _inject_rl_bots(level: Node) -> void:
+	# Authored RL scenes (training, eval, the inference demo) instance
+	# their levels UNDER an NcnnSync and manage the agent set themselves
+	# — injecting here would change the training handshake's agent count
+	# and fight the authored controllers. Any level under a sync is left
+	# alone.
+	var ancestor := level.get_parent()
+	while ancestor != null:
+		if ancestor is NcnnSync:
+			return
+		ancestor = ancestor.get_parent()
+	var tree := level.get_tree()
+	if tree == null:
+		return
+	var injected := 0
+	for group in ["player_team", "enemy_team"]:
+		for figure in tree.get_nodes_in_group(group):
+			if figure == null or not (figure is Node2D) \
+					or figure.is_queued_for_deletion() \
+					or not level.is_ancestor_of(figure):
+				continue
+			# Only computer-played SCRIPTED figures (Npc.gd brains) are
+			# policy candidates — a human figure keeps its input brain.
+			if not figure.has_method("_shoot"):
+				continue
+			var controller := "computer"
+			if figure.is_in_group("player_team"):
+				controller = team_controller(0)
+			elif figure.get("team_color") is Color:
+				controller = team_controller_for_color(
+						figure.get("team_color"))
+			if controller != "computer":
+				continue
+			if _attach_rl_bot(figure):
+				injected += 1
+	if injected == 0:
+		return
+	# One sync drives every injected controller: NCNN_INFERENCE steps
+	# the agents natively each action_repeat physics frames. Added AFTER
+	# the bots so its deferred AGENT-group scan finds them all.
+	var sync: NcnnSync = load("res://addons/godot_native_rl/sync.gd").new()
+	sync.name = "NcnnSync"
+	sync.control_mode = NcnnSync.ControlModes.NCNN_INFERENCE
+	level.add_child(sync)
+	DebugInfo.log("RL policy drives %d figures (ncnn inference)" % injected)
+
+
+## Issue #688: attach one BotController to a computer figure and pin it
+## there. The deploy properties are set BEFORE the controller enters the
+## tree — its _ready loads the ncnn runner from these paths; the figure
+## link is the controller's own relative path to its parent figure.
+## Returns false when the deployed policy failed to load — the figure
+## then keeps its scripted AI (a level must stay playable without the
+## net, e.g. a broken or missing models/ pair).
+static func _attach_rl_bot(figure: Node) -> bool:
+	var bot = load("res://scripts/BotController.gd").new()
+	bot.name = "RLBot"
+	bot.control_mode = bot.ControlModes.NCNN_INFERENCE
+	bot.model_param_path = RL_MODEL_PARAM
+	bot.model_bin_path = RL_MODEL_BIN
+	bot.obs_norm_stats_path = RL_OBS_NORM_STATS
+	# A production match ENDS on its win — no framework auto reset may
+	# revive the field or replay the level (BotController.auto_reset).
+	bot.auto_reset = false
+	figure.add_child(bot)
+	var runner = bot.get("_ncnn_runner")
+	if runner == null or not runner.is_model_loaded():
+		# The policy did not load (missing files, an unloadable graph) —
+		# drop the controller and keep the scripted brain: an RL controller
+		# without a net would only idle every turn away.
+		bot.queue_free()
+		return false
+	bot.figure_path = bot.get_path_to(figure)
+	figure.set("rl_controlled", true)
+	# The controller must never outlive its figure: once the figure is
+	# freed, the controller's fallback resolution would latch onto (and
+	# double-drive) a neighbour's figure.
+	figure.tree_exited.connect(bot.queue_free)
+	return true
 
 
 ## Issue #613 ("rework all levels"): the campaign scenes no longer

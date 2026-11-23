@@ -104,6 +104,15 @@ func _part_a_synthetic() -> void:
 
 ## --- Part B: the real click path in Level3 ---------------------------
 func _part_b_level3() -> void:
+	# Issue #688: the level default plays EVERY team by computer — the
+	# hero side's figures are policy-driven and the RL bot spends the
+	# turn's action (a shot locks the tools, issue #207) before this
+	# test can arm the teleport. The click-through checks below drive a
+	# HUMAN member by design, so declare the hero team human up front
+	# (the same override TrainingScene applies for its driven figure).
+	if GameConfig.teams.is_empty():
+		GameConfig.load_teams()
+	GameConfig.teams[0]["controller"] = "player"
 	var level: Node = load("res://scenes/levels/Level3.tscn").instantiate()
 	add_child(level)
 	var tc := get_node("/root/TurnController")
