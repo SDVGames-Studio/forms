@@ -57,7 +57,9 @@ extends Node2D
 ##                    (one diameter = the figure's height, the other =
 ##                    half its width). Five swings per turn, ENDLESS
 ##                    uses (never on the team budget, like the spear).
-## Visuals are plain rectangles built in code — no extra assets.
+## Held-weapon visuals are data-driven: plain rectangles for the tools
+## and melee shapes, hand-drawn cartoon sprites for the redesigned
+## weapons (registry: scripts/WeaponVisuals.gd, issue #680).
 
 const ProjectileScript := preload("res://scripts/Projectile.gd")
 ## Issue #114: rockets and grenades spawn as real rigid bodies.
@@ -408,10 +410,10 @@ static func is_charged_weapon(slot: int) -> bool:
 ## Issue #68: visual of the weapon currently held "in hands".
 var _held: ColorRect
 var _held_style := -1
-## Issue #680: the sprite-rendered held weapon (a textured HELD_STYLES
-## entry — the rocket launcher prototype). One shared node, configured
-## per style in _update_held, positioned and rotated by the aim in
-## _physics_process just like the rectangle above.
+## Issue #680: the sprite-rendered held weapon (a textured registry
+## style — the rocket launcher and the shotgun). One shared node,
+## configured per style in _update_held, positioned and rotated by the
+## aim in _physics_process just like the rectangle above.
 var _held_sprite: Sprite2D
 
 ## Issue #354: true while THIS member is the one acting — the active
@@ -468,33 +470,14 @@ func _held_style_index() -> int:
 		return 11  # entrenching shovel (#656)
 	return selected_weapon
 
-## Issue #68: size and color of the held weapon per selected weapon index.
-## Issue #234: index 4 is the ROCK TOOL held in hands — a gray boulder,
-## shown while the rock tool is armed for this member (see _rock_armed).
-## Issue #680 (roadmap part 1 — weapon art prototype): an entry with a
-## `texture` renders as a centered Sprite2D at the entry's in-game
-## `size` instead of the plain ColorRect fill — the rocket launcher is
-## the prototype of the new cartoon weapon art (bold dark outline, flat
-## vivid fills, shading bands), matching the modular character style.
-## Positioning and rotation ride the aim exactly like every rectangle
-## weapon (see _physics_process) — the sprite is visual only.
-const ROCKET_LAUNCHER_TEX := preload(
-		"res://assets/weapons/rocket_launcher.png")
-const HELD_STYLES: Array = [
-	{"size": Vector2(26, 6), "color": Color(0.95, 0.85, 0.3, 1)},   # shotgun
-	{"size": Vector2(52, 20), "color": Color(0.9, 0.35, 0.15, 1),
-		"texture": ROCKET_LAUNCHER_TEX},  # rocket launcher (#680)
-	{"size": Vector2(12, 12), "color": Color(0.3, 0.7, 0.3, 1)},    # grenade
-	{"size": Vector2(40, 4), "color": Color(0.8, 0.8, 0.9, 1)},     # spear
-	{"size": Vector2(14, 14), "color": Color(0.55, 0.5, 0.45, 1)},  # rock (tool)
-	{"size": Vector2(14, 14), "color": Color(0.22, 0.24, 0.3, 1)},  # mine (#246)
-	{"size": Vector2(10, 18), "color": Color(0.85, 0.85, 0.95, 1)},  # jackhammer (#307)
-	{"size": Vector2(46, 4), "color": Color(0.55, 0.85, 1.0, 1)},   # railgun (#359)
-	{"size": Vector2(18, 6), "color": Color(0.5, 0.55, 0.6, 1)},   # pistol (#526)
-	{"size": Vector2(30, 8), "color": Color(0.85, 0.6, 0.3, 1)},  # baseball bat (#527)
-	{"size": Vector2(16, 16), "color": Color(0.75, 0.78, 0.85, 1)},  # circular saw (#570)
-	{"size": Vector2(22, 8), "color": Color(0.55, 0.42, 0.28, 1)},  # entrenching shovel (#656)
-]
+## Held-weapon VISUALS live in the WeaponVisuals registry (issue #680,
+## roadmap part 2): per-weapon sprite/rectangle, size and hold position as
+## data — see scripts/WeaponVisuals.gd. This file only CONSUMES the table.
+const WeaponVisuals := preload("res://scripts/WeaponVisuals.gd")
+## Issue #68/#680: size, color, sprite and per-weapon hold config per
+## selected weapon index — the WeaponVisuals table (aliased here under the
+## historic name the code and tests use).
+const HELD_STYLES: Array = WeaponVisuals.STYLES
 
 ## Currently selected weapon index (0..5), shared through the inventory HUD.
 var selected_weapon := 0
@@ -508,19 +491,9 @@ var selected_weapon := 0
 ## aim, never by the body visual or the face (a separate sibling node,
 ## see ModularCharacterVisual), so expressions and weapons never affect
 ## each other.
-const HELD_ANCHOR := 32.0
-## Issue #680 rework (owner 2026-11-23): the SPRITE weapon (the drawn
-## launcher) rides LOWER than the bare aim anchor. Its height along
-## the wielder's stance-gravity axis is pulled toward the body's
-## vertical middle: the lift the aim anchor produces is damped
-## (LIFT_KEEP is the fraction kept) and a fixed drop shifts the
-## launcher below the mid line, so the drawn tube reads as held at
-## the waist instead of orbiting the aim up at head height. Visual
-## only — plain rectangle weapons keep the historic anchor, the
-## rotation still follows the aim exactly, and every gameplay number
-## (projectile spawn at _aim() * 36) is untouched.
-const HELD_SPRITE_LIFT_KEEP := 0.4
-const HELD_SPRITE_DROP := 6.0
+## Issue #680 (roadmap part 2): this is the shared DEFAULT anchor — the
+## registry entry of a weapon may override it (WeaponVisuals.anchor).
+const HELD_ANCHOR: float = WeaponVisuals.DEFAULT_ANCHOR
 ## Issue #559: the spearhead position the DAMAGE corridor uses stays at
 ## its authored reach — weapon mechanics are frozen by this issue (no
 ## damage, firing or balance changes). The drawn spear now floats
@@ -534,8 +507,9 @@ func _ready() -> void:
 	_held = ColorRect.new()
 	_held.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_held)
-	# Issue #680: the sprite counterpart for textured styles (rocket
-	# launcher prototype) — configured by the _update_held call below.
+	# Issue #680: the sprite counterpart for textured registry styles
+	# (rocket launcher, shotgun) — configured by the _update_held call
+	# below.
 	_held_sprite = Sprite2D.new()
 	_held_sprite.visible = false
 	add_child(_held_sprite)
@@ -739,7 +713,10 @@ func _physics_process(delta: float) -> void:
 		if _drill_left > 0.0:
 			aim = _drill_dir
 		var style: Dictionary = HELD_STYLES[_held_style_index()]
-		_held.position = aim * HELD_ANCHOR - style["size"] / 2.0
+		# Issue #680 (part 2): per-weapon anchor from the registry (plain
+		# styles resolve to the historic #559 default).
+		var style_anchor := WeaponVisuals.anchor(_held_style_index())
+		_held.position = aim * style_anchor - style["size"] / 2.0
 		# Issue #133: the spear (and every held weapon) rotates to the aim
 		# axis instead of staying parallel to the ground.
 		_held.pivot_offset = style["size"] / 2.0
@@ -804,7 +781,10 @@ func _physics_process(delta: float) -> void:
 		# from the same shared anchor, then moves LOWER and closer to the
 		# body's vertical middle — the launcher's height along the stance
 		# gravity axis becomes lift * LIFT_KEEP - DROP instead of the raw
-		# aim lift (see the constants above). Flat gravity keeps the
+		# aim lift. Issue #680 part 2: the hold values are PER WEAPON in
+		# the registry (WeaponVisuals.lift_keep/drop); the 2026-11-24
+		# owner rework ("a little lower") tightened the launcher's entry
+		# (lift_keep 0.4 -> 0.3, drop 6 -> 9). Flat gravity keeps the
 		# fallback DOWN so the math stays defined before the first tick.
 		if _held_textured():
 			var sprite_pos: Vector2 = _held.position + style["size"] / 2.0
@@ -815,8 +795,8 @@ func _physics_process(delta: float) -> void:
 				grav = grav.normalized()
 				var lift := -sprite_pos.dot(grav)
 				sprite_pos += grav \
-						* (lift * (1.0 - HELD_SPRITE_LIFT_KEEP) \
-						+ HELD_SPRITE_DROP)
+						* (lift * (1.0 - WeaponVisuals.lift_keep(_held_style)) \
+						+ WeaponVisuals.drop(_held_style))
 			_held_sprite.position = sprite_pos
 			_held_sprite.rotation = _held.rotation
 			_held_sprite.flip_v = absf(_held.rotation) > PI / 2.0
@@ -861,6 +841,8 @@ func _update_held() -> void:
 	# in-game size; the ColorRect stays hidden. Everything downstream
 	# (anchor, aim rotation, thrust/swing offsets) is shared with the
 	# rectangle weapons in _physics_process.
+	# Issue #680 part 2: the hold position is PER WEAPON (registry
+	# anchor/drop), not the shared #559 constants.
 	if style.has("texture"):
 		_held.visible = false
 		_held_sprite.visible = _is_acting()
@@ -868,12 +850,14 @@ func _update_held() -> void:
 		_held_sprite.texture = tex
 		_held_sprite.scale = size / Vector2(
 				tex.get_width(), tex.get_height())
-		_held_sprite.position = Vector2(_facing * HELD_ANCHOR,
-				HELD_SPRITE_DROP)
+		_held_sprite.position = Vector2(
+				_facing * WeaponVisuals.anchor(_held_style),
+				WeaponVisuals.drop(_held_style))
 		return
 	_held.visible = true
 	_held.size = size
-	_held.position = Vector2(_facing * HELD_ANCHOR, 0.0) - size / 2.0
+	_held.position = Vector2(_facing * WeaponVisuals.anchor(_held_style),
+			0.0) - size / 2.0
 	_held.color = style["color"]
 
 
