@@ -77,9 +77,11 @@ extends Control
 ## A ring preview follows the nearest edge under the cursor, so the
 ## add spot is discoverable before the click.
 ##
-## Everything snaps to a 32 px grid. Box drags smaller than MIN_PIECE
-## fall back to DEFAULT_SIZE centred on the click, so a single click
-## still places a piece.
+## Everything snaps to a 32 px grid — since issue #699 the SNAP
+## TO GRID toggle (GROUND & VIEW column) can turn that OFF: clicks
+## then land exactly where the cursor sits. The BRUSH shape keeps
+## painting whole grid cells either way (its cells ARE the grid
+## squares it paints).
 
 const IndestructibleGroundScript := preload(
 	"res://scripts/IndestructibleGround.gd")
@@ -164,6 +166,9 @@ var _add_preview := Vector2(-1000, -1000)
 var _view_zoom := 1.0
 var _view_offset := Vector2.ZERO
 var _panning := false
+## Issue #699: whether authoring clicks snap to the 32 px grid (the
+## long-standing default) or land exactly where clicked.
+var _snap_enabled := true
 
 
 func _ready() -> void:
@@ -264,6 +269,19 @@ func set_shape(shape: String) -> void:
 
 func get_shape() -> String:
 	return _shape
+
+
+## Issue #699: the snap-to-grid toggle — on (default) every authoring
+## click snaps to the 32 px grid; off, placements land exactly where
+## clicked (the brush still paints whole grid cells — its cells are
+## its shape).
+func set_snap_enabled(enabled: bool) -> void:
+	_snap_enabled = enabled
+
+
+## Issue #699: is snap-to-grid authoring on right now?
+func is_snap_enabled() -> bool:
+	return _snap_enabled
 
 
 func set_pieces(pieces: Array) -> void:
@@ -751,8 +769,8 @@ func add_point_at(pos: Vector2) -> bool:
 		return false
 	var piece: Dictionary = _pieces[edge[0]]
 	var points := add_point_outline(piece)
-	points.insert(edge[1], (edge[2] as Vector2).snapped(
-		Vector2(SNAP, SNAP)).clamp(Vector2.ZERO, CANVAS_SIZE))
+	points.insert(edge[1], _snap_point(edge[2]).clamp(
+		Vector2.ZERO, CANVAS_SIZE))
 	piece.erase("rect")
 	piece["shape"] = "loop"
 	piece["points"] = points
@@ -836,8 +854,8 @@ func _update_hover_handle(pos: Vector2) -> void:
 	if _hover_piece < 0:
 		var edge := _nearest_edge(pos)
 		if not edge.is_empty():
-			_add_preview = (edge[2] as Vector2).snapped(
-				Vector2(SNAP, SNAP)).clamp(Vector2.ZERO, CANVAS_SIZE)
+			_add_preview = _snap_point(edge[2]).clamp(
+				Vector2.ZERO, CANVAS_SIZE)
 
 
 func _erase_at(pos: Vector2) -> void:
@@ -873,7 +891,15 @@ func _piece_has_point(piece: Dictionary, pos: Vector2) -> bool:
 
 
 func _level_snap_mouse() -> Vector2:
-	return _level_mouse_position().snapped(Vector2(SNAP, SNAP))
+	return _snap_point(_level_mouse_position())
+
+
+## Issue #699: the position an authoring click uses — snapped to the
+## 32 px grid while the toggle is on, the raw click while it is off.
+func _snap_point(pos: Vector2) -> Vector2:
+	if _snap_enabled:
+		return pos.snapped(Vector2(SNAP, SNAP))
+	return pos
 
 
 func _tool_color() -> Color:
@@ -1026,7 +1052,7 @@ func _draw_preview() -> void:
 		return
 	if _hover.x >= 0.0 and _hover.y >= 0.0 \
 			and _hover.x <= CANVAS_SIZE.x and _hover.y <= CANVAS_SIZE.y:
-		var snapped := _hover.snapped(Vector2(SNAP, SNAP))
+		var snapped := _snap_point(_hover)
 		if _tool == "spawn":
 			draw_arc(snapped, 14.0, 0.0, TAU, 40,
 				Color(SPAWN_COLOR, 0.5), 2.0)
@@ -1082,7 +1108,7 @@ func _draw_drag_preview() -> void:
 
 func _draw_pending_preview() -> void:
 	var color := _tool_color()
-	var snapped := _hover.snapped(Vector2(SNAP, SNAP))
+	var snapped := _snap_point(_hover)
 	if _shape == "loop":
 		# Placed vertices, the live segment to the cursor and — from
 		# the third vertex on — the ring that marks the closing click.

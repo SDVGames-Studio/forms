@@ -48,7 +48,9 @@ extends Control
 ## size. The FILE operations (level name, save/load, load from disk,
 ## download) live in a panel pinned to the canvas's BOTTOM-RIGHT
 ## corner; CLEAR, BACK and the status line stay in the slim bar
-## under the canvas. The data model is
+## under the canvas. Issue #699 adds the SNAP TO GRID toggle to the
+## GROUND & VIEW column — off, authoring clicks land exactly where
+## clicked instead of snapping to the 32 px grid. The data model is
 ## deliberately plain ({kind, shape, ...} pieces and {x, y} spawns in
 ## a fixed 1152x648 level space) so CustomLevel.gd can build a real
 ## playable scene from the files.
@@ -89,6 +91,7 @@ const MAX_PICTURE_SIDE := 1152
 @onready var _picture_button: Button = %PictureButton
 @onready var _no_picture_button: Button = %NoPictureButton
 @onready var _reset_view_button: Button = %ResetViewButton
+@onready var _snap_button: Button = %SnapButton
 @onready var _picture_dialog: FileDialog = %PictureDialog
 @onready var _clear_button: Button = %ClearButton
 @onready var _back_button: Button = %BackButton
@@ -141,6 +144,8 @@ func _ready() -> void:
 	_picture_button.pressed.connect(_on_picture_pressed)
 	_no_picture_button.pressed.connect(_on_no_picture_pressed)
 	_reset_view_button.pressed.connect(_on_reset_view_pressed)
+	# Issue #699: SNAP TO GRID — a toggle, on by default.
+	_snap_button.toggled.connect(_on_snap_toggled)
 	_picture_dialog.file_selected.connect(_on_picture_selected)
 	_clear_button.pressed.connect(_on_clear_pressed)
 	_back_button.pressed.connect(_on_back_pressed)
@@ -449,6 +454,15 @@ func _on_load_pressed() -> void:
 func _on_reset_view_pressed() -> void:
 	_canvas.reset_view()
 	_set_status("view reset to the whole map")
+
+
+## Issue #699: SNAP TO GRID — on (the default) every authoring click
+## snaps to the 32 px grid; off, placements land exactly where
+## clicked (the BRUSH still paints whole grid cells — its cells are
+## its shape).
+func _on_snap_toggled(on: bool) -> void:
+	_canvas.set_snap_enabled(on)
+	_set_status("snap to grid %s" % ("on" if on else "off"))
 
 
 func _on_clear_pressed() -> void:

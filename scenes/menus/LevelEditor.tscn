@@ -241,6 +241,15 @@ layout_mode = 2
 theme_override_font_sizes/font_size = 13
 text = "RESET VIEW"
 
+[node name="SnapButton" type="Button" parent="Layout/MainBox/CanvasArea/Palette/PaletteMargin/PaletteColumns/ViewColumn"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(150, 34)
+layout_mode = 2
+theme_override_font_sizes/font_size = 13
+toggle_mode = true
+button_pressed = true
+text = "SNAP TO GRID"
+
 [node name="FilePanel" type="PanelContainer" parent="Layout/MainBox/CanvasArea"]
 layout_mode = 1
 anchors_preset = 3
