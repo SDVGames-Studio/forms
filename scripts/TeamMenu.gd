@@ -8,8 +8,11 @@ extends Control
 ## - The members are shown in a visual window exactly as they look in the
 ##   game (shape figure + team color + name). The leftmost member is the
 ##   first in the team; clicking a figure offers to DELETE that member;
-##   the + button to the right of the rightmost member adds a new one;
-##   clicking a member's name edits it in place.
+##   the + card to the right of the rightmost member adds a new one
+##   (the same size as a member card); clicking a member's name edits it
+##   in place. Issue #394 rework: the row carries FIVE plates — enough
+##   for the whole team at the desktop width — and < > arrows scroll it
+##   whenever the content still overflows (compact viewports).
 ## - The shape picker is graphical: one little figure per shape.
 ## - "Save" persists the whole set to user://team.cfg (GameConfig.teams).
 ##
@@ -23,6 +26,25 @@ extends Control
 ## The default set of teams mirrors the teams that are in the levels.
 
 const SHAPES: Array[String] = ["square", "circle", "triangle", "star", "ellipse"]
+
+## Issue #394 rework (owner 2026-11-24): the team menu fields FIVE
+## characters — the plates are compact enough that five of them (four
+## members plus the "+" card) sit in the row at the desktop width, and
+## the < > arrows scroll the row when the content still overflows
+## (compact viewports). This is a MENU cap only: GameConfig.
+## MAX_TEAM_MEMBERS stays 3 — it pins the staged trio the authored
+## levels field and the RL action space (tests/test_issue422.gd), while
+## the game itself already fields any count the level config deals
+## (MAX_LEVEL_TEAM_MEMBERS).
+const MENU_MAX_TEAM_MEMBERS := 5
+
+## Issue #394 rework: plate metrics shared by the member cards and the
+## "+" card so both plates look exactly the same, and one plate-width
+## scroll step for the < > arrows.
+const PLATE_SQUARE := Vector2(80, 80)
+const PLATE_NAME := Vector2(80, 34)
+const PLATE_FIGURE := Vector2(56, 56)
+const ROW_SEPARATION := 8
 
 ## Palette for new teams — the first two slots match the two teams the
 ## levels are authored with (player yellow, NPC pink).
@@ -53,6 +75,11 @@ var in_game := false
 ## French/Arabic) — the team's teammates' spoken lines follow it.
 @onready var _language: OptionButton = %LanguageSelect
 @onready var _members_row: HBoxContainer = %MembersRow
+## Issue #394 rework: the members row sits in a horizontal scroller
+## driven by the < > arrows (the scrollbar itself stays hidden).
+@onready var _members_scroll: ScrollContainer = %MembersScroll
+@onready var _scroll_left: Button = %ScrollLeft
+@onready var _scroll_right: Button = %ScrollRight
 @onready var _skill: HSlider = %SkillSlider
 @onready var _friendly_fire: HSlider = %FriendlyFireSlider
 @onready var _save_button: Button = %SaveButton
@@ -110,6 +137,15 @@ func _ready() -> void:
 	_back_button.pressed.connect(_on_back_pressed)
 	_delete_dialog.confirmed.connect(_on_delete_confirmed)
 	_build_shape_picker()
+	# Issue #394 rework: the < > arrows scroll the members row; the
+	# arrows re-evaluate whenever the row or its viewport resizes.
+	_scroll_left.pressed.connect(func() -> void: _scroll_members(-1))
+	_scroll_right.pressed.connect(func() -> void: _scroll_members(1))
+	_members_scroll.resized.connect(_update_scroll_arrows)
+	_members_row.resized.connect(_update_scroll_arrows)
+	# The scrollbar's max/page retune AFTER the resize (and silently) —
+	# its `changed` signal is what actually announces a new overflow.
+	_members_scroll.get_h_scroll_bar().changed.connect(_update_scroll_arrows)
 	_refresh_all()
 
 
@@ -255,21 +291,27 @@ func _on_shape_picked(shape: String) -> void:
 
 ## The visual members window: one card per member — the game figure on a
 ## clickable button (click = offer to delete) plus the editable name —
-## and a + button right of the rightmost member.
+## and a + card right of the rightmost member that is the SAME size as
+## the member cards (issue #394 rework). The row lives in a horizontal
+## scroller driven by the < > arrows: five plates fit at the desktop
+## width, compact viewports scroll.
 func _rebuild_members() -> void:
 	_clear_children(_members_row)
 	var team := _team()
 	var names: Array = team["names"]
+	## The + card's name slot must match the members' LineEdit footprint
+	## (the theme may demand more height than PLATE_NAME).
+	var name_min_height := PLATE_NAME.y
 	for i in names.size():
 		var card := VBoxContainer.new()
 		card.alignment = BoxContainer.ALIGNMENT_CENTER
-		card.add_theme_constant_override("separation", 6)
+		card.add_theme_constant_override("separation", 4)
 		var figure := Button.new()
-		figure.custom_minimum_size = Vector2(100, 100)
+		figure.custom_minimum_size = PLATE_SQUARE
 		figure.tooltip_text = "Click to remove this member" \
 				if names.size() > 1 else "A team keeps at least one member"
 		var visual: Control = load("res://scripts/ModularCharacterVisual.gd").new()
-		visual.size = Vector2(72, 72)
+		visual.size = PLATE_FIGURE
 		# Issue #394: center the figure inside its square button (see the
 		# shape-picker note above for why KEEP_SIZE is required).
 		visual.set_anchors_and_offsets_preset(Control.PRESET_CENTER, Control.PRESET_MODE_KEEP_SIZE)
@@ -284,21 +326,62 @@ func _rebuild_members() -> void:
 		name_edit.text = str(names[i])
 		name_edit.max_length = 16
 		name_edit.alignment = HORIZONTAL_ALIGNMENT_CENTER
-		name_edit.custom_minimum_size = Vector2(150, 40)
-		name_edit.add_theme_font_size_override("font_size", 20)
+		name_edit.custom_minimum_size = PLATE_NAME
+		name_edit.add_theme_font_size_override("font_size", 14)
+		name_min_height = maxi(name_min_height,
+				name_edit.get_combined_minimum_size().y)
 		name_edit.text_changed.connect(
 			func(text: String) -> void: _team()["names"][index] = text)
 		card.add_child(figure)
 		card.add_child(name_edit)
 		_members_row.add_child(card)
-	if names.size() < GameConfig.MAX_TEAM_MEMBERS:
+	if names.size() < MENU_MAX_TEAM_MEMBERS:
+		# Issue #394 rework: the + plate mirrors a member plate exactly —
+		# the same square and the same name-slot footprint under it.
+		var plus_card := VBoxContainer.new()
+		plus_card.alignment = BoxContainer.ALIGNMENT_CENTER
+		plus_card.add_theme_constant_override("separation", 4)
 		var plus := Button.new()
 		plus.text = "+"
 		plus.tooltip_text = "Add a member"
-		plus.custom_minimum_size = Vector2(100, 100)
-		plus.add_theme_font_size_override("font_size", 40)
+		plus.custom_minimum_size = PLATE_SQUARE
+		plus.add_theme_font_size_override("font_size", 32)
 		plus.pressed.connect(_on_add_member)
-		_members_row.add_child(plus)
+		var name_slot := Control.new()
+		name_slot.custom_minimum_size = Vector2(PLATE_NAME.x, name_min_height)
+		name_slot.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		plus_card.add_child(plus)
+		plus_card.add_child(name_slot)
+		_members_row.add_child(plus_card)
+	_update_scroll_arrows.call_deferred()
+
+## Issue #394 rework: one arrow click scrolls the row by one plate
+## (plate width + row separation) so the next hidden card slides in.
+## The scrollbar's max_value is the CONTENT width — the scrollable
+## range is max_value - page (the viewport width).
+func _scroll_members(direction: int) -> void:
+	var max_scroll := _max_row_scroll()
+	var step := PLATE_SQUARE.x + ROW_SEPARATION
+	_members_scroll.scroll_horizontal = int(clampf(
+			_members_scroll.scroll_horizontal + direction * step, 0.0,
+			float(max_scroll)))
+	_update_scroll_arrows()
+
+## The farthest the members row can scroll (0 when it all fits).
+func _max_row_scroll() -> int:
+	var bar := _members_scroll.get_h_scroll_bar()
+	return maxi(0, int(round(bar.max_value - bar.page)))
+
+## Issue #394 rework: < disables at the row's left edge, > at its right
+## edge (and both when nothing overflows — five plates fit).
+func _update_scroll_arrows() -> void:
+	if not is_instance_valid(_members_scroll):
+		return
+	var max_scroll := _max_row_scroll()
+	_scroll_left.disabled = max_scroll <= 0 \
+			or _members_scroll.scroll_horizontal <= 0
+	_scroll_right.disabled = max_scroll <= 0 \
+			or _members_scroll.scroll_horizontal >= max_scroll
 
 
 ## Clicking a member's figure asks for confirmation, then deletes it.
@@ -323,10 +406,19 @@ func _on_delete_confirmed() -> void:
 
 func _on_add_member() -> void:
 	var names: Array = _team()["names"]
-	if names.size() >= GameConfig.MAX_TEAM_MEMBERS:
+	if names.size() >= MENU_MAX_TEAM_MEMBERS:
 		return
 	names.append("Member %d" % (names.size() + 1))
 	_rebuild_members()
+	# Issue #394: keep the fresh member in sight — the row scrolls to its
+	# right end so the new plate (and its name field) is on screen.
+	_scroll_to_end.call_deferred()
+
+## Issue #394: jump the members row to its right end (after adding a
+## member the tail is the interesting part).
+func _scroll_to_end() -> void:
+	_members_scroll.scroll_horizontal = _max_row_scroll()
+	_update_scroll_arrows()
 
 
 # ------------------------------------------------------------------- save --
