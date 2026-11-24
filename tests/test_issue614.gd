@@ -6,11 +6,12 @@ extends Node
 ## Asserts:
 ##   - no level scene references LevelFinish.gd / a "Finish" node /
 ##     its collision subresource anymore;
-##   - LevelConfig (the level roots' script) exposes next_scene;
-##   - the campaign chain survived the move: Level -> Level2,
-##     Level2-5 -> Main;
+##   - the chain config is GONE (issue #701): LevelConfig no longer
+##     exposes next_scene and no level scene authors one — a finished
+##     level must never auto-begin a new game;
 ##   - the real win flow: one team alive -> celebration overlay ->
-##     scene advance to the level's authored next_scene.
+##     advance back to the Main menu (a next_scene duck-typed onto the
+##     level root is ignored, never followed).
 ##
 ## Run headless: godot --headless res://tests/test_issue614.tscn
 ## Exit code 0 = pass.
@@ -44,9 +45,10 @@ class Issue614Driver extends Node:
 	signal done(ok: bool)
 
 	const TARGET_SCENE := "res://tests/test_issue614_target.tscn"
+	const MAIN_SCENE := "res://scenes/Main.tscn"
 
-	## Minimal stand-in for a level root: duck-typed next_scene, the same
-	## property TurnController._celebrate_and_advance reads.
+	## Minimal stand-in for a level root: a duck-typed next_scene that
+	## the win flow must IGNORE (issue #701 — no authored advance).
 	class FakeLevel extends Node2D:
 		var next_scene := ""
 
@@ -57,11 +59,11 @@ class Issue614Driver extends Node:
 	func run() -> void:
 		var failures: Array[String] = []
 		_check_scenes(failures)
-		_check_chain(failures)
+		_check_no_chain(failures)
 		await _check_win_flow(failures)
 
 		if failures.is_empty():
-			print("ISSUE614 OK: finish removed, real-win celebration + advance")
+			print("ISSUE614 OK: finish removed, real-win celebration + menu return")
 		else:
 			for f in failures:
 				print("ISSUE614 FAIL: " + f)
@@ -86,31 +88,29 @@ class Issue614Driver extends Node:
 		if FileAccess.file_exists("res://scripts/LevelFinish.gd"):
 			failures.append("scripts/LevelFinish.gd must be deleted")
 
-	func _check_chain(failures: Array[String]) -> void:
+	func _check_no_chain(failures: Array[String]) -> void:
+		# Issue #701: the level chain is gone — a finished level must
+		# never auto-begin a new game, so nothing may configure one.
 		var level_config := load("res://scripts/LevelConfig.gd")
 		var probe: Node2D = level_config.new()
-		var has_prop := false
 		for p in probe.get_property_list():
 			if p["name"] == "next_scene":
-				has_prop = true
-		if not has_prop:
-			failures.append("LevelConfig must expose next_scene")
+				failures.append("LevelConfig must not expose next_scene (issue #701)")
 		probe.free()
 
-		# The chain the Finish nodes used to encode now lives on the roots.
-		var chain := {
-			"res://scenes/levels/Level1.tscn":
-				"res://scenes/levels/Level2.tscn",
-			"res://scenes/levels/Level2.tscn": "res://scenes/Main.tscn",
-			"res://scenes/levels/Level3.tscn": "res://scenes/Main.tscn",
-			"res://scenes/levels/Level4.tscn": "res://scenes/Main.tscn",
-			"res://scenes/levels/Level5.tscn": "res://scenes/Main.tscn",
-		}
-		for path in chain:
-			var text := FileAccess.get_file_as_string(path)
-			var expected := 'next_scene = "%s"' % chain[path]
-			if expected not in text:
-				failures.append("%s must author %s" % [path, expected])
+		var dir := DirAccess.open("res://scenes/levels")
+		if dir == null:
+			failures.append("cannot open res://scenes/levels")
+			return
+		dir.list_dir_begin()
+		var name := dir.get_next()
+		while name != "":
+			if name.ends_with(".tscn"):
+				var path := "res://scenes/levels/" + name
+				var text := FileAccess.get_file_as_string(path)
+				if "next_scene" in text:
+					failures.append("%s must not author next_scene (issue #701)" % path)
+			name = dir.get_next()
 
 	func _check_win_flow(failures: Array[String]) -> void:
 		var tree := get_tree()
@@ -119,6 +119,8 @@ class Issue614Driver extends Node:
 		# A standalone "level" with one living player figure: the enemy
 		# team died out, so the real finish condition is met.
 		var level := FakeLevel.new()
+		# The chain target is still duck-typed onto the root — the win flow
+		# must ignore it (issue #701) and go to the Main menu instead.
 		level.next_scene = TARGET_SCENE
 		level.name = "FakeLevel"
 		level.add_to_group("level")
@@ -163,9 +165,9 @@ class Issue614Driver extends Node:
 				advanced = true
 				break
 		if not advanced:
-			failures.append("the win must advance to the next scene")
-		elif tree.current_scene.scene_file_path != TARGET_SCENE:
-			failures.append("advance target must be the authored next_scene, "
+			failures.append("the win must advance back to the Main menu")
+		elif tree.current_scene.scene_file_path != MAIN_SCENE:
+			failures.append("advance target must be the Main menu (issue #701), "
 				+ "got %s" % tree.current_scene.scene_file_path)
 
 		# Restore the test scene as current so teardown stays tidy.

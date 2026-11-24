@@ -10,7 +10,6 @@
 
 [node name="Level1" type="Node2D" groups=["level"]]
 script = ExtResource("9_lvlcfg")
-next_scene = "res://scenes/levels/Level2.tscn"
 
 [node name="BackgroundLayer" type="CanvasLayer" parent="."]
 layer = -100
