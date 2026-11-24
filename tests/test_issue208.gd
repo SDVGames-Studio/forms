@@ -108,7 +108,7 @@ func _ready() -> void:
 	if members_row.get_child_count() != 2:  # 1 member + the + button
 		failures.append("members window must show + right of the rightmost member, got %d" % members_row.get_child_count())
 	else:
-		(members_row.get_child(1) as Button).pressed.emit()
+		(members_row.get_child(1).get_child(0) as Button).pressed.emit()
 		await get_tree().process_frame
 		if GameConfig.teams[0]["names"].size() != 2 \
 				or str(GameConfig.teams[0]["names"][1]) != "Member 2":
