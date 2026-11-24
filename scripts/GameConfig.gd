@@ -752,9 +752,10 @@ static func apply(level: Node) -> void:
 	if menu_driven:
 		_reconcile_menu_team_sizes(level)
 	# Issue #617 rework v2: the classic counts are ONE-SHOT level-start
-	# parameters — consume them so the next level (a chained next_scene
-	# in the same session) falls back to the configured defaults instead
-	# of replaying a stale count.
+	# parameters — consume them so a later level started in the same
+	# session (issue #701 removed the authored next_scene chain, but any
+	# later start must still be safe) falls back to the configured
+	# defaults instead of replaying a stale count.
 	team_size = 0
 	enemy_count = 0
 	# Issue #688: runtime BotController injection — every computer-played
@@ -951,7 +952,7 @@ static func _ensure_shared_camera(level: Node) -> void:
 		return
 	# Issue #617 rework v2: only a camera INSIDE THIS LEVEL counts — a
 	# dying previous level's camera (freed with queue_free, still alive
-	# in the group until the frame ends — e.g. a chained next_scene
+	# in the group until the frame ends — e.g. any pending scene
 	# transition) must not suppress the new level's own shared camera.
 	for camera in tree.get_nodes_in_group("player_camera"):
 		if is_instance_valid(camera) \

@@ -3,14 +3,6 @@ extends Node2D
 ##
 ## Attached to the root of every playable level; see GameConfig.
 
-## Issue #614: the scene loaded when the level's real finish hits
-## (only one team left standing — TurnController._check_win). This
-## REPLACES the removed Finish trigger area: the campaign chain keeps
-## its authored target (Level -> Level2 -> Main), while levels without
-## an authored chain fall back to the Main menu.
-@export_file("*.tscn") var next_scene: String = ""
-
-
 func _ready() -> void:
 	GameConfig.apply(self)
 	# Issue #367: the night regime is picked in the level

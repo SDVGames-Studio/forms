@@ -27,8 +27,11 @@ const BotController := preload("res://scripts/BotController.gd")
 ## animation, issue #194) — played by _check_win when the real finish
 ## condition hits: exactly one team left standing.
 const CELEBRATION_SCRIPT := preload("res://scripts/Celebration.gd")
-## Issue #614: where a finished level goes when it authored no chain
-## (LevelConfig.next_scene is empty) — back to the Main menu.
+## Issue #614: where a finished level always goes now — back to the
+## Main menu. Issue #701: a finished level must NEVER auto-begin a new
+## game (the old LevelConfig.next_scene chain, e.g. Level1 -> Level2,
+## started the next level by itself) — the player returns to the menu
+## and only HE chooses to start the next game.
 const DEFAULT_NEXT_SCENE := "res://scenes/Main.tscn"
 
 ## Issue #192: default fallback; the configured value lives in
@@ -928,9 +931,11 @@ func _check_win() -> void:
 	_update_controls_visibility()
 	# Issue #614: the Finish trigger area is GONE — the level's real
 	# finish (one team left standing) now plays the celebration overlay
-	# and then advances to the level's authored next scene (LevelConfig.
-	# next_scene, Main menu fallback). A DRAW (nobody left) keeps the
-	# plain spectate ending above — there is no winner to celebrate.
+	# and then returns to the Main menu. Issue #701 removed the authored
+	# next_scene advance: no new game may begin by itself when the level
+	# finishes — the menu is where the player starts the next game. A
+	# DRAW (nobody left) keeps the plain spectate ending above — there is
+	# no winner to celebrate.
 	# The gate on current_scene keeps bot environments out: eval_match
 	# and the training scene instance their levels UNDER a driver scene,
 	# and their episodes must end on their own flow, not a scene change.
@@ -942,12 +947,14 @@ func _check_win() -> void:
 
 ## Issue #614: the finish sequence that replaced the Finish trigger
 ## area — celebration overlay first (the same animation the trigger
-## used, issue #194), then the level's next scene with its own music
+## used, issue #194), then back to the Main menu with its own music
 ## (issue #463 — play_for_level stops on menu paths).
+## Issue #701: the advance target is ALWAYS the Main menu — the old
+## authored next_scene chain (LevelConfig.next_scene, Level1 -> Level2)
+## auto-began a new game the moment a level finished, which the owner
+## forbade. The level configuration's next_scene property is gone too.
 func _celebrate_and_advance() -> void:
-	var next: String = String(_level.get("next_scene"))
-	if next.is_empty():
-		next = DEFAULT_NEXT_SCENE
+	var next: String = DEFAULT_NEXT_SCENE
 	var celebration: CanvasLayer = CELEBRATION_SCRIPT.new()
 	add_child(celebration)
 	await celebration.finished
