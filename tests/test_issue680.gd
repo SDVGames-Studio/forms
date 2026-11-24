@@ -1,30 +1,39 @@
 extends Node
-## Regression check for issue #680 (roadmap part 1 — weapon art
-## prototype): the rocket launcher renders as a hand-drawn cartoon
-## sprite while every gameplay number stays exactly as it was.
+## Regression check for issue #680 (weapon visual redesign roadmap).
 ##
-##  1. STYLE: the rocket's HELD_STYLES entry carries the launcher
-##     texture at the exaggerated in-game size (readable next to the
-##     48 px body) and the sprite is wired to render instead of the
-##     plain ColorRect;
-##  2. AIM: the sprite's rotation follows the aim axis both ways —
-##     right (no flip) and left (flip_v keeps the grip below the
-##     tube), so aiming stays independent of the artwork. Rework
-##     (owner 2026-11-23): the launcher also rides LOWER — its height
-##     along the wielder's stance-gravity axis is damped toward the
-##     body's vertical middle plus a fixed drop, flat AND tilted
-##     stances;
-##  3. MECHANICS: the rocket's speed, damage, quota and the spawned
-##     rigid body are byte-for-byte the pre-#680 values — the sprite
-##     is visual only.
+##  PART 1 (prototype): the rocket launcher renders as a hand-drawn
+##  cartoon sprite while every gameplay number stays exactly as it was.
+##  PART 2 (reusable system): every held-weapon visual now lives in the
+##  WeaponVisuals registry as data — per-weapon sprite, size and hold
+##  position — and the shotgun joins as the SECOND cartoon weapon with
+##  its own sprite and its own hold, proving art swaps touch no weapon
+##  logic. Owner rework 2026-11-24 ("a little lower"): the launcher's
+##  hold sits lower than the 2026-11-23 tuning.
+##
+##  1. REGISTRY: WeaponVisuals.STYLES is the single visual table — the
+##     rocket and shotgun entries carry textures with per-weapon
+##     anchor/lift_keep/drop, every other slot stays a plain rectangle;
+##  2. STYLE: both sprites load at their authored sizes and are wired
+##     to render instead of the plain ColorRect fills;
+##  3. AIM/HOLD: the sprite's rotation follows the aim axis both ways
+##     (flip_v keeps the grip below), and each weapon's hold position
+##     comes from ITS OWN registry values (flat, aimed-up, tilted
+##     stance), the launcher measurably LOWER than the 2026-11-23
+##     rework values;
+##  4. MECHANICS: the rocket's and the shotgun's speeds, damages,
+##     quotas and spawned bodies are byte-for-byte the pre-#680 values
+##     — the sprites are visual only.
 ##
 ## Run headless: godot --headless res://tests/test_issue680.tscn
 ## Exit code 0 = pass.
 
 const WeaponScript := preload("res://scripts/Weapon.gd")
+const WeaponVisualsScript := preload("res://scripts/WeaponVisuals.gd")
+const ProjectileScript := preload("res://scripts/Projectile.gd")
 const ProjectileBodyScript := preload("res://scripts/ProjectileBody.gd")
 
-## Weapon slot order (Weapon.gd): 1 = rocket.
+## Weapon slot order (Weapon.gd): 0 = shotgun, 1 = rocket.
+const WEAPON_SLOT_SHOTGUN := 0
 const WEAPON_SLOT_ROCKET := 1
 
 var failures := 0
@@ -70,23 +79,61 @@ func _spawned_bodies() -> Array:
 	return out
 
 
+## Plain pellet projectiles currently parented to this test root.
+func _spawned_pellets() -> Array:
+	var out: Array = []
+	for child in get_children():
+		if child.get_script() == ProjectileScript:
+			out.append(child)
+	return out
+
+
 func _ready() -> void:
 	await get_tree().physics_frame
 	await get_tree().physics_frame
 
-	# 1) Style: the rocket renders through the launcher sprite.
-	var style: Dictionary = WeaponScript.HELD_STYLES[WEAPON_SLOT_ROCKET]
-	_check(style.has("texture"),
-			"the rocket style must carry the launcher texture (#680)")
-	_check(style["size"] == Vector2(52, 20),
+	# 1) Registry: the visual table moved out of Weapon.gd and carries
+	# per-weapon hold config on the textured entries.
+	_check(WeaponScript.HELD_STYLES == WeaponVisualsScript.STYLES,
+			"Weapon.gd must consume the WeaponVisuals registry (part 2)")
+	var rocket_style: Dictionary = WeaponVisualsScript.STYLES[WEAPON_SLOT_ROCKET]
+	var shotgun_style: Dictionary = WeaponVisualsScript.STYLES[WEAPON_SLOT_SHOTGUN]
+	_check(rocket_style.has("texture") and shotgun_style.has("texture"),
+			"the rocket and shotgun styles must carry their sprites")
+	_check(WeaponVisualsScript.textured(WEAPON_SLOT_ROCKET)
+			and WeaponVisualsScript.textured(WEAPON_SLOT_SHOTGUN),
+			"the registry must report both styles textured")
+	# Per-weapon positioning: each textured entry tunes its own hold.
+	_check(WeaponVisualsScript.anchor(WEAPON_SLOT_SHOTGUN)
+			!= WeaponVisualsScript.anchor(WEAPON_SLOT_ROCKET),
+			"the shotgun and rocket must carry DIFFERENT per-weapon anchors")
+	_check(absf(WeaponVisualsScript.anchor(WEAPON_SLOT_SHOTGUN)
+				- WeaponVisualsScript.STYLES[WEAPON_SLOT_SHOTGUN]["anchor"]) < 0.001
+			and absf(WeaponVisualsScript.drop(WEAPON_SLOT_SHOTGUN)
+				- WeaponVisualsScript.STYLES[WEAPON_SLOT_SHOTGUN]["drop"]) < 0.001,
+			"the registry helpers must return the entry's own hold values")
+	# Plain slots resolve to the shared defaults (the #559 anchor).
+	_check(absf(WeaponVisualsScript.anchor(3) - WeaponScript.HELD_ANCHOR) < 0.001,
+			"a plain style must keep the #559 default anchor (got %s)"
+			% WeaponVisualsScript.anchor(3))
+
+	# 2) Style: both sprites load at their authored sizes.
+	_check(rocket_style["size"] == Vector2(52, 20),
 			"the launcher sprite must sit at the authored in-game size (got %s)"
-			% style["size"])
-	if style.has("texture"):
-		var tex: Texture2D = style["texture"]
+			% rocket_style["size"])
+	_check(shotgun_style["size"] == Vector2(40, 16),
+			"the shotgun sprite must sit at its authored in-game size (got %s)"
+			% shotgun_style["size"])
+	if rocket_style.has("texture"):
+		var tex: Texture2D = rocket_style["texture"]
 		_check(tex != null and tex.get_width() == 208 and tex.get_height() == 80,
 				"the launcher texture must load at its authored 208x80")
+	if shotgun_style.has("texture"):
+		var stex: Texture2D = shotgun_style["texture"]
+		_check(stex != null and stex.get_width() == 160 and stex.get_height() == 64,
+				"the shotgun texture must load at its authored 160x64")
 
-	# The sprite is wired: textured style shows the Sprite2D, not the rect.
+	# Both sprites are wired: textured styles show the Sprite2D, not the rect.
 	var gun := _make_weapon(Vector2(1, 0))
 	gun.selected_weapon = WEAPON_SLOT_ROCKET
 	gun._update_held()
@@ -98,10 +145,22 @@ func _ready() -> void:
 			% gun._held_sprite.scale)
 	_check(not gun._held.visible,
 			"the plain ColorRect must stay hidden for the textured style")
+	var boomstick := _make_weapon(Vector2(1, 0))
+	boomstick.selected_weapon = WEAPON_SLOT_SHOTGUN
+	boomstick._update_held()
+	_check(boomstick._held_sprite.texture != null
+			and boomstick._held_sprite.texture != gun._held_sprite.texture,
+			"the shotgun must render through its OWN sprite")
+	_check(absf(boomstick._held_sprite.scale.x - 0.25) < 0.001,
+			"the 160x64 texture must scale to the 40x16 in-game size (got %s)"
+			% boomstick._held_sprite.scale)
+	_check(not boomstick._held.visible,
+			"the ColorRect must stay hidden for the shotgun too")
 	gun.get_parent().queue_free()
+	boomstick.get_parent().queue_free()
 	await get_tree().physics_frame
 
-	# 2) Aim: the sprite rides the aim axis — right, then left (flip_v).
+	# 3) Aim/hold: the launcher rides the aim axis — right, then left.
 	var aimer := _make_weapon(Vector2(1, 0))
 	aimer.selected_weapon = WEAPON_SLOT_ROCKET
 	await get_tree().physics_frame
@@ -111,43 +170,41 @@ func _ready() -> void:
 			% aimer._held_sprite.rotation)
 	_check(not aimer._held_sprite.flip_v,
 			"aiming right must not flip the launcher")
-	_check(aimer._held_sprite.position.length() >= WeaponScript.HELD_ANCHOR - 0.5,
-			"the sprite must float at the held anchor, clear of the body")
-	# Issue #680 rework (owner 2026-11-23): the launcher sits LOWER —
-	# at a flat horizontal aim its height is exactly the fixed drop
-	# below the stance mid line, not the old on-axis anchor.
-	_check(absf(aimer._held_sprite.position.x - WeaponScript.HELD_ANCHOR) < 0.1,
-			"the horizontal reach must stay at the held anchor (got %s)"
+	var rocket_anchor := WeaponVisualsScript.anchor(WEAPON_SLOT_ROCKET)
+	var rocket_lift_keep := WeaponVisualsScript.lift_keep(WEAPON_SLOT_ROCKET)
+	var rocket_drop := WeaponVisualsScript.drop(WEAPON_SLOT_ROCKET)
+	_check(absf(aimer._held_sprite.position.x - rocket_anchor) < 0.1,
+			"the horizontal reach must stay at the per-weapon anchor (got %s)"
 			% aimer._held_sprite.position.x)
-	_check(absf(aimer._held_sprite.position.y - WeaponScript.HELD_SPRITE_DROP) < 0.1,
+	_check(absf(aimer._held_sprite.position.y - rocket_drop) < 0.1,
 			"a flat aim must drop the launcher below the mid line (got %s)"
 			% aimer._held_sprite.position.y)
-	# Aiming 45 degrees up: the old anchor lifted the launcher 22.6 px
-	# along gravity; the rework keeps it within a few px of the body's
-	# vertical middle (lift * LIFT_KEEP - DROP = 9.05 - 6 = 3.05 up).
+	# Owner rework 2026-11-24 ("a little lower"): measurably lower than
+	# the 2026-11-23 tuning (lift_keep 0.4, drop 6) in EVERY pose.
+	_check(rocket_lift_keep < 0.4 and rocket_drop > 6.0,
+			"the launcher must hold LOWER than the 2026-11-23 rework values")
+	# Aiming 45 degrees up: the launcher's height along stance gravity is
+	# lift * lift_keep - drop, near (or below) the body's vertical middle.
 	(aimer.get_parent() as AimShooter).aim = Vector2(1, -1).normalized()
 	await get_tree().physics_frame
 	await get_tree().physics_frame
 	var lifted: float = -aimer._held_sprite.position.dot(Vector2.DOWN)
-	_check(absf(lifted - (WeaponScript.HELD_ANCHOR * sqrt(0.5)
-				* WeaponScript.HELD_SPRITE_LIFT_KEEP
-				- WeaponScript.HELD_SPRITE_DROP)) < 0.1,
-			"an aimed-up launcher must stay near the vertical middle (got %s px up)"
+	_check(absf(lifted - (rocket_anchor * sqrt(0.5) * rocket_lift_keep
+				- rocket_drop)) < 0.1,
+			"an aimed-up launcher must follow the damped-lift formula (got %s px up)"
 			% lifted)
 	_check(lifted < WeaponScript.HELD_ANCHOR * 0.25,
 			"the damped lift must stay far below the raw anchor lift")
 	# A TILTED stance (gravity down-right 45 degrees) drops along the
-	# stance axis, not the world axis: height along stance gravity is
-	# lift * LIFT_KEEP - DROP with lift = anchor . (up-along-stance).
+	# stance axis, not the world axis.
 	(aimer.get_parent() as AimShooter).aim = Vector2(1, 0)
 	(aimer.get_parent() as AimShooter).grav = Vector2(1, 1).normalized()
 	await get_tree().physics_frame
 	await get_tree().physics_frame
 	var stance_g := (aimer.get_parent() as AimShooter).grav
 	var stance_h: float = -aimer._held_sprite.position.dot(stance_g)
-	_check(absf(stance_h - (-WeaponScript.HELD_ANCHOR * sqrt(0.5)
-				* WeaponScript.HELD_SPRITE_LIFT_KEEP
-				- WeaponScript.HELD_SPRITE_DROP)) < 0.1,
+	_check(absf(stance_h - (-rocket_anchor * sqrt(0.5) * rocket_lift_keep
+				- rocket_drop)) < 0.1,
 			"a tilted stance must measure the drop along the stance axis (got %s)"
 			% stance_h)
 	(aimer.get_parent() as AimShooter).grav = Vector2.DOWN
@@ -162,7 +219,26 @@ func _ready() -> void:
 	aimer.get_parent().queue_free()
 	await get_tree().physics_frame
 
-	# 3) Mechanics: every rocket number is the pre-#680 value.
+	# The shotgun rides ITS OWN hold values (per-weapon positioning).
+	var hunter := _make_weapon(Vector2(1, 0))
+	hunter.selected_weapon = WEAPON_SLOT_SHOTGUN
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	_check(absf(wrapf(hunter._held_sprite.rotation, -PI, PI)) < 0.01,
+			"the shotgun must follow the aim axis (got %s rad)"
+			% hunter._held_sprite.rotation)
+	_check(absf(hunter._held_sprite.position.x
+				- WeaponVisualsScript.anchor(WEAPON_SLOT_SHOTGUN)) < 0.1,
+			"the shotgun's horizontal reach must use ITS anchor (got %s)"
+			% hunter._held_sprite.position.x)
+	_check(absf(hunter._held_sprite.position.y
+				- WeaponVisualsScript.drop(WEAPON_SLOT_SHOTGUN)) < 0.1,
+			"a flat aim must drop the shotgun by ITS drop (got %s)"
+			% hunter._held_sprite.position.y)
+	hunter.get_parent().queue_free()
+	await get_tree().physics_frame
+
+	# 4) Mechanics: every rocket and shotgun number is the pre-#680 value.
 	_check(WeaponScript.ROCKET_SPEED == 700.0,
 			"the rocket speed must stay 700 px/s")
 	_check(WeaponScript.ROCKET_DAMAGE == 35,
@@ -187,13 +263,42 @@ func _ready() -> void:
 				"the rocket keeps its damage and blast radius")
 		rocket.queue_free()
 	shooter2.get_parent().queue_free()
+	await get_tree().physics_frame
+
+	_check(WeaponScript.PELLET_SPEED == 900.0,
+			"the pellet speed must stay 900 px/s")
+	_check(WeaponScript.PELLET_LIFETIME == 0.5,
+			"the pellet lifetime must stay 0.5 s")
+	_check(WeaponScript.PELLET_DAMAGE == 6,
+			"the pellet damage must stay 6")
+	_check(WeaponScript.SHOTS_PER_TURN[WEAPON_SLOT_SHOTGUN] == 2,
+			"the shotgun keeps its two shots per turn")
+	var shooter3 := _make_weapon(Vector2(1, 0))
+	shooter3.selected_weapon = WEAPON_SLOT_SHOTGUN
+	shooter3._fire_shotgun()
+	var pellets := _spawned_pellets()
+	_check(pellets.size() == 5,
+			"a shotgun volley must still spawn its 5 pellets (got %d)"
+			% pellets.size())
+	var fanned := 0
+	for pellet in pellets:
+		if (pellet as Area2D).velocity != Vector2(
+				WeaponScript.PELLET_SPEED, 0.0):
+			fanned += 1
+	_check(fanned >= 4,
+			"the shotgun must keep fanning its pellets around the aim (%d of 5)"
+			% fanned)
+	for pellet in pellets:
+		pellet.queue_free()
+	shooter3.get_parent().queue_free()
+	await get_tree().physics_frame
 
 	# The other weapons keep their plain rectangle fills.
-	for slot in WeaponScript.HELD_STYLES.size():
-		if slot == WEAPON_SLOT_ROCKET:
+	for slot in WeaponVisualsScript.STYLES.size():
+		if slot == WEAPON_SLOT_SHOTGUN or slot == WEAPON_SLOT_ROCKET:
 			continue
-		_check(not WeaponScript.HELD_STYLES[slot].has("texture"),
-				"slot %d must keep its plain rectangle fill (#680 only touches the rocket)"
+		_check(not WeaponVisualsScript.STYLES[slot].has("texture"),
+				"slot %d must keep its plain rectangle fill (#680 parts 1-2 only touch the rocket and shotgun)"
 				% slot)
 
 	if failures > 0:
