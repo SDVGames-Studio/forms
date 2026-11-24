@@ -9,12 +9,12 @@ Main reference: Worms: Armageddon.
 - Open the project in the Godot editor and press Play, or run `godot --path .`
   (main scene: `Main.tscn`).
 - Headless verification for this repo uses local Godot 4.7.2
-  (`godot --headless --import`) — see `TOOLCHAIN-TEST.md`.
+  (`godot --headless --import`) — see `docs/development/TOOLCHAIN-TEST.md`.
 
 ## Godot Native RL (ncnn) readiness — confirmed 2026-11-06
 
 The full train → export → convert → deploy pipeline, with pinned tool versions,
-lives in [`DEPLOYMENT.md`](DEPLOYMENT.md).
+lives in [`DEPLOYMENT.md`](docs/deployment/DEPLOYMENT.md).
 
 - **Engine requirement met.** The Godot Native RL GDExtension requires Godot
   **4.5+** (`compatibility_minimum = "4.5"` in
@@ -29,7 +29,7 @@ lives in [`DEPLOYMENT.md`](DEPLOYMENT.md).
 Export presets configured in `export_presets.cfg`: **Linux, Windows Desktop,
 Web, Android** (`com.sdvgames.forms`), plus the **Training (Linux)** preset
 that builds the trainer-subprocess binary at `builds/training/` (issue #465,
-see `DEPLOYMENT.md` §2). macOS has no preset today.
+see `docs/deployment/DEPLOYMENT.md` §2). macOS has no preset today.
 
 Committed GDExtension binaries: **Linux x86_64 only**
 (`addons/godot_native_rl/bin/`, debug + release, self-contained,

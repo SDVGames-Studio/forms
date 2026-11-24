@@ -336,7 +336,7 @@ Do not assume that a desktop-oriented layout will work on mobile. Adapt the comp
 
 ## 10. Game design constraints
 
-The implementation must respect `GAME_DESIGN_RULES.md` and `AGENTS.md`.
+The implementation must respect `GAME_DESIGN_RULES.md` (now at `docs/design/GAME_DESIGN_RULES.md`) and `AGENTS.md`.
 
 In particular:
 
@@ -398,7 +398,7 @@ If an existing requirement conflicts with this specification, stop and request c
 
 Before changing code:
 
-1. Read `AGENTS.md`, `GAME_DESIGN_RULES.md`, and this specification.
+1. Read `AGENTS.md`, `docs/design/GAME_DESIGN_RULES.md`, and this specification.
 2. Inspect the existing main menu, settings screens, scene transitions, autoloads, and game state.
 3. Identify which existing scenes and scripts will be reused.
 4. Identify all new scenes, scripts, and resources.

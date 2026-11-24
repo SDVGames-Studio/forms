@@ -2,7 +2,7 @@
 
 This guide describes how an agent (or any contributor) works in this repo:
 project layout, conventions, branch/PR rules, and the verification bar a
-change must clear. Game design rules live in `GAME_DESIGN_RULES.md`.
+change must clear. Game design rules live in `docs/design/GAME_DESIGN_RULES.md`.
 
 ## Project
 
