@@ -19,6 +19,8 @@ extends Node
 ## overlap or share a boundary become ONE loop shape (driven
 ## directly and through a brush stroke's cells); different kinds
 ## and point-only touches never unite.
+## Issue #699: the SNAP TO GRID toggle — default on, the GROUND & VIEW
+## button turning it off, and free (unsnapped) authoring clicks.
 ##
 ## Run headless: godot --headless res://tests/test_level_editor_ui.tscn
 ## Exit code 0 = pass; the printed LEVELEDITOR ok= verdict is
@@ -120,7 +122,7 @@ class LevelEditorDriver extends Node:
 				"FileNameEdit", "SaveButton", "LoadButton", "FileSelect",
 				"ClearButton", "BackButton", "StatusText",
 				"PictureButton", "NoPictureButton", "ResetViewButton",
-				"PictureDialog"]:
+				"PictureDialog", "SnapButton"]:
 			var found: Node = editor.get_node_or_null("%" + unique)
 			print("LEVELEDITOR node ", unique, " ok=", found != null)
 			ok = ok and found != null
@@ -278,6 +280,46 @@ class LevelEditorDriver extends Node:
 			and canvas.get_pieces().size() == 4
 		print("LEVELEDITOR edit_add_points=", add_ok)
 		ok = ok and add_ok
+
+		# --- Issue #699: the SNAP TO GRID toggle — on (the default) an
+		# authoring click snaps to the 32 px grid; the button turns it
+		# off and the same click then lands exactly where it happened
+		# (the brush keeps painting whole grid cells either way — its
+		# cells are its shape). ---
+		var snap_ok: bool = canvas.is_snap_enabled()
+		canvas.set_pieces([
+			{"kind": "indestructible", "shape": "loop",
+				"points": PackedVector2Array([Vector2(500, 100),
+					Vector2(600, 100), Vector2(600, 200)])}])
+		# default ON: the add-point click on the loop's right edge
+		# snaps (600/150 lands on 608/160).
+		snap_ok = snap_ok and canvas.add_point_at(Vector2(600, 150))
+		var snapped_loop: Dictionary = canvas.get_pieces()[0]
+		snap_ok = snap_ok and (snapped_loop["points"] \
+				as PackedVector2Array) \
+			== PackedVector2Array([Vector2(500, 100), Vector2(600, 100),
+					Vector2(608, 160), Vector2(600, 200)])
+		# the SNAP TO GRID button toggles the canvas off — the click
+		# then inserts the RAW edge point (600, 150).
+		var snap_button := editor.get_node("%SnapButton") as BaseButton
+		snap_ok = snap_ok and snap_button.button_pressed
+		snap_button.set_pressed_no_signal(false)
+		snap_button.toggled.emit(false)
+		snap_ok = snap_ok and not canvas.is_snap_enabled()
+		canvas.set_pieces([
+			{"kind": "indestructible", "shape": "loop",
+				"points": PackedVector2Array([Vector2(500, 100),
+					Vector2(600, 100), Vector2(600, 200)])}])
+		snap_ok = snap_ok and canvas.add_point_at(Vector2(600, 150))
+		var free_loop: Dictionary = canvas.get_pieces()[0]
+		snap_ok = snap_ok and (free_loop["points"] as PackedVector2Array) \
+			== PackedVector2Array([Vector2(500, 100), Vector2(600, 100),
+					Vector2(600, 150), Vector2(600, 200)])
+		# and back on through the canvas API.
+		canvas.set_snap_enabled(true)
+		snap_ok = snap_ok and canvas.is_snap_enabled()
+		print("LEVELEDITOR snap_toggle=", snap_ok)
+		ok = ok and snap_ok
 
 		# --- Issue #675: the view CAMERA — the wheel zooms toward the
 		# cursor (clamped; zoomed out the map CENTERS, so the offset
