@@ -27,7 +27,7 @@ import random
 import re
 import sys
 
-REPO = os.path.dirname(os.path.abspath(__file__))
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 class MultiDiscreteReplica:
@@ -63,7 +63,7 @@ def parse_trainingbot_heads():
 
 
 def parse_spec_heads():
-    src = open(os.path.join(REPO, "ACTION_SPEC.md"), encoding="utf-8").read()
+    src = open(os.path.join(REPO, "docs/ai/ACTION_SPEC.md"), encoding="utf-8").read()
     m = re.search(r"## 1\. `TrainingBot\.gd`.*?(?=\n## )", src, re.S)
     if not m:
         sys.exit("FAIL: could not locate section 1 of ACTION_SPEC.md")
