@@ -20,6 +20,11 @@ extends Node
 ##   PROCESS_MODE_ALWAYS through its pause (pan/zoom keep working)
 ##   and restores the mode after; it also joins the "spawn_chooser"
 ##   group so ZoomCamera can fall placement clicks through.
+## - Global camera default (owner rework 2026-11-24, "make the global
+##   camera a default cam mode"): the phase flips the shared camera
+##   MODE to GLOBAL for the placement — a follow camera chased the
+##   cursor-snapped figure off the level — and restores the mode the
+##   player had (both when the last figure is placed and on cancel).
 ## - Rework (owner 2026-11-20, "this regime doesn't work"): with the
 ##   #617-rework-v2 ALL-COMPUTER default the chooser still engages —
 ##   the hand on the mouse places the first team whether the team
@@ -42,6 +47,7 @@ class DummyFigure extends Node2D:
 
 const IndestructibleScript := preload(
 	"res://scripts/IndestructibleGround.gd")
+const ZoomCameraScript := preload("res://scripts/ZoomCamera.gd")
 
 ## Wide, thick floor: 3200x400, top surface at y=400.
 const FLOOR_W := 3200.0
@@ -99,6 +105,10 @@ func _ready() -> void:
 	level.add_child(camera)
 	add_child(level)
 	var players: Array = _players(level)
+	# Owner rework 2026-11-24: the player sat on a FOLLOW camera type
+	# (character global) before the level — the phase must default to
+	# GLOBAL and hand the follow type back afterwards.
+	ZoomCameraScript.camera_mode = ZoomCameraScript.MODE_STATIC
 	GameConfig.spawn_regime = SpawnRegime.REGIME_CHOOSE
 	SpawnRegime.apply(level)
 	await _tick(8)
@@ -112,6 +122,9 @@ func _ready() -> void:
 			failed = true
 		if camera.process_mode != Node.PROCESS_MODE_ALWAYS:
 			_fail("camera stayed frozen during the choose phase")
+			failed = true
+		if ZoomCameraScript.camera_mode != ZoomCameraScript.MODE_GLOBAL:
+			_fail("choose phase did not default the camera to GLOBAL")
 			failed = true
 		if not chooser.is_in_group("spawn_chooser"):
 			_fail("chooser is not in the spawn_chooser group")
@@ -142,6 +155,9 @@ func _ready() -> void:
 			failed = true
 		if camera.process_mode != Node.PROCESS_MODE_PAUSABLE:
 			_fail("camera process mode not restored after the phase")
+			failed = true
+		if ZoomCameraScript.camera_mode != ZoomCameraScript.MODE_STATIC:
+			_fail("camera MODE not restored after the phase")
 			failed = true
 		if level.get_node_or_null("SpawnChooser") != null:
 			_fail("chooser still on the level after finishing")
@@ -178,6 +194,9 @@ func _ready() -> void:
 		await _tick(4)
 		if get_tree().paused:
 			_fail("cancel did not lift the pause")
+			failed = true
+		if ZoomCameraScript.camera_mode != ZoomCameraScript.MODE_STATIC:
+			_fail("camera MODE not restored after cancel")
 			failed = true
 		var placed2 := _players(level2)
 		if placed2.is_empty() \
@@ -259,6 +278,7 @@ func _ready() -> void:
 	# --- Restore the world the test found. ---
 	GameConfig.teams = saved_teams
 	GameConfig.spawn_regime = SpawnRegime.REGIME_DESIGNER
+	ZoomCameraScript.camera_mode = ZoomCameraScript.MODE_GLOBAL
 	get_tree().paused = false
 	if failed:
 		print("ISSUE547 ok=0")

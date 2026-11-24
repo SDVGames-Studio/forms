@@ -28,7 +28,16 @@ extends Node2D
 ##   player_camera runs PROCESS_MODE_ALWAYS for the phase, so the
 ##   view can be panned and zoomed while placing figures — the
 ##   placement LEFT clicks and taps fall through ZoomCamera to the
-##   chooser, the right button pans and the wheel/± zoom.
+##   chooser, the right button pans and the wheel/± zoom;
+## - the GLOBAL camera is the phase's default cam mode (owner rework
+##   2026-11-24, "make the global camera a default cam mode"): the
+##   figure being placed follows the cursor, and a follow camera
+##   chased it off the level. The shared mode goes GLOBAL for the
+##   placement — nobody is followed, only the player's pans and
+##   zooms move the view — and the mode the player had is restored
+##   when the phase ends (a follow type re-anchors on its figure,
+##   the #552 type-change rule, so the first turn starts with the
+##   classic view).
 ##
 ## Only the FIRST team is placed by hand. Rework (owner 2026-11-20):
 ## the chooser runs whatever plays the team — since the #617 rework
@@ -46,7 +55,12 @@ extends Node2D
 ##
 ## SpawnRegime's constants are mirrored locally (tests do the same)
 ## instead of referencing the class back — that would be a cyclic
-## script reference.
+## script reference. ZoomCamera is safe to reference (it discovers
+## this phase through the "spawn_chooser" GROUP, never through the
+## script — no cycle).
+
+## The shared zoom camera's mode handling (owner rework 2026-11-24).
+const ZoomCameraScript := preload("res://scripts/ZoomCamera.gd")
 
 ## How far below the click a floor may sit: the figure drops onto the
 ## first surface beneath the cursor, anywhere within this reach.
@@ -87,6 +101,10 @@ var _label: Label = null
 ## Cameras flipped to PROCESS_MODE_ALWAYS for the phase, each with the
 ## mode it had before — restored the moment the pause lifts.
 var _cameras: Array = []
+## Owner rework 2026-11-24: the shared camera MODE the phase started
+## with (-1 = not taken) — the phase defaults to the GLOBAL camera and
+## gives the player's mode back when it ends.
+var _camera_mode := -1
 
 
 func _ready() -> void:
@@ -277,16 +295,31 @@ func _unblock_cameras() -> void:
 			continue
 		_cameras.append([camera, camera.process_mode])
 		camera.process_mode = Node.PROCESS_MODE_ALWAYS
+	# Owner rework 2026-11-24 ("make the global camera a default cam
+	# mode"): the placed figure is snapped to the cursor, and a follow
+	# camera (character global/local) chased it — the view drifted
+	# away from the level with the cursor. The GLOBAL type follows
+	# NOBODY, so the level stays put and the #678 pan/zoom is all that
+	# moves the view. The camera-type switch button is hidden while
+	# the tree is paused (#353), so nothing can fight the phase for
+	# the mode; the player's own mode returns when it lifts.
+	_camera_mode = ZoomCameraScript.camera_mode
+	ZoomCameraScript.camera_mode = ZoomCameraScript.MODE_GLOBAL
 
 
 ## The phase ends — every camera gets back the process mode it had
-## before (cameras freed with a swapped-out level are skipped).
+## before (cameras freed with a swapped-out level are skipped), and
+## the shared camera MODE the player had before the phase returns
+## (a follow type re-anchors on its figure, the #552 rule).
 func _restore_cameras() -> void:
 	for entry in _cameras:
 		var camera := entry[0] as Node
 		if camera != null and is_instance_valid(camera):
 			camera.process_mode = entry[1]
 	_cameras = []
+	if _camera_mode != -1:
+		ZoomCameraScript.camera_mode = _camera_mode
+		_camera_mode = -1
 
 
 ## A standing spot must be free of terrain AND still have its floor
