@@ -66,6 +66,13 @@ var _teleport_player: AudioStreamPlayer
 
 var _used: Dictionary = {}
 
+## Issue #690 rework (owner 2026-11-24): the Talk pick's VISUAL HINT —
+## while the Talk tool is armed, a cursor over a figure the click
+## would pick (the same _figure_at pick) shows a POINTING HAND. Set
+## only by mouse motion below and dropped by _process the moment the
+## tool disarms on ANY path (toggle, click, turn reset, weapon fire).
+var _talk_cursor_hint := false
+
 func _ready() -> void:
 	# Issue #475: build the teleport player once — the autoload persists
 	# for the whole session, so the player does too.
@@ -295,6 +302,32 @@ func can_use_now(tool: int) -> bool:
 	return _can_use(member, tool)
 
 
+func _process(_delta: float) -> void:
+	# Issue #690 rework: the pointing hand exists only while the Talk
+	# pick is armed. Every disarm path clears armed_tool, so a single
+	# guard here restores the plain arrow cursor without touching any
+	# of them — and it is a no-op (one comparison) whenever the hint is
+	# not showing.
+	if _talk_cursor_hint and armed_tool != TOOL_TALK:
+		_talk_cursor_hint = false
+		Input.set_default_cursor_shape(Input.CURSOR_ARROW)
+
+
+## Issue #690 rework: set the Talk hover hint from a MOUSE position in
+## the world — the pointing hand when the armed click would start a
+## dialogue with the figure under the cursor, the plain arrow over
+## everything else (the pick has the same tolerance as the click).
+func _update_talk_cursor_hint(world: Vector2) -> void:
+	var talker: Node = TurnController.active_member
+	if talker != null and is_instance_valid(talker) and talker is Node2D:
+		_talk_cursor_hint = _figure_at(world, talker as Node2D) != null
+	else:
+		_talk_cursor_hint = false
+	Input.set_default_cursor_shape(
+			Input.CURSOR_POINTING_HAND if _talk_cursor_hint
+			else Input.CURSOR_ARROW)
+
+
 func _unhandled_input(event: InputEvent) -> void:
 	# Issue #306 rework: the N/P keys change the character only while the
 	# Switch tool is CHOSEN (armed via slot/key 5) — without the tool
@@ -311,6 +344,15 @@ func _unhandled_input(event: InputEvent) -> void:
 			get_viewport().set_input_as_handled()
 			use_tool(i)
 			return
+	# Issue #690 rework (owner 2026-11-24): the hover hint — while the
+	# Talk pick is armed, moving the cursor over a figure turns the
+	# cursor into a POINTING HAND (over anything else, the plain arrow).
+	# Motion is NEVER consumed here: the camera pan drag, zoom and every
+	# other motion consumer keep working while the pick is armed.
+	if armed_tool == TOOL_TALK and event is InputEventMouseMotion:
+		_update_talk_cursor_hint(
+				get_viewport().get_canvas_transform().affine_inverse()
+				* event.position)
 	# Armed teleport: the next left click inside a level is the destination.
 	if armed_tool == TOOL_TELEPORT and event is InputEventMouseButton \
 			and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
