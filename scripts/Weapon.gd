@@ -624,7 +624,19 @@ func _physics_process(delta: float) -> void:
 			var grav: Vector2 = parent.current_gravity()
 			if grav.length_squared() > 0.5:
 				tangent = Vector2(grav.y, -grav.x)
+		# Issue #700: the walk direction is the brain's COMMAND
+		# (walk_command — the clamped axis move() received), not the raw
+		# velocity. On curved ground the slide after releasing the walk
+		# key leaves a one-tick BACKWARDS tangential velocity
+		# (move_and_slide converts the leftover along-gravity component
+		# into tangent motion on a tilted floor) and the figure turned on
+		# its own the moment D/A was released. The ground's shape must
+		# never flip a figure — only a player/computer walk order may.
+		# Parents without the accessor (plain test bodies) keep the
+		# velocity fallback below.
 		var walk := parent.velocity.dot(tangent)
+		if parent.has_method("walk_command"):
+			walk = float(parent.walk_command())
 		if walk != 0.0:
 			new_facing = signf(walk)
 	# Issue #293: no authored gravity sign to track anymore — the aim frame

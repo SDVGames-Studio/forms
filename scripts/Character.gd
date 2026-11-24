@@ -94,6 +94,12 @@ var _bar_fill: ColorRect
 ## state (see CharacterAnimator.gd). Never touches physics or input.
 var _animator: CharacterAnimator = null
 
+## Issue #700: the walk axis the brain last commanded along the gravity
+## frame's tangent (move()'s clamped argument; 0.0 = planted). Weapon
+## faces the figure by this COMMAND, not by the physical velocity —
+## only the player/computer can turn a figure to the opposite side.
+var _walk_command := 0.0
+
 ## Issue #151: health 0 means DEAD — flagged immediately so win checks
 ## stop counting this figure before its death animation frees the node.
 var _dead := false
@@ -129,6 +135,16 @@ func current_gravity() -> Vector2:
 ## along the same continuous axis the figure walks and aims on.
 func current_tangent() -> Vector2:
 	return _aim_tangent
+
+
+## Issue #700: the walk axis the brain last commanded through move()
+## (0.0 = planted). The figure's facing (Weapon._facing) follows THIS,
+## never the raw velocity — on curved ground move_and_slide's slide
+## after a key release leaves a one-tick BACKWARDS tangential velocity
+## and the figure turned on its own. Ground shape never flips a figure;
+## only a player/computer walk order may.
+func walk_command() -> float:
+	return _walk_command
 
 
 ## Issue #518 rework: refresh the gravity frame right after a DISCRETE
@@ -457,6 +473,9 @@ func _on_dying() -> void:
 ## survives — the exact old "stand" behavior).
 func move(horizontal_axis: float) -> void:
 	var axis := clampf(horizontal_axis, -1.0, 1.0)
+	# Issue #700: record the commanded walk axis — the facing source
+	# (see walk_command).
+	_walk_command = axis
 	velocity = _aim_tangent * axis * _move_speed() \
 			+ _aim_grav * velocity.dot(_aim_grav)
 
