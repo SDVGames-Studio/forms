@@ -25,6 +25,13 @@ extends RefCounted
 ##   spot is validated exactly like the sampler's — floor under
 ##   local gravity + clearance), then the game runs. Computer and
 ##   hot-seat teams keep their authored positions. Rework (owner
+##   2026-11-26, "before I place character it shouldn't exist on the
+##   ground" / "computer didn't place any character at all"): the
+##   whole staged cast enters the phase HIDDEN — a figure exists on
+##   the ground only once it is placed, the player's by their clicks
+##   and everyone else's by the script (the chooser reveals the
+##   other teams' figures on their authored spawn spots, one per
+##   beat, before the game begins). Rework (owner
 ##   2026-11-20, "this regime doesn't work"): the figures are placed
 ##   by hand whether the first team plays as a human or as the
 ##   computer — since the #617 rework v2 defaults EVERY team to the
@@ -145,9 +152,16 @@ static func apply(level: Node) -> void:
 ## a human or as the computer — the chooser only needs the hand on
 ## the mouse, and since the #617 rework v2 defaults every team to
 ## the computer, the old controller fallback made the regime a
-## silent no-op in the default setup. A level with no first-team
-## figures at all (pure spectate staging) still falls back to the
-## designer regime — there is nothing on the player side to click.
+## silent no-op in the default setup. Rework (owner 2026-11-26):
+## a figure must not exist on the ground before it is placed — the
+## whole staged cast (first team included) enters the phase hidden,
+## the authored staging doubling as each figure's spawn point; the
+## chooser reveals the figure being placed at the cursor and, once
+## the player is done, script-places everyone still hidden on
+## their authored spots before the game begins. A level with no
+## first-team figures at all (pure spectate staging) still falls
+## back to the designer regime — there is nothing on the player
+## side to click.
 static func _apply_choose(level: Node) -> void:
 	var figures: Array = []
 	for figure in level.get_tree().get_nodes_in_group("player_team"):
@@ -156,10 +170,19 @@ static func _apply_choose(level: Node) -> void:
 	if figures.is_empty():
 		_apply_designer(level)
 		return
+	# Owner rework 2026-11-26: hide the staged cast BEFORE the chooser
+	# enters the tree — nobody is ever seen standing on the authored
+	# staging. The chooser reveals each figure when it is placed: the
+	# player's at the clicked spot, the other teams' at their authored
+	# spawn spots once the player is done.
+	var staged: Array = _live_figures(level)
+	for figure in staged:
+		(figure as Node2D).visible = false
 	var chooser := SpawnChooserScript.new()
 	chooser.name = "SpawnChooser"
 	chooser.process_mode = Node.PROCESS_MODE_ALWAYS
 	chooser.figures = figures
+	chooser.staged = staged
 	level.add_child(chooser)
 	# Issue #626: everyone NOT handed to the chooser (enemies, hot-seat
 	# teams) keeps the authored positions — settle them out of the

@@ -25,6 +25,14 @@ extends Node
 ##   MODE to GLOBAL for the placement — a follow camera chased the
 ##   cursor-snapped figure off the level — and restores the mode the
 ##   player had (both when the last figure is placed and on cancel).
+## - Script-placed cast (owner rework 2026-11-26, "before I place
+##   character it shouldn't exist on the ground" / "computer didn't
+##   place any character at all"): the staged cast enters the phase
+##   HIDDEN — only the figure being placed exists on the field, at
+##   the cursor — and once the player is done the chooser
+##   script-places everyone still hidden (the other teams, and the
+##   un-placed first-team figures of a cancel) on their authored
+##   spots, one per beat, before the game begins.
 ## - Rework (owner 2026-11-20, "this regime doesn't work"): with the
 ##   #617-rework-v2 ALL-COMPUTER default the chooser still engages —
 ##   the hand on the mouse places the first team whether the team
@@ -136,6 +144,19 @@ func _ready() -> void:
 					str(chooser.figures[0].name if chooser.figures.size() > 0
 					else "-")])
 			failed = true
+		# --- Owner rework 2026-11-26: the cast starts HIDDEN — only the
+		# --- figure being placed exists on the field, at the cursor. ---
+		if not players[0].visible:
+			_fail("the figure being placed is not revealed at the cursor")
+			failed = true
+		for figure in players.slice(1):
+			if figure.visible:
+				_fail("an un-placed player figure exists on the ground")
+				failed = true
+		for figure in _enemies(level):
+			if figure.visible:
+				_fail("an enemy figure exists before it is placed")
+				failed = true
 		# --- A bad click (far off the floor, nothing within reach) — the
 		# gravity-directed ray cannot reach any surface, so nothing moves. ---
 		if chooser.confirm_spot(Vector2(5000.0, 5000.0)):
@@ -149,7 +170,10 @@ func _ready() -> void:
 			if not chooser.confirm_spot(Vector2(x, 80.0)):
 				_fail("spot at x=%s was rejected" % str(x))
 				failed = true
-		await _tick(4)
+		# Owner rework 2026-11-26: the chooser script-places the still
+		# hidden cast after the player's placements — the tail runs one
+		# beat per figure, so the wait covers it.
+		await _tick(16)
 		if get_tree().paused:
 			_fail("still paused after the last figure")
 			failed = true
@@ -173,6 +197,9 @@ func _ready() -> void:
 			if figure.position != Vector2(60, 60):
 				_fail("chooser moved an enemy figure")
 				failed = true
+			if not figure.visible:
+				_fail("enemy figure was not script-placed")
+				failed = true
 
 	level.queue_free()
 	await _tick(2)
@@ -191,7 +218,9 @@ func _ready() -> void:
 			_fail("cancel-path spot was rejected")
 			failed = true
 		chooser2.cancel()
-		await _tick(4)
+		# Owner rework 2026-11-26: cancel script-places the rest — the
+		# un-placed players and the enemies — so wait out the tail.
+		await _tick(20)
 		if get_tree().paused:
 			_fail("cancel did not lift the pause")
 			failed = true
@@ -206,6 +235,13 @@ func _ready() -> void:
 		for figure in placed2.slice(1):
 			if figure.position != Vector2(60, 60):
 				_fail("cancel moved an un-placed figure")
+				failed = true
+			if not figure.visible:
+				_fail("cancel did not script-place an un-placed figure")
+				failed = true
+		for figure in _enemies(level2):
+			if not figure.visible:
+				_fail("cancel did not script-place an enemy figure")
 				failed = true
 	level2.queue_free()
 	await _tick(2)
@@ -242,7 +278,8 @@ func _ready() -> void:
 			_fail("all-computer spot was rejected")
 			failed = true
 		chooser3.cancel()
-		await _tick(4)
+		# Owner rework 2026-11-26: the tail script-places the rest.
+		await _tick(20)
 		if get_tree().paused:
 			_fail("all-computer cancel did not lift the pause")
 			failed = true
@@ -254,6 +291,9 @@ func _ready() -> void:
 		for figure in bots.slice(1):
 			if figure.position != Vector2(60, 60):
 				_fail("all-computer cancel moved an un-placed figure")
+				failed = true
+			if not figure.visible:
+				_fail("all-computer cancel did not script-place a figure")
 				failed = true
 	level3.queue_free()
 	await _tick(2)
@@ -272,6 +312,10 @@ func _ready() -> void:
 	for i in mini(designed.size(), 3):
 		if designed[i].position != Vector2(200.0 + 100.0 * i, 150.0):
 			_fail("designer fallback did not fill marker %d" % i)
+			failed = true
+	for figure in designed:
+		if not figure.visible:
+			_fail("designer fallback hid the cast")
 			failed = true
 	level4.queue_free()
 

@@ -38,6 +38,17 @@ extends Node2D
 ##   when the phase ends (a follow type re-anchors on its figure,
 ##   the #552 type-change rule, so the first turn starts with the
 ##   classic view).
+## - owner rework 2026-11-26 ("before I place character it shouldn't
+##   exist on the ground" / "computer didn't place any character at
+##   all"): the whole staged cast enters the phase HIDDEN — SpawnRegime
+##   hides every live figure before this chooser enters the tree, so
+##   nobody stands on the authored staging while the player chooses.
+##   The figure being placed is revealed at the cursor the moment it
+##   becomes current; once the player's team is done (last figure
+##   placed, or Esc) the SCRIPT places everyone still hidden — the
+##   other teams' figures appear on their authored spawn spots one
+##   per AUTO_STEP beat while the pause still holds, and only when
+##   the field is complete does the pause lift and the game begin.
 ##
 ## Only the FIRST team is placed by hand. Rework (owner 2026-11-20):
 ## the chooser runs whatever plays the team — since the #617 rework
@@ -80,21 +91,38 @@ const GROUND_MASK := 1
 const FLUSH_FRAMES := 2
 ## How long the "no ground there" hint stays up after a bad click.
 const BAD_FLASH := 1.2
+## Owner rework 2026-11-26: pause between two script-placed figures —
+## the other teams' characters appear on the field one per beat.
+const AUTO_STEP := 0.2
 ## The chooser's hint rides ABOVE the turn HUD (layer 50) and the
 ## in-game menu (layer 10).
 const HUD_LAYER := 60
 
 const HINT := "Choose a spawn point for %s — click on a surface"
 const HINT_BAD := "No ground there — pick a surface spot for %s"
+## Owner rework 2026-11-26: shown while the script places the cast
+## the player did not place by hand.
+const HINT_AUTO := "Placing the other teams..."
 
 ## Figures to place, hero first (filled by SpawnRegime._apply_choose
 ## before the chooser enters the tree).
 var figures: Array = []
+## Owner rework 2026-11-26: every live figure the phase hid (filled
+## by SpawnRegime._apply_choose) — the auto-place tail reveals the
+## still-hidden ones once the player is done.
+var staged: Array = []
 
 var _level: Node2D = null
 var _index := 0
 var _bad_left := 0.0
 var _done := false
+## True while the player is still placing their team; the auto-place
+## tail (script placement of the still-hidden cast) runs when false.
+var _placing := true
+## Seconds to the next script-placed figure (the tail's beat).
+var _auto_left := 0.0
+## Still-hidden figures waiting for their auto-place beat.
+var _auto_rest: Array = []
 var _we_paused := false
 var _layer: CanvasLayer = null
 var _label: Label = null
@@ -135,17 +163,31 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	if _done or not _we_paused:
 		return
-	if _bad_left > 0.0:
-		_bad_left = maxf(0.0, _bad_left - delta)
-		if _bad_left == 0.0:
-			_hint()
-	var figure := _current()
-	if figure != null:
-		figure.global_position = get_global_mouse_position()
+	if _placing:
+		if _bad_left > 0.0:
+			_bad_left = maxf(0.0, _bad_left - delta)
+			if _bad_left == 0.0:
+				_hint()
+		var figure := _current()
+		if figure != null:
+			# Owner rework 2026-11-26: the figure being placed appears at
+			# the cursor the moment it becomes current — before that it
+			# did not exist on the ground.
+			if not figure.visible:
+				figure.visible = true
+			figure.global_position = get_global_mouse_position()
+	else:
+		# Owner rework 2026-11-26: the script-placement tail — one
+		# still-hidden figure per beat (the pause holds, so the other
+		# teams' characters visibly APPEAR on their spawn spots) until
+		# the field is complete and the game may begin.
+		_auto_left -= delta
+		if _auto_left <= 0.0:
+			_reveal_next()
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if _done or not _we_paused:
+	if _done or not _placing or not _we_paused:
 		return
 	if event is InputEventMouseButton and event.pressed \
 			and event.button_index == MOUSE_BUTTON_LEFT:
@@ -162,7 +204,7 @@ func _unhandled_input(event: InputEvent) -> void:
 ## under local gravity beneath it. Returns false (and flashes the
 ## hint) when nothing there can hold a figure. Public for tests.
 func confirm_spot(at: Vector2) -> bool:
-	if _done:
+	if _done or not _placing:
 		return false
 	var stand := standing_spot(at)
 	if stand == Vector2.INF:
@@ -184,10 +226,10 @@ func confirm_spot(at: Vector2) -> bool:
 	return true
 
 
-## Esc: stop choosing — the un-placed figures keep their authored
-## positions and the game starts. Public for tests.
+## Esc: stop choosing — the script places the un-placed figures on
+## their authored positions and the game starts. Public for tests.
 func cancel() -> void:
-	if not _done:
+	if _placing:
 		_finish()
 
 
@@ -220,7 +262,53 @@ func _exit_tree() -> void:
 	_restore_cameras()
 
 
+## The player is done (last figure placed, or Esc). Owner rework
+## 2026-11-26: the still-hidden cast — the other teams, and the
+## un-placed first-team figures of a cancel — is placed by the
+## SCRIPT: one figure per AUTO_STEP beat under the still-held pause
+## (the chooser keeps processing through it), and the phase truly
+## ends only when the field is complete. With nothing left hidden
+## the phase ends immediately, exactly as before.
 func _finish() -> void:
+	if not _placing:
+		return
+	_placing = false
+	_auto_rest = []
+	for figure in staged:
+		var node := figure as Node2D
+		if node != null and is_instance_valid(node) \
+				and not node.is_queued_for_deletion() \
+				and not node.visible:
+				_auto_rest.append(node)
+	if _auto_rest.is_empty():
+		_end_phase()
+	else:
+		if _label != null:
+				_label.text = HINT_AUTO
+		_auto_left = AUTO_STEP
+
+
+## One beat of the script-placement tail: the next still-hidden
+## figure appears on its spawn spot; the phase ends once the queue
+## runs out.
+func _reveal_next() -> void:
+	while not _auto_rest.is_empty():
+		var figure := _auto_rest.pop_front() as Node2D
+		if figure == null or not is_instance_valid(figure) \
+				or figure.is_queued_for_deletion():
+			continue
+		if not figure.visible:
+			figure.visible = true
+		break
+	if _auto_rest.is_empty():
+		_end_phase()
+	else:
+		_auto_left = AUTO_STEP
+
+
+## The phase truly ends: the pause lifts, the cameras are restored,
+## the chooser frees itself.
+func _end_phase() -> void:
 	_done = true
 	if _we_paused:
 		_we_paused = false
