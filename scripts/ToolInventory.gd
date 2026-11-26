@@ -50,6 +50,11 @@ const TALK_PICK_RADIUS := 48.0
 ## Issue #690: the figure layers the Talk pick queries — Player figures
 ## sit on layer value 8, Npc figures on 2 (mask 2|8 = 10).
 const TALK_FIGURE_MASK := 10
+## Issue #690 rework 2 (owner 2026-11-26): half-size of a figure's
+## DRAWN body — every body visual (the ColorRect square and the
+## modular shape) is the 64x64 square centered on the figure. The
+## hover hint is exact: the cursor must sit ON that square.
+const TALK_BODY_HALF := 32.0
 
 ## Issue #475 (godot-sound-work skill): the teleport hop sound —
 ## preloaded once, never loaded per teleport at runtime.
@@ -67,10 +72,12 @@ var _teleport_player: AudioStreamPlayer
 var _used: Dictionary = {}
 
 ## Issue #690 rework (owner 2026-11-24): the Talk pick's VISUAL HINT —
-## while the Talk tool is armed, a cursor over a figure the click
-## would pick (the same _figure_at pick) shows a POINTING HAND. Set
-## only by mouse motion below and dropped by _process the moment the
-## tool disarms on ANY path (toggle, click, turn reset, weapon fire).
+## while the Talk tool is armed, a cursor EXACTLY on a figure the
+## click would pick shows a POINTING HAND (rework 2, owner
+## 2026-11-26: the exact _figure_body_at body hit — the hand must not
+## light up merely NEAR the figure). Set only by mouse motion below
+## and dropped by _process the moment the tool disarms on ANY path
+## (toggle, click, turn reset, weapon fire).
 var _talk_cursor_hint := false
 
 func _ready() -> void:
@@ -314,13 +321,16 @@ func _process(_delta: float) -> void:
 
 
 ## Issue #690 rework: set the Talk hover hint from a MOUSE position in
-## the world — the pointing hand when the armed click would start a
-## dialogue with the figure under the cursor, the plain arrow over
-## everything else (the pick has the same tolerance as the click).
+## the world — the pointing hand when the cursor is EXACTLY on the
+## figure the armed click would pick (owner 2026-11-26: the hand must
+## not light up merely NEAR the figure), the plain arrow over
+## everything else. The CLICK keeps its friendly TALK_PICK_RADIUS
+## tolerance; only the hover hint is exact.
 func _update_talk_cursor_hint(world: Vector2) -> void:
 	var talker: Node = TurnController.active_member
 	if talker != null and is_instance_valid(talker) and talker is Node2D:
-		_talk_cursor_hint = _figure_at(world, talker as Node2D) != null
+		_talk_cursor_hint = _figure_body_at(
+				world, talker as Node2D) != null
 	else:
 		_talk_cursor_hint = false
 	Input.set_default_cursor_shape(
@@ -493,6 +503,23 @@ func _character_width(member: Node2D) -> float:
 ## figure is; the hits are then filtered down to real, living figures
 ## of either team and the closest one to the click wins.
 func _figure_at(world: Vector2, self_figure: Node2D) -> Node:
+	return _nearest_figure(world, self_figure, false)
+
+
+## Issue #690 rework 2 (owner 2026-11-26): the figure the cursor is
+## EXACTLY on — the hover hint's pick. Same query, same living-figure
+## filters, but a candidate counts only when the point sits inside the
+## figure's drawn 64x64 body square (rotated with the figure), not
+## merely within the click's TALK_PICK_RADIUS reach.
+func _figure_body_at(world: Vector2, self_figure: Node2D) -> Node:
+	return _nearest_figure(world, self_figure, true)
+
+
+## Issue #690 rework 2: shared pick scan — exact_body false keeps the
+## tolerant click pick (any living figure the query circle touches),
+## true demands the point inside the figure's body square.
+func _nearest_figure(world: Vector2, self_figure: Node2D,
+		exact_body: bool) -> Node:
 	var space := self_figure.get_world_2d().direct_space_state
 	var query := PhysicsShapeQueryParameters2D.new()
 	var shape := CircleShape2D.new()
@@ -515,9 +542,22 @@ func _figure_at(world: Vector2, self_figure: Node2D) -> Node:
 		var hp = figure.get("health")
 		if not (hp is int) or hp <= 0:
 			continue
+		if exact_body and not _point_on_figure_body(
+					world, figure as Node2D):
+			continue
 		var distance: float = world.distance_to(
 				(figure as Node2D).global_position)
 		if distance < best_distance:
 			best_distance = distance
 			best = figure
 	return best
+
+
+## Issue #690 rework 2 (owner 2026-11-26): exact body hit — the point
+## is inside the figure's 64x64 drawn square. The test runs in the
+## figure's LOCAL space, so a figure rotated by the gravity frame
+## (FigurePose) or flipped still hits on its visible silhouette.
+func _point_on_figure_body(world: Vector2, figure: Node2D) -> bool:
+	var local := figure.global_transform.affine_inverse() * world
+	return absf(local.x) <= TALK_BODY_HALF \
+			and absf(local.y) <= TALK_BODY_HALF

@@ -4,6 +4,11 @@ extends Node
 ## click would pick turns the mouse cursor into a POINTING HAND, over
 ## anything else it stays the plain arrow, and the hint disappears on
 ## ANY disarm path even without further mouse motion.
+## Rework 2 (owner 2026-11-26): the hint is EXACT — the hand shows only
+## when the cursor is ON the figure's 64x64 drawn body, never merely
+## NEAR it (the old 48px click-tolerance circle was the bug); the body
+## test follows the figure's rotation, so a gravity-rotated figure
+## hits on its visible silhouette.
 ## The test drives ToolInventory exactly the way the game does: real
 ## physics figures (the pick queries the figure layers), the armed
 ## tool, injected mouse-motion events (Input.parse_input_event, the
@@ -30,11 +35,16 @@ func _ready() -> void:
 	var ok := true
 
 	# Two figures with real collision shapes: the ACTIVE member (the
-	# pick never returns itself) and a teammate next to it.
+	# pick never returns itself) and a teammate next to it, plus a
+	# 45-degree-rotated teammate (gravity-rotated figures hit on their
+	# visible silhouette, issue #690 rework 2).
 	var talker := _figure(Vector2(100.0, 100.0))
 	var teammate := _figure(Vector2(300.0, 100.0))
+	var rotated := _figure(Vector2(500.0, 100.0))
+	rotated.rotation = PI / 4.0
 	add_child(talker)
 	add_child(teammate)
+	add_child(rotated)
 	TurnController.active_member = talker
 
 	# Let the physics bodies enter the world before any shape query.
@@ -48,13 +58,36 @@ func _ready() -> void:
 	await _move_mouse(Vector2(300.0, 100.0))
 	ok = ok and ToolInventory._talk_cursor_hint == true
 
+	# Cursor NEAR the teammate but NOT on its body (40px off-center:
+	# inside the old 48px click tolerance, outside the 64x64 body) —
+	# rework 2: the plain arrow, exactly the owner's 2026-11-26 report.
+	await _move_mouse(Vector2(340.0, 100.0))
+	ok = ok and ToolInventory._talk_cursor_hint == false
+
+	# Cursor ON the teammate's body edge (30px off-center, inside the
+	# 32px half-body but outside the 24px physics circle): the hand —
+	# the hint follows the DRAWN body, not the physics capsule.
+	await _move_mouse(Vector2(330.0, 100.0))
+	ok = ok and ToolInventory._talk_cursor_hint == true
+
 	# Cursor over the ACTIVE MEMBER ITSELF: not a pickable partner —
 	# the plain arrow (the pick skips the talker).
 	await _move_mouse(Vector2(100.0, 100.0))
 	ok = ok and ToolInventory._talk_cursor_hint == false
 
 	# Cursor over empty ground: the plain arrow.
-	await _move_mouse(Vector2(600.0, 100.0))
+	await _move_mouse(Vector2(700.0, 100.0))
+	ok = ok and ToolInventory._talk_cursor_hint == false
+
+	# Rotated figure (45 degrees): 40px ABOVE its center is INSIDE the
+	# turned silhouette (local ~28.3, 28.3) — the hand follows the
+	# rotated body, while a plain axis-aligned test would say arrow.
+	await _move_mouse(Vector2(500.0, 140.0))
+	ok = ok and ToolInventory._talk_cursor_hint == true
+	# 43.8px diagonally off its center is OUTSIDE the turned silhouette
+	# (local ~0, 43.8) — the arrow, even though an unrotated square
+	# would cover the point and the 48px circle still reaches it.
+	await _move_mouse(Vector2(531.0, 131.0))
 	ok = ok and ToolInventory._talk_cursor_hint == false
 
 	# Back over the teammate (hand again)…
@@ -69,7 +102,7 @@ func _ready() -> void:
 
 	TurnController.active_member = null
 	if ok:
-		print("ISSUE690 CURSOR HINT OK: hand over a pickable figure, arrow over ground and self, disarm resets")
+		print("ISSUE690 CURSOR HINT OK: hand exactly on the body (rotated too), arrow near it and over ground/self, disarm resets")
 		get_tree().quit(0)
 	else:
 		print("ISSUE690 CURSOR HINT FAIL")
