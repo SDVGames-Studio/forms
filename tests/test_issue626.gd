@@ -165,7 +165,10 @@ func _ready() -> void:
 						% str(figure.global_position))
 				failed = true
 		chooser.cancel()
-		await _tick(4)
+		# Issue #547 rework 2026-11-26: cancel script-places the hidden
+		# cast (one figure per beat) before the pause lifts — wait out
+		# the tail (4 figures × 0.2 s).
+		await _tick(24)
 		if get_tree().paused:
 			_fail("choose: cancel did not lift the pause")
 			failed = true
