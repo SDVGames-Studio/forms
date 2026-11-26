@@ -9,7 +9,8 @@ extends Node
 ##     scrollable (ScrollContainer present);
 ##   - "+ Add team" appends a team to the set and selects it;
 ##   - the members window shows every member as a clickable figure with
-##     an editable name, plus a + button right of the rightmost member;
+##     an editable name, plus the pinned + button right of the strip
+##     (issue #394 rework v3: it no longer lives inside the scroller);
 ##     clicking a figure opens a delete confirmation that removes it;
 ##     the leftmost member stays first (order is turn order);
 ##   - the shape picker is graphical: one button per shape, the team's
@@ -82,10 +83,10 @@ func _ready() -> void:
 		if pressed_shapes != ["square"]:
 			failures.append("default shape must be pressed, got %s" % str(pressed_shapes))
 
-	# --- Members window: 2 default member cards + the + button (cap 3).
+	# --- Members window: 2 default member cards (+ pinned outside, #394 v3).
 	var members_row: HBoxContainer = menu.get_node("%MembersRow")
-	if members_row.get_child_count() != 3:  # 2 members + the + button
-		failures.append("members window must show the 2 default members + +, got %d" % members_row.get_child_count())
+	if members_row.get_child_count() != 2:  # the + card is pinned right of the strip now
+		failures.append("members window must show the 2 default members, got %d" % members_row.get_child_count())
 	# Names are editable LineEdits under a clickable figure Button.
 	var first_card: VBoxContainer = members_row.get_child(0)
 	if not (first_card.get_child(0) is Button) or not (first_card.get_child(1) is LineEdit):
@@ -104,11 +105,11 @@ func _ready() -> void:
 		if names.size() != 1 or str(names[0]) != "Player 2":
 			failures.append("confirmed delete must remove the FIRST member, order kept: %s" % str(names))
 
-	# --- With room left, the + button is there and adds one on the right.
-	if members_row.get_child_count() != 2:  # 1 member + the + button
-		failures.append("members window must show + right of the rightmost member, got %d" % members_row.get_child_count())
+	# --- With room left, the pinned + button is there and adds one on the right.
+	if members_row.get_child_count() != 1:  # 1 member — the + lives outside the row (#394 v3)
+		failures.append("delete must leave the one member plate, got %d" % members_row.get_child_count())
 	else:
-		(members_row.get_child(1).get_child(0) as Button).pressed.emit()
+		(menu.get_node("%PlusButton") as Button).pressed.emit()
 		await get_tree().process_frame
 		if GameConfig.teams[0]["names"].size() != 2 \
 				or str(GameConfig.teams[0]["names"][1]) != "Member 2":
