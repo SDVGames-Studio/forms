@@ -8,11 +8,12 @@ extends Control
 ## - The members are shown in a visual window exactly as they look in the
 ##   game (shape figure + team color + name). The leftmost member is the
 ##   first in the team; clicking a figure offers to DELETE that member;
-##   the + card to the right of the rightmost member adds a new one
-##   (the same size as a member card); clicking a member's name edits it
-##   in place. Issue #394 rework: the row carries FIVE plates — enough
-##   for the whole team at the desktop width — and < > arrows scroll it
-##   whenever the content still overflows (compact viewports).
+##   clicking a member's name edits it in place. Issue #394 rework v3
+##   (owner 2026-11-26): the < > arrows sit LEFT and RIGHT of the
+##   character strip and scroll it once the team outgrows the row, and
+##   the + card is PINNED right of the strip — the same size as a member
+##   card and always present, so adding a teammate never depends on
+##   where the row is scrolled.
 ## - The shape picker is graphical: one little figure per shape.
 ## - "Save" persists the whole set to user://team.cfg (GameConfig.teams).
 ##
@@ -27,16 +28,13 @@ extends Control
 
 const SHAPES: Array[String] = ["square", "circle", "triangle", "star", "ellipse"]
 
-## Issue #394 rework (owner 2026-11-24): the team menu fields FIVE
-## characters — the plates are compact enough that five of them (four
-## members plus the "+" card) sit in the row at the desktop width, and
-## the < > arrows scroll the row when the content still overflows
-## (compact viewports). This is a MENU cap only: GameConfig.
-## MAX_TEAM_MEMBERS stays 3 — it pins the staged trio the authored
-## levels field and the RL action space (tests/test_issue422.gd), while
-## the game itself already fields any count the level config deals
-## (MAX_LEVEL_TEAM_MEMBERS).
-const MENU_MAX_TEAM_MEMBERS := 5
+## Issue #394 rework v3 (owner 2026-11-26): the pinned + card appends
+## teammates up to GameConfig.MAX_LEVEL_TEAM_MEMBERS — the same bound
+## the level-config grid edits (#537) and the team sanitizer keep, so
+## the team menu, the level menu and the persisted team.cfg agree.
+## GameConfig.MAX_TEAM_MEMBERS (3) stays untouched: it pins the staged
+## trio the authored levels field and the RL action space
+## (tests/test_issue422.gd).
 
 ## Issue #394 rework: plate metrics shared by the member cards and the
 ## "+" card so both plates look exactly the same, and one plate-width
@@ -80,6 +78,10 @@ var in_game := false
 @onready var _members_scroll: ScrollContainer = %MembersScroll
 @onready var _scroll_left: Button = %ScrollLeft
 @onready var _scroll_right: Button = %ScrollRight
+## Issue #394 rework v3: the + card is PINNED right of the scroller —
+## it never scrolls away, so "add a teammate" is always on screen.
+@onready var _plus_button: Button = %PlusButton
+@onready var _plus_name_slot: Control = %PlusNameSlot
 @onready var _skill: HSlider = %SkillSlider
 @onready var _friendly_fire: HSlider = %FriendlyFireSlider
 @onready var _save_button: Button = %SaveButton
@@ -141,6 +143,14 @@ func _ready() -> void:
 	# arrows re-evaluate whenever the row or its viewport resizes.
 	_scroll_left.pressed.connect(func() -> void: _scroll_members(-1))
 	_scroll_right.pressed.connect(func() -> void: _scroll_members(1))
+	# Issue #394 rework v3 (owner 2026-11-26): the arrows flank the
+	# character strip and share the character square's height, hugging
+	# the strip's top edge where the squares sit.
+	_scroll_left.custom_minimum_size = Vector2(36, PLATE_SQUARE.y)
+	_scroll_right.custom_minimum_size = Vector2(36, PLATE_SQUARE.y)
+	# The pinned + card appends a teammate from wherever the row is.
+	_plus_button.custom_minimum_size = PLATE_SQUARE
+	_plus_button.pressed.connect(_on_add_member)
 	_members_scroll.resized.connect(_update_scroll_arrows)
 	_members_row.resized.connect(_update_scroll_arrows)
 	# The scrollbar's max/page retune AFTER the resize (and silently) —
@@ -290,11 +300,11 @@ func _on_shape_picked(shape: String) -> void:
 # ---------------------------------------------------------------- members --
 
 ## The visual members window: one card per member — the game figure on a
-## clickable button (click = offer to delete) plus the editable name —
-## and a + card right of the rightmost member that is the SAME size as
-## the member cards (issue #394 rework). The row lives in a horizontal
-## scroller driven by the < > arrows: five plates fit at the desktop
-## width, compact viewports scroll.
+## clickable button (click = offer to delete) plus the editable name.
+## The row lives in a horizontal scroller driven by the < > arrows (one
+## plate-width step per press); the + card that appends a teammate is
+## NOT part of the scroller — it stays on screen at the strip's right
+## end whatever the scroll position (issue #394 rework v3).
 func _rebuild_members() -> void:
 	_clear_children(_members_row)
 	var team := _team()
@@ -335,24 +345,22 @@ func _rebuild_members() -> void:
 		card.add_child(figure)
 		card.add_child(name_edit)
 		_members_row.add_child(card)
-	if names.size() < MENU_MAX_TEAM_MEMBERS:
-		# Issue #394 rework: the + plate mirrors a member plate exactly —
-		# the same square and the same name-slot footprint under it.
-		var plus_card := VBoxContainer.new()
-		plus_card.alignment = BoxContainer.ALIGNMENT_CENTER
-		plus_card.add_theme_constant_override("separation", 4)
-		var plus := Button.new()
-		plus.text = "+"
-		plus.tooltip_text = "Add a member"
-		plus.custom_minimum_size = PLATE_SQUARE
-		plus.add_theme_font_size_override("font_size", 32)
-		plus.pressed.connect(_on_add_member)
-		var name_slot := Control.new()
-		name_slot.custom_minimum_size = Vector2(PLATE_NAME.x, name_min_height)
-		name_slot.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		plus_card.add_child(plus)
-		plus_card.add_child(name_slot)
-		_members_row.add_child(plus_card)
+	# Issue #394 rework v3: the pinned + plate always shows — it only
+	# gives up at the game's hard member bound — and its name-slot
+	# footprint matches the members' LineEdit height so the plates row
+	# up evenly.
+	var full := names.size() >= GameConfig.MAX_LEVEL_TEAM_MEMBERS
+	_plus_button.disabled = full
+	if full:
+		_plus_button.tooltip_text = "Team is full (%d members)" \
+				% GameConfig.MAX_LEVEL_TEAM_MEMBERS
+	else:
+		_plus_button.tooltip_text = "Add a member"
+	_plus_name_slot.custom_minimum_size = Vector2(PLATE_NAME.x, name_min_height)
+	# Issue #394 rework v3: a rebuilt row starts at its LEFT end — the
+	# leftmost member is the team's first, so a team switch (or a delete)
+	# must not keep the previous view's stale scroll offset.
+	_members_scroll.scroll_horizontal = 0
 	_update_scroll_arrows.call_deferred()
 
 ## Issue #394 rework: one arrow click scrolls the row by one plate
@@ -373,7 +381,7 @@ func _max_row_scroll() -> int:
 	return maxi(0, int(round(bar.max_value - bar.page)))
 
 ## Issue #394 rework: < disables at the row's left edge, > at its right
-## edge (and both when nothing overflows — five plates fit).
+## edge (and both while the whole team is visible — nothing overflows).
 func _update_scroll_arrows() -> void:
 	if not is_instance_valid(_members_scroll):
 		return
@@ -406,7 +414,9 @@ func _on_delete_confirmed() -> void:
 
 func _on_add_member() -> void:
 	var names: Array = _team()["names"]
-	if names.size() >= MENU_MAX_TEAM_MEMBERS:
+	# Issue #394 rework v3: the menu follows the game's hard member
+	# bound the level-config grid and the sanitizer also keep.
+	if names.size() >= GameConfig.MAX_LEVEL_TEAM_MEMBERS:
 		return
 	names.append("Member %d" % (names.size() + 1))
 	_rebuild_members()

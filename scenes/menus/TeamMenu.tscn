@@ -256,13 +256,15 @@ text = "Members as they appear in the game — the leftmost goes first. Click a 
 autowrap_mode = 3
 
 [node name="MembersScrollRow" type="HBoxContainer" parent="Layout/Columns/Column/Scroll/Rows/MembersPanel/MembersBox"]
+unique_name_in_owner = true
 layout_mode = 2
 theme_override_constants/separation = 8
 
 [node name="ScrollLeft" type="Button" parent="Layout/Columns/Column/Scroll/Rows/MembersPanel/MembersBox/MembersScrollRow"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(36, 118)
+custom_minimum_size = Vector2(36, 80)
 layout_mode = 2
+size_flags_vertical = 0
 theme_override_colors/font_disabled_color = Color(0.467, 0.49, 0.545, 1)
 theme_override_font_sizes/font_size = 24
 theme_override_styles/normal = SubResource("arrow_normal")
@@ -271,20 +273,6 @@ theme_override_styles/hover_pressed = SubResource("arrow_hover_pressed")
 theme_override_styles/pressed = SubResource("arrow_pressed")
 theme_override_styles/disabled = SubResource("arrow_disabled")
 text = "<"
-disabled = true
-
-[node name="ScrollRight" type="Button" parent="Layout/Columns/Column/Scroll/Rows/MembersPanel/MembersBox/MembersScrollRow"]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(36, 118)
-layout_mode = 2
-theme_override_colors/font_disabled_color = Color(0.467, 0.49, 0.545, 1)
-theme_override_font_sizes/font_size = 24
-theme_override_styles/normal = SubResource("arrow_normal")
-theme_override_styles/hover = SubResource("arrow_hover")
-theme_override_styles/hover_pressed = SubResource("arrow_hover_pressed")
-theme_override_styles/pressed = SubResource("arrow_pressed")
-theme_override_styles/disabled = SubResource("arrow_disabled")
-text = ">"
 disabled = true
 
 [node name="MembersScroll" type="ScrollContainer" parent="Layout/Columns/Column/Scroll/Rows/MembersPanel/MembersBox/MembersScrollRow"]
@@ -298,6 +286,40 @@ vertical_scroll_mode = 0
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_constants/separation = 8
+
+[node name="PlusCard" type="VBoxContainer" parent="Layout/Columns/Column/Scroll/Rows/MembersPanel/MembersBox/MembersScrollRow"]
+unique_name_in_owner = true
+alignment = 1
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="PlusButton" type="Button" parent="Layout/Columns/Column/Scroll/Rows/MembersPanel/MembersBox/MembersScrollRow/PlusCard"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(80, 80)
+layout_mode = 2
+theme_override_font_sizes/font_size = 32
+text = "+"
+
+[node name="PlusNameSlot" type="Control" parent="Layout/Columns/Column/Scroll/Rows/MembersPanel/MembersBox/MembersScrollRow/PlusCard"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(80, 34)
+layout_mode = 2
+mouse_filter = 2
+
+[node name="ScrollRight" type="Button" parent="Layout/Columns/Column/Scroll/Rows/MembersPanel/MembersBox/MembersScrollRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(36, 80)
+layout_mode = 2
+size_flags_vertical = 0
+theme_override_colors/font_disabled_color = Color(0.467, 0.49, 0.545, 1)
+theme_override_font_sizes/font_size = 24
+theme_override_styles/normal = SubResource("arrow_normal")
+theme_override_styles/hover = SubResource("arrow_hover")
+theme_override_styles/hover_pressed = SubResource("arrow_hover_pressed")
+theme_override_styles/pressed = SubResource("arrow_pressed")
+theme_override_styles/disabled = SubResource("arrow_disabled")
+text = ">"
+disabled = true
 
 [node name="SkillRow" type="HBoxContainer" parent="Layout/Columns/Column/Scroll/Rows"]
 layout_mode = 2
