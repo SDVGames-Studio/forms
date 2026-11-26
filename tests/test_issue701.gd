@@ -1,19 +1,18 @@
 extends Node
 ## Regression check for issue #701: a new game must never begin by
-## itself when the game (level) finishes.
-##
-## The bug (the issue #614 design): the win flow advanced to the
-## level's authored next_scene — Level1 chained straight into Level2,
-## so the moment a level finished a NEW GAME auto-began. The owner
-## forbade that: a finished level returns the player to the Main menu,
-## and only the player starts the next game from there.
+## itself when the game (level) finishes — and the finish must not
+## yank the player out either (rework, 2026-11-26): after the
+## celebration the finished level STAYS on screen so the player (or
+## players) can spectate it; leaving to the Main menu goes through
+## the standard in-game menu (ESC -> Main Menu), nothing new added.
 ##
 ## Checks:
 ##  1. CHAIN GONE: LevelConfig exposes no next_scene property and no
 ##     level scene authors one — there is no chain left to follow.
-##  2. WIN FLOW: one team left standing -> celebration overlay -> the
-##     advance lands on the Main menu, NOT on a next_scene duck-typed
-##     onto the level root; afterwards no level is live anymore.
+##  2. WIN FLOW: one team left standing -> celebration overlay ->
+##     the scene NEVER changes (no new game, no forced Main menu),
+##     the level stays live in the spectate state, and the standard
+##     exit (the in-game menu's Main Menu button) is still there.
 ##
 ## Run headless: godot --headless res://tests/test_issue701.tscn
 ## Exit code 0 = pass.
@@ -23,8 +22,9 @@ const MAIN_SCENE := "res://scenes/Main.tscn"
 
 
 func _ready() -> void:
-	# The driver must survive the scene change it provokes, so it lives
-	# directly under /root (same pattern as tests/test_issue614.gd).
+	# The driver must survive whatever the win flow does to the scene,
+	# so it lives directly under /root (same pattern as
+	# tests/test_issue614.gd).
 	var driver := Issue701Driver.new()
 	driver.done.connect(func(ok: bool) -> void:
 		get_tree().quit(0 if ok else 1))
@@ -55,7 +55,8 @@ class Issue701Driver extends Node:
 		await _check_win_flow(failures)
 
 		if failures.is_empty():
-			print("ISSUE701 OK: a finished level never begins a new game")
+			print("ISSUE701 OK: a finished level stays for spectate, "
+				+ "never begins a new game")
 		else:
 			for f in failures:
 				print("ISSUE701 FAIL: " + f)
@@ -124,38 +125,41 @@ class Issue701Driver extends Node:
 		if _find_celebration(TurnController) == null:
 			failures.append("the win must still play the celebration overlay")
 
-		# ...then the advance: the Main menu, never the authored
-		# next_scene (celebration duration is 2 s; allow headless slack).
-		var advanced := false
+		# ...then NOTHING: the overlay plays out and the finished level
+		# STAYS on screen for spectate (rework) — neither a next_scene
+		# new game nor the Main menu may auto-load. Wait out the
+		# celebration (duration 2 s; allow headless slack).
 		for i in 400:
 			await tree.process_frame
-			# current_scene passes through null while the swap defers —
-			# wait for the NEW scene to be actually in place.
-			if tree.current_scene != null and tree.current_scene != level:
-				advanced = true
-				break
-		if not advanced:
-			failures.append("the finish must advance back to the Main menu")
-		elif tree.current_scene.scene_file_path == NEW_GAME_SCENE:
-			failures.append("the finish must NOT begin a new game "
-				+ "(next_scene target was loaded)")
-		elif tree.current_scene.scene_file_path != MAIN_SCENE:
-			failures.append("advance target must be the Main menu, got %s"
-				% tree.current_scene.scene_file_path)
+		if tree.current_scene != level:
+			failures.append("the finish must NOT change the scene — the "
+				+ "level stays on screen for spectate")
+		if TurnController.get("_level") != level:
+			failures.append("the finished level must stay live for spectate")
+		var hint: Label = TurnController.get("_hint_label")
+		if hint == null or hint.text != TurnController.HINT_SPECTATE:
+			failures.append("the spectate hint must be up after the finish")
 
-		# Back in the menu: no level is live anymore — the game is NOT
-		# running a new match by itself.
-		for i in 5:
-			await tree.process_frame
-		if TurnController.get("_level") != null:
-			failures.append("no level may be live after the finish (menu)")
+		# The standard exit is unchanged: the in-game menu (autoload)
+		# still offers its Main Menu button — the owner's "exit with
+		# standard menu tools" path, no new tools.
+		if _find_main_menu_button() == null:
+			failures.append("InGameMenu must keep the Main Menu button")
 
 		# Restore the test scene as current so teardown stays tidy.
-		if tree.current_scene != null and tree.current_scene != old_current:
-			tree.current_scene.queue_free()
 		if is_instance_valid(level):
 			level.queue_free()
 		tree.current_scene = old_current
+
+	func _find_main_menu_button() -> Button:
+		var menu := get_tree().root.get_node_or_null("InGameMenu")
+		if menu == null:
+			return null
+		var buttons: Array = menu.find_children(
+			"MainMenuButton", "Button", true, false)
+		if buttons.is_empty():
+			return null
+		return buttons[0]
 
 	func _find_celebration(root: Node) -> Node:
 		# The celebration overlay is the CanvasLayer carrying a confetti

@@ -1,7 +1,8 @@
 extends Node
 ## Regression check for issue #614: the Finish trigger area is gone and
 ## the level's real finish — exactly one team left standing — plays the
-## celebration overlay and advances to the level's next scene.
+## celebration overlay and then leaves the level on screen for spectate
+## (issue #701 rework).
 ##
 ## Asserts:
 ##   - no level scene references LevelFinish.gd / a "Finish" node /
@@ -10,8 +11,8 @@ extends Node
 ##     exposes next_scene and no level scene authors one — a finished
 ##     level must never auto-begin a new game;
 ##   - the real win flow: one team alive -> celebration overlay ->
-##     advance back to the Main menu (a next_scene duck-typed onto the
-##     level root is ignored, never followed).
+##     NOTHING auto-loads (issue #701 rework: no new game, no forced
+##     Main menu) — the level stays on screen for spectate.
 ##
 ## Run headless: godot --headless res://tests/test_issue614.tscn
 ## Exit code 0 = pass.
@@ -29,8 +30,7 @@ const LEVEL_SCENES := [
 ]
 
 func _ready() -> void:
-	# The driver must survive the scene change it provokes, so it lives
-	# directly under /root — change_scene_to_file only frees current_scene
+	# The driver lives directly under /root so no teardown can free it
 	# (same pattern as tests/test_issue303.gd).
 	var driver := Issue614Driver.new()
 	driver.done.connect(func(ok: bool) -> void:
@@ -45,7 +45,6 @@ class Issue614Driver extends Node:
 	signal done(ok: bool)
 
 	const TARGET_SCENE := "res://tests/test_issue614_target.tscn"
-	const MAIN_SCENE := "res://scenes/Main.tscn"
 
 	## Minimal stand-in for a level root: a duck-typed next_scene that
 	## the win flow must IGNORE (issue #701 — no authored advance).
@@ -63,7 +62,7 @@ class Issue614Driver extends Node:
 		await _check_win_flow(failures)
 
 		if failures.is_empty():
-			print("ISSUE614 OK: finish removed, real-win celebration + menu return")
+			print("ISSUE614 OK: finish removed, real-win celebration + spectate stays")
 		else:
 			for f in failures:
 				print("ISSUE614 FAIL: " + f)
@@ -120,7 +119,7 @@ class Issue614Driver extends Node:
 		# team died out, so the real finish condition is met.
 		var level := FakeLevel.new()
 		# The chain target is still duck-typed onto the root — the win flow
-		# must ignore it (issue #701) and go to the Main menu instead.
+		# must ignore it (issue #701): nothing may auto-load at the finish.
 		level.next_scene = TARGET_SCENE
 		level.name = "FakeLevel"
 		level.add_to_group("level")
@@ -154,25 +153,17 @@ class Issue614Driver extends Node:
 		if overlay == null:
 			failures.append("the win must spawn the celebration overlay")
 
-		# ...then the advance to the authored next scene (celebration
-		# duration is 2 s; allow headless slack).
-		var advanced := false
+		# ...then NOTHING: the overlay plays out and the finished level
+		# STAYS on screen for spectate (issue #701 rework) — neither a
+		# new game nor the Main menu may auto-load. Wait out the
+		# celebration (duration 2 s; allow headless slack).
 		for i in 400:
 			await tree.process_frame
-			# current_scene passes through null while the swap defers —
-			# wait for the NEW scene to be actually in place.
-			if tree.current_scene != null and tree.current_scene != level:
-				advanced = true
-				break
-		if not advanced:
-			failures.append("the win must advance back to the Main menu")
-		elif tree.current_scene.scene_file_path != MAIN_SCENE:
-			failures.append("advance target must be the Main menu (issue #701), "
-				+ "got %s" % tree.current_scene.scene_file_path)
+		if tree.current_scene != level:
+			failures.append("the win must NOT change the scene — the level "
+				+ "stays on screen for spectate (issue #701 rework)")
 
 		# Restore the test scene as current so teardown stays tidy.
-		if tree.current_scene != null and tree.current_scene != old_current:
-			tree.current_scene.queue_free()
 		if is_instance_valid(level):
 			level.queue_free()
 		tree.current_scene = old_current
