@@ -9,6 +9,11 @@ extends Node
 ##  its own sprite and its own hold, proving art swaps touch no weapon
 ##  logic. Owner rework 2026-11-24 ("a little lower"): the launcher's
 ##  hold sits lower than the 2026-11-23 tuning.
+##  PART 3 (animations/effects, first slice): recoil — every committed
+##  shot kicks the held visual back along the aim and recovers, the
+##  magnitude per-weapon in the registry (0 for melee styles) — plus a
+##  cartoon MUZZLE FLASH (bold outline starburst, code-drawn) that pops
+##  at the barrel, aimed along the shot, and frees itself.
 ##
 ##  1. REGISTRY: WeaponVisuals.STYLES is the single visual table — the
 ##     rocket and shotgun entries carry textures with per-weapon
@@ -300,6 +305,81 @@ func _ready() -> void:
 		_check(not WeaponVisualsScript.STYLES[slot].has("texture"),
 				"slot %d must keep its plain rectangle fill (#680 parts 1-2 only touch the rocket and shotgun)"
 				% slot)
+
+	# 5) PART 3 — recoil: the kick-back magnitude is registry data,
+	# readable for every style; melee styles carry an explicit 0.
+	for slot in WeaponVisualsScript.STYLES.size():
+		_check(WeaponVisualsScript.recoil(slot) >= 0.0,
+				"every style must resolve a recoil magnitude (slot %d)" % slot)
+	_check(WeaponVisualsScript.recoil(WEAPON_SLOT_ROCKET) >= 10.0
+				and WeaponVisualsScript.recoil(WEAPON_SLOT_SHOTGUN) >= 8.0
+				and WeaponVisualsScript.recoil(7) >= 10.0,
+				"the rocket, shotgun and railgun must carry a readable kick")
+	_check(WeaponVisualsScript.recoil(3) == 0.0
+				and WeaponVisualsScript.recoil(6) == 0.0
+				and WeaponVisualsScript.recoil(9) == 0.0
+				and WeaponVisualsScript.recoil(11) == 0.0,
+				"the spear, jackhammer, bat and shovel must carry 0 recoil (their own motion is the animation)")
+	_check(WeaponScript.RECOIL_TIME < 0.5,
+				"the recoil must recover fast (got %s s)" % WeaponScript.RECOIL_TIME)
+
+	# 6) PART 3 — recoil behavior: the held visual kicks BACK along the
+	# aim on a shot, then eases back to the exact hold position.
+	var kicker := _make_weapon(Vector2(1, 0))
+	kicker.selected_weapon = WEAPON_SLOT_ROCKET
+	kicker._update_held()
+	kicker._recoil_t = 0.0
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	var kicked: float = WeaponVisualsScript.anchor(WEAPON_SLOT_ROCKET) \
+			- kicker._held_sprite.position.x
+	_check(kicked > 4.0,
+			"the launcher must kick back along the aim on a shot (got %.1f px)"
+			% kicked)
+	_check(absf(wrapf(kicker._held_sprite.rotation, -PI, PI)) < 0.01,
+			"mid-recoil the launcher must stay on the aim axis (got %s rad)"
+			% kicker._held_sprite.rotation)
+	for i in 22:
+		await get_tree().physics_frame
+	_check(absf(kicker._held_sprite.position.x
+				- WeaponVisualsScript.anchor(WEAPON_SLOT_ROCKET)) < 0.1
+			and absf(kicker._held_sprite.position.y
+				- WeaponVisualsScript.drop(WEAPON_SLOT_ROCKET)) < 0.1,
+			"the recoil must fully recover to the hold position (got %s)"
+			% kicker._held_sprite.position)
+	kicker.get_parent().queue_free()
+	await get_tree().physics_frame
+
+	# 7) PART 3 — the cartoon muzzle flash: a code-drawn starburst pops
+	# at the barrel, aimed along the shot, and frees itself shortly.
+	# (Settle first so earlier test shots' flashes have faded.)
+	for i in 14:
+		await get_tree().physics_frame
+	var flash_shooter := _make_weapon(Vector2(1, 0))
+	flash_shooter.selected_weapon = WEAPON_SLOT_SHOTGUN
+	flash_shooter._fire_shotgun()
+	var flash: MuzzleFlash = null
+	for child in get_children():
+		if child is MuzzleFlash:
+			flash = child
+	_check(flash != null,
+			"a volley must pop a cartoon muzzle flash at the barrel")
+	if flash != null:
+		_check(absf(flash.global_position.x
+					- flash_shooter.global_position.x - 36.0) < 0.1
+				and absf(flash.global_position.y
+					- flash_shooter.global_position.y) < 0.1,
+				"the flash must sit at the barrel (got %s)" % flash.global_position)
+		_check(absf(wrapf(flash.rotation, -PI, PI)) < 0.01,
+				"the flash must aim along the shot (got %s rad)" % flash.rotation)
+		_check(MuzzleFlash.FLASH_TIME < 0.25,
+				"the flash must be short-lived (got %s s)" % MuzzleFlash.FLASH_TIME)
+		for i in 16:
+				await get_tree().physics_frame
+		_check(not is_instance_valid(flash),
+				"the flash must free itself after its tween")
+	flash_shooter.get_parent().queue_free()
+	await get_tree().physics_frame
 
 	if failures > 0:
 		push_error("issue #680 test: %d check(s) failed" % failures)

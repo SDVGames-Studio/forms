@@ -31,6 +31,10 @@ extends RefCounted
 ##               (default DEFAULT_LIFT_KEEP)
 ##   drop      — per-weapon fixed drop along the stance-gravity axis
 ##               (default DEFAULT_DROP)
+##   recoil    — per-weapon RECOIL kick-back in px along the aim on a
+##               committed shot (issue #680 part 3, visual only;
+##               default DEFAULT_RECOIL, 0 for the melee styles whose
+##               own lunge/swing IS the animation)
 ##
 ## Slot order is Weapon.gd's WEAPON order (see _held_style_index there):
 ## shotgun, rocket, grenade, spear, then the rock TOOL, mine,
@@ -54,28 +58,48 @@ const DEFAULT_ANCHOR := 32.0
 ## values (0.4 / 6) for the rocket launcher's own entry below.
 const DEFAULT_LIFT_KEEP := 0.3
 const DEFAULT_DROP := 9.0
+## Issue #680 (part 3): default recoil kick-back in px along the aim
+## axis — the small jolt every plain rectangle weapon takes on a
+## committed shot. Textured/heavy weapons override it upward; the melee
+## styles (whose lunge or swing is already the animation) carry 0.
+const DEFAULT_RECOIL := 5.0
 
 const STYLES: Array = [
 	{# 0 shotgun — #680 part 2: the second cartoon weapon, proving the
 	 # system: its own sprite, its own (shorter, slightly higher) hold.
+	 # Part 3: a solid pump-gun kick.
 		"size": Vector2(40, 16), "color": Color(0.95, 0.85, 0.3, 1),
 		"texture": SHOTGUN_TEX,
-		"anchor": 30.0, "lift_keep": 0.35, "drop": 8.0},
+		"anchor": 30.0, "lift_keep": 0.35, "drop": 8.0, "recoil": 9.0},
 	{# 1 rocket launcher — the part 1 prototype. 2026-11-24 rework
-	 # ("a little lower"): lift_keep 0.4 -> 0.3, drop 6 -> 9.
+	 # ("a little lower"): lift_keep 0.4 -> 0.3, drop 6 -> 9. Part 3:
+	 # the heaviest kick of the arsenal — a full tube launch slams the
+	 # wielder's arms back.
 		"size": Vector2(52, 20), "color": Color(0.9, 0.35, 0.15, 1),
 		"texture": ROCKET_LAUNCHER_TEX,
-		"anchor": 32.0, "lift_keep": 0.3, "drop": 9.0},
+		"anchor": 32.0, "lift_keep": 0.3, "drop": 9.0, "recoil": 12.0},
 	{"size": Vector2(12, 12), "color": Color(0.3, 0.7, 0.3, 1)},    # grenade
-	{"size": Vector2(40, 4), "color": Color(0.8, 0.8, 0.9, 1)},     # spear
+	{# 3 spear — melee: the thrust lunge is the animation, no recoil.
+		"size": Vector2(40, 4), "color": Color(0.8, 0.8, 0.9, 1),
+		"recoil": 0.0},
 	{"size": Vector2(14, 14), "color": Color(0.55, 0.5, 0.45, 1)},  # rock (tool)
 	{"size": Vector2(14, 14), "color": Color(0.22, 0.24, 0.3, 1)},  # mine (#246)
-	{"size": Vector2(10, 18), "color": Color(0.85, 0.85, 0.95, 1)},  # jackhammer (#307)
-	{"size": Vector2(46, 4), "color": Color(0.55, 0.85, 1.0, 1)},   # railgun (#359)
-	{"size": Vector2(18, 6), "color": Color(0.5, 0.55, 0.6, 1)},   # pistol (#526)
-	{"size": Vector2(30, 8), "color": Color(0.85, 0.6, 0.3, 1)},  # baseball bat (#527)
+	{# 6 jackhammer — the drill shake is the animation, no recoil.
+		"size": Vector2(10, 18), "color": Color(0.85, 0.85, 0.95, 1),
+		"recoil": 0.0},  # jackhammer (#307)
+	{# 7 railgun — part 3: a heavy hitscan slam, second only to the
+	 # rocket launcher.
+		"size": Vector2(46, 4), "color": Color(0.55, 0.85, 1.0, 1),
+		"recoil": 11.0},  # railgun (#359)
+	{"size": Vector2(18, 6), "color": Color(0.5, 0.55, 0.6, 1),   # pistol (#526)
+		"recoil": 4.0},
+	{# 9 baseball bat — melee: the swing is the animation, no recoil.
+		"size": Vector2(30, 8), "color": Color(0.85, 0.6, 0.3, 1),
+		"recoil": 0.0},  # baseball bat (#527)
 	{"size": Vector2(16, 16), "color": Color(0.75, 0.78, 0.85, 1)},  # circular saw (#570)
-	{"size": Vector2(22, 8), "color": Color(0.55, 0.42, 0.28, 1)},  # entrenching shovel (#656)
+	{# 11 entrenching shovel — melee: the dig swing is the animation.
+		"size": Vector2(22, 8), "color": Color(0.55, 0.42, 0.28, 1),
+		"recoil": 0.0},  # entrenching shovel (#656)
 ]
 
 
@@ -109,3 +133,11 @@ static func lift_keep(idx: int) -> float:
 static func drop(idx: int) -> float:
 	var s := style(idx)
 	return s.get("drop", DEFAULT_DROP) as float
+
+
+## Issue #680 (part 3): per-weapon recoil kick-back in px along the aim
+## axis on a committed shot (entry override or the registry default;
+## the melee styles carry an explicit 0).
+static func recoil(idx: int) -> float:
+	var s := style(idx)
+	return s.get("recoil", DEFAULT_RECOIL) as float
