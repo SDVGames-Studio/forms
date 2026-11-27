@@ -7,14 +7,23 @@ extends Node
 ##   sees).
 ## - SpawnRegime.apply spawns a SpawnChooser child on the level which
 ##   PAUSES the tree (the first-team roll must wait for the player)
-##   and hands it the hero team's figures in group order, hero first.
-## - confirm_spot() drops the current figure onto the first VALID
-##   surface under local gravity beneath the click (floor + clearance,
-##   exactly like the random regimes' sampler); a bad click is
-##   rejected and advances nothing.
-## - After the last figure the pause lifts and the chooser is gone;
-##   computer/hot-seat teams and un-placed figures keep their authored
-##   positions (Esc/cancel leaves the rest where they were staged).
+##   and hands it the TURN-BASED placement plan — one teammate per
+##   team per round, teams in play order (owner rework 2026-11-27,
+##   "make spawning turn-based too").
+## - A HAND entry (first-team figure) is placed by the player:
+##   confirm_spot() drops it onto the first VALID surface under local
+##   gravity beneath the click (floor + clearance, exactly like the
+##   random regimes' sampler); a bad click is rejected and advances
+##   nothing.
+## - A SCRIPT entry (the other teams' figures) is placed automatically
+##   one AUTO_STEP beat after it becomes current — the plan interleaves
+##   them BETWEEN the player's placements, so the spawn order mirrors
+##   the turn order. A click while a script beat runs is ignored.
+## - After the last entry the pause lifts and the chooser is gone;
+##   the other teams' figures keep their authored positions (and are
+##   revealed on them), un-placed figures of a cancel too — the
+##   current figure returns to its authored spot instead of staying
+##   at the cursor.
 ## - Camera unblock (owner rework 2026-11-21, "unblock camera in the
 ##   spawn regime"): the chooser keeps every player_camera in
 ##   PROCESS_MODE_ALWAYS through its pause (pan/zoom keep working)
@@ -28,11 +37,7 @@ extends Node
 ## - Script-placed cast (owner rework 2026-11-26, "before I place
 ##   character it shouldn't exist on the ground" / "computer didn't
 ##   place any character at all"): the staged cast enters the phase
-##   HIDDEN — only the figure being placed exists on the field, at
-##   the cursor — and once the player is done the chooser
-##   script-places everyone still hidden (the other teams, and the
-##   un-placed first-team figures of a cancel) on their authored
-##   spots, one per beat, before the game begins.
+##   HIDDEN — a figure exists on the field only once it is placed.
 ## - Rework (owner 2026-11-20, "this regime doesn't work"): with the
 ##   #617-rework-v2 ALL-COMPUTER default the chooser still engages —
 ##   the hand on the mouse places the first team whether the team
@@ -72,6 +77,12 @@ const STAND_Y := FLOOR_TOP - STAND_OFF
 ## A pause-free timer that still fires while the chooser holds the
 ## tree paused (SceneTreeTimer with process_always).
 const TICK := 0.05
+
+## The plan this level must build: 3 player figures + one 2-figure
+## enemy team — Hero, Npc0, Mate1, Npc1, Mate2, hand flags T,F,T,F,T
+## (owner rework 2026-11-27: turn-based spawning).
+const PLAN_NAMES := ["Hero", "Npc0", "Mate1", "Npc1", "Mate2"]
+const PLAN_HANDS := [true, false, true, false, true]
 
 
 func _ready() -> void:
@@ -137,13 +148,26 @@ func _ready() -> void:
 		if not chooser.is_in_group("spawn_chooser"):
 			_fail("chooser is not in the spawn_chooser group")
 			failed = true
-		if chooser.figures.size() != 3 \
-				or chooser.figures[0].name != "Hero":
-			_fail("chooser got %d figures, first %s"
-					% [chooser.figures.size(),
-					str(chooser.figures[0].name if chooser.figures.size() > 0
-					else "-")])
+		# --- Owner rework 2026-11-27 ("make spawning turn-based too"):
+		# --- the plan interleaves the teams — one teammate per team per
+		# --- round, the player's figures alternating with the script's.
+		var plan: Array = chooser.entries
+		if plan.size() != PLAN_NAMES.size():
+			_fail("chooser got %d entries, want %d"
+					% [plan.size(), PLAN_NAMES.size()])
 			failed = true
+		else:
+			for i in plan.size():
+				var entry: Dictionary = plan[i]
+				if str((entry["figure"] as Node).name) != PLAN_NAMES[i]:
+					_fail("entry %d is %s, want %s" % [i,
+							str((entry["figure"] as Node).name),
+							PLAN_NAMES[i]])
+					failed = true
+				if bool(entry["hand"]) != PLAN_HANDS[i]:
+					_fail("entry %d hand flag is %s" % [i,
+							str(entry["hand"])])
+					failed = true
 		# --- Owner rework 2026-11-26: the cast starts HIDDEN — only the
 		# --- figure being placed exists on the field, at the cursor. ---
 		if not players[0].visible:
@@ -165,15 +189,35 @@ func _ready() -> void:
 		if chooser.get("_index") != 0:
 			_fail("a rejected click advanced the index")
 			failed = true
-		# --- Confirmed clicks place the figures on the floor. ---
-		for x in [220.0, 640.0, 1060.0]:
-			if not chooser.confirm_spot(Vector2(x, 80.0)):
-				_fail("spot at x=%s was rejected" % str(x))
-				failed = true
-		# Owner rework 2026-11-26: the chooser script-places the still
-		# hidden cast after the player's placements — the tail runs one
-		# beat per figure, so the wait covers it.
-		await _tick(16)
+		# --- A click while a script beat runs is ignored: place the hero,
+		# --- and BEFORE the enemy's beat fires the next hand figure is
+		# --- not placeable yet.
+		if not chooser.confirm_spot(Vector2(220.0, 80.0)):
+			_fail("spot at x=220 was rejected")
+			failed = true
+		if chooser.confirm_spot(Vector2(640.0, 80.0)):
+			_fail("a click during a script beat placed a figure")
+			failed = true
+		# --- Confirmed clicks and script beats alternate (turn-based):
+		# --- each beat is one AUTO_STEP, the waits cover it.
+		await _tick(6)
+		var npc0: Node2D = _enemies(level)[0]
+		if not npc0.visible or npc0.position != Vector2(60, 60):
+			_fail("the first enemy was not script-placed on its spot")
+			failed = true
+		if not chooser.confirm_spot(Vector2(640.0, 80.0)):
+			_fail("spot at x=640 was rejected")
+			failed = true
+		await _tick(6)
+		var npc1: Node2D = _enemies(level)[1]
+		if not npc1.visible or npc1.position != Vector2(60, 60):
+			_fail("the second enemy was not script-placed on its spot")
+			failed = true
+		if not chooser.confirm_spot(Vector2(1060.0, 80.0)):
+			_fail("spot at x=1060 was rejected")
+			failed = true
+		# The last entry placed — the plan is done and the phase ends.
+		await _tick(2)
 		if get_tree().paused:
 			_fail("still paused after the last figure")
 			failed = true
@@ -204,7 +248,9 @@ func _ready() -> void:
 	level.queue_free()
 	await _tick(2)
 
-	# --- Esc/cancel: the rest keeps the authored positions. ---
+	# --- Esc/cancel: the rest keeps the authored positions — including
+	# --- the figure that was following the cursor (owner rework
+	# --- 2026-11-27: it returns to its authored spot, not the mouse). ---
 	var level2 := _build_level()
 	add_child(level2)
 	SpawnRegime.apply(level2)
@@ -217,9 +263,24 @@ func _ready() -> void:
 		if not chooser2.confirm_spot(Vector2(300.0, 80.0)):
 			_fail("cancel-path spot was rejected")
 			failed = true
+		# The hero is placed; the enemy's beat fires and the next hand
+		# figure becomes current — it follows the cursor.
+		await _tick(6)
+		var followed := _players(level2)[1] as Node2D
+		if not followed.visible:
+			_fail("the next hand figure was not revealed at the cursor")
+			failed = true
+		var followed_at := followed.position
+		if followed_at == Vector2(60, 60):
+			_fail("the hand figure never followed the cursor")
+			failed = true
 		chooser2.cancel()
-		# Owner rework 2026-11-26: cancel script-places the rest — the
-		# un-placed players and the enemies — so wait out the tail.
+		if followed.position != Vector2(60, 60):
+			_fail("cancel did not return the current figure home (%s)"
+					% str(followed.position))
+			failed = true
+		# Cancel script-places the rest — the un-placed players and the
+		# enemies — one figure per beat; wait out the tail.
 		await _tick(20)
 		if get_tree().paused:
 			_fail("cancel did not lift the pause")
@@ -270,16 +331,16 @@ func _ready() -> void:
 		if not get_tree().paused:
 			_fail("all-computer chooser did not pause the tree")
 			failed = true
-		if chooser3.figures.size() != 3:
-			_fail("all-computer chooser got %d figures"
-					% chooser3.figures.size())
+		if chooser3.entries.size() != PLAN_NAMES.size():
+			_fail("all-computer chooser got %d entries"
+					% chooser3.entries.size())
 			failed = true
 		if not chooser3.confirm_spot(Vector2(420.0, 80.0)):
 			_fail("all-computer spot was rejected")
 			failed = true
 		chooser3.cancel()
-		# Owner rework 2026-11-26: the tail script-places the rest.
-		await _tick(20)
+		# The tail script-places the rest (one figure per beat).
+		await _tick(24)
 		if get_tree().paused:
 			_fail("all-computer cancel did not lift the pause")
 			failed = true

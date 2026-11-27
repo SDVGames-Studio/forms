@@ -31,7 +31,11 @@ extends RefCounted
 ##   the ground only once it is placed, the player's by their clicks
 ##   and everyone else's by the script (the chooser reveals the
 ##   other teams' figures on their authored spawn spots, one per
-##   beat, before the game begins). Rework (owner
+##   beat, before the game begins). Rework (owner 2026-11-27, "make
+##   spawning turn-based too"): the placements interleave by team —
+##   the first team places a teammate, then every other team places
+##   one, round after round — instead of the whole first team going
+##   first with the rest appearing afterwards. Rework (owner
 ##   2026-11-20, "this regime doesn't work"): the figures are placed
 ##   by hand whether the first team plays as a human or as the
 ##   computer — since the #617 rework v2 defaults EVERY team to the
@@ -145,20 +149,23 @@ static func apply(level: Node) -> void:
 
 
 ## Issue #547 regime 4: hand-place the FIRST team after the start.
-## A SpawnChooser child of the level pauses the tree and lets the
-## player click each first-team figure onto a validated surface
-## spot (hero first, see scripts/SpawnChooser.gd). Rework (owner
-## 2026-11-20): the placement runs whether the first team plays as
-## a human or as the computer — the chooser only needs the hand on
-## the mouse, and since the #617 rework v2 defaults every team to
-## the computer, the old controller fallback made the regime a
-## silent no-op in the default setup. Rework (owner 2026-11-26):
-## a figure must not exist on the ground before it is placed — the
-## whole staged cast (first team included) enters the phase hidden,
-## the authored staging doubling as each figure's spawn point; the
-## chooser reveals the figure being placed at the cursor and, once
-## the player is done, script-places everyone still hidden on
-## their authored spots before the game begins. A level with no
+## A SpawnChooser child of the level pauses the tree and walks a
+## TURN-BASED placement plan: one teammate per team per round, teams
+## in play order — the first team (the player side, hero first) placed
+## by the player's clicks, the other teams' figures script-revealed on
+## their authored spots (see scripts/SpawnChooser.gd). Rework (owner
+## 2026-11-20): the placement runs whether the first team plays as a
+## human or as the computer — the chooser only needs the hand on the
+## mouse, and since the #617 rework v2 defaults every team to the
+## computer, the old controller fallback made the regime a silent
+## no-op in the default setup. Rework (owner 2026-11-26): a figure
+## must not exist on the ground before it is placed — the whole staged
+## cast (first team included) enters the phase hidden, the authored
+## staging doubling as each figure's spawn point. Rework (owner
+## 2026-11-27, "make spawning turn-based too"): the plan interleaves
+## the teams — the first team places a teammate, then every other
+## team places one, round after round — instead of the player placing
+## the whole first team before anyone else appears. A level with no
 ## first-team figures at all (pure spectate staging) still falls
 ## back to the designer regime — there is nothing on the player
 ## side to click.
@@ -174,23 +181,29 @@ static func _apply_choose(level: Node) -> void:
 	# enters the tree — nobody is ever seen standing on the authored
 	# staging. The chooser reveals each figure when it is placed: the
 	# player's at the clicked spot, the other teams' at their authored
-	# spawn spots once the player is done.
+	# spawn spots as their beats come up.
 	var staged: Array = _live_figures(level)
 	for figure in staged:
 		(figure as Node2D).visible = false
+	# Owner rework 2026-11-27 ("make spawning turn-based too"): the
+	# placement plan interleaves the teams — the first team places a
+	# teammate, then every other team places one, round after round —
+	# so the spawn order mirrors the game's turn order instead of the
+	# whole first team going first with the rest appearing afterwards.
+	var entries: Array = _choose_entries(staged)
 	var chooser := SpawnChooserScript.new()
 	chooser.name = "SpawnChooser"
 	chooser.process_mode = Node.PROCESS_MODE_ALWAYS
-	chooser.figures = figures
-	chooser.staged = staged
+	chooser.entries = entries
 	level.add_child(chooser)
-	# Issue #626: everyone NOT handed to the chooser (enemies, hot-seat
-	# teams) keeps the authored positions — settle them out of the
-	# ground while the chooser holds its pause. A process_always timer
-	# fires through the pause, and the physics space stays queryable
-	# (the chooser validates its own clicks the same way while paused).
+	# Issue #626: everyone NOT placed by hand (the other teams'
+	# figures, script-revealed on their authored spots) keeps the
+	# authored positions — settle them out of the ground while the
+	# chooser holds its pause. A process_always timer fires through
+	# the pause, and the physics space stays queryable (the chooser
+	# validates its own clicks the same way while paused).
 	var others: Array = []
-	for figure in _live_figures(level):
+	for figure in staged:
 		if not figures.has(figure):
 			others.append(figure)
 	var tree := level.get_tree()
@@ -200,6 +213,59 @@ static func _apply_choose(level: Node) -> void:
 			if is_instance_valid(figure):
 				_unstick(figure as Node2D)
 	settle.call()
+
+
+## Issue #547 rework (owner 2026-11-27, "make spawning turn-based too"):
+## the chooser's placement plan in TEAM-ROUND order — the first team
+## places a teammate, then every other team places one, round after
+## round, exactly the order the game's turns run in. Teams are read
+## the way TurnController scans them: the player side first (the
+## player_team group, hero first), the enemy teams by COLOR in
+## first-appearance order (a figure with no team color is a team of
+## one); a round-robin deals one teammate per team per round until
+## every roster runs out.
+static func _choose_entries(staged: Array) -> Array:
+	var hands: Array = []
+	var keys: Array = []
+	var rosters: Array = []
+	for figure in staged:
+		var node := figure as Node
+		if node.is_in_group("player_team"):
+			hands.append(figure)
+			continue
+		var key = node.get("team_color")
+		if key == null:
+			key = node
+		var idx := keys.find(key)
+		if idx < 0:
+			idx = keys.size()
+			keys.append(key)
+			rosters.append([])
+		rosters[idx].append(figure)
+	var teams: Array = [hands]
+	teams.append_array(rosters)
+	var entries: Array = []
+	var lap := 0
+	while true:
+		var any_left := false
+		for team in teams:
+			if lap < team.size():
+				any_left = true
+				entries.append(_choose_entry(team[lap]))
+		if not any_left:
+			break
+		lap += 1
+	return entries
+
+
+## One entry of the chooser's turn-based plan: the figure and whether
+## the player's hand places it (first team) or the script does (the
+## other teams, on the authored spot).
+static func _choose_entry(figure: Node2D) -> Dictionary:
+	return {
+		"figure": figure,
+		"hand": figure.is_in_group("player_team"),
+	}
 
 
 ## Issue #523 regime 3: fill the level's "spawn_points" markers (name
