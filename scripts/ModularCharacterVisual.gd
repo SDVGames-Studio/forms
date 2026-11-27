@@ -40,6 +40,35 @@ extends Control
 		outline_width = maxf(value, 0.0)
 		queue_redraw()
 
+## Issue #690 rework 4 (owner 2026-11-27): color of the TALK hover ring —
+## the yellow outline the armed Talk pick draws around the hovered
+## figure. Exported so a future look pass can retune the yellow without
+## touching gameplay code.
+@export var hint_outline_color := Color(1.0, 0.85, 0.1, 1.0):
+	set(value):
+		hint_outline_color = value
+		if talk_hover:
+			queue_redraw()
+
+## Issue #690 rework 4: thickness of the yellow hover ring in px at the
+## reference 64 px body. Wide enough to read at a glance, thinner than
+## the cartoon outline so the hint never replaces the character's own
+## dark contour.
+const HINT_OUTLINE_WIDTH := 4.0
+
+## Issue #690 rework 4 (owner 2026-11-27): the Talk pick's hover flag —
+## ToolInventory sets it on the figure whose COLLISION SHAPE the cursor
+## sits on ("if there is a yellow outline the click will select the
+## character"). Purely visual: the ring is drawn around the body, no
+## gameplay code reads this back. Default off — menus and every other
+## embed of this component are untouched.
+var talk_hover := false:
+	set(value):
+		if talk_hover == value:
+			return
+		talk_hover = value
+		queue_redraw()
+
 ## Facial features — each is styled independently of the others.
 enum EyeStyle { NONE, NORMAL, WIDE, SLEEPY, HAPPY }
 enum EyebrowStyle { NONE, FLAT, ANGRY, RAISED, WORRIED }
@@ -202,13 +231,32 @@ const REF_SIZE := 64.0
 ## eyes when the face proportions are retuned (issue #586).
 const EYE_SPAN := 0.16
 
+func _init() -> void:
+	# Issue #690 rework 4 (owner 2026-11-27): this component is purely
+	# VISUAL, so it must never intercept the mouse. Figure bodies embed
+	# it as their gameplay visual, and a default STOP Control eats every
+	# mouse event over a figure — the Talk hover hint and the click on a
+	# body never reach _unhandled_input, exactly the owner's "no cursor
+	# change at all". IGNORE lets events pass through to gameplay input
+	# and to whatever control sits behind/around a preview (TeamMenu's
+	# member plates, LevelConfigMenu's team cells).
+	mouse_filter = MOUSE_FILTER_IGNORE
+
 func _draw() -> void:
 	var s := size
 	if s.x < 1.0 or s.y < 1.0:
 		return
 	var u := minf(s.x, s.y) / REF_SIZE
-	# 1) Body: bold outline pass first (behind), the fill on top of it.
 	var outline_scale := 1.0 + 2.0 * outline_width * u / minf(s.x, s.y)
+	# 0) Issue #690 rework 4: the Talk hover hint ring — the OUTERMOST
+	# pass, behind the dark contour, so it reads as a yellow outline
+	# AROUND the character (the same scaled-silhouette drawer, one ring
+	# wider than the cartoon outline).
+	if talk_hover:
+		var hint_scale := outline_scale \
+				+ 2.0 * HINT_OUTLINE_WIDTH * u / minf(s.x, s.y)
+		_draw_body(s, hint_outline_color, hint_scale)
+	# 1) Body: bold outline pass first (behind), the fill on top of it.
 	_draw_body(s, outline_color, outline_scale)
 	_draw_body(s, body_color, 1.0)
 	# 2) Face on top of the body fill.

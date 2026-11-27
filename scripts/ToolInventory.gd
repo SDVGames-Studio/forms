@@ -50,11 +50,11 @@ const TALK_PICK_RADIUS := 48.0
 ## Issue #690: the figure layers the Talk pick queries — Player figures
 ## sit on layer value 8, Npc figures on 2 (mask 2|8 = 10).
 const TALK_FIGURE_MASK := 10
-## Issue #690 rework 2 (owner 2026-11-26): half-size of a figure's
-## DRAWN body — every body visual (the ColorRect square and the
-## modular shape) is the 64x64 square centered on the figure. The
-## hover hint is exact: the cursor must sit ON that square.
-const TALK_BODY_HALF := 32.0
+## Issue #690 rework 4 (owner 2026-11-27): the Talk pick's hover rule
+## is the figure's own COLLISION SHAPE — a physics POINT query, not a
+## drawn-rectangle guess. The query hits whatever the game's capsule
+## really occupies (rotated with the gravity frame by FigurePose), so
+## the hand lights up exactly where a shape is, never near it.
 
 ## Issue #475 (godot-sound-work skill): the teleport hop sound —
 ## preloaded once, never loaded per teleport at runtime.
@@ -72,13 +72,21 @@ var _teleport_player: AudioStreamPlayer
 var _used: Dictionary = {}
 
 ## Issue #690 rework (owner 2026-11-24): the Talk pick's VISUAL HINT —
-## while the Talk tool is armed, a cursor EXACTLY on a figure the
-## click would pick shows a POINTING HAND (rework 2, owner
-## 2026-11-26: the exact _figure_body_at body hit — the hand must not
-## light up merely NEAR the figure). Set only by mouse motion below
-## and dropped by _process the moment the tool disarms on ANY path
-## (toggle, click, turn reset, weapon fire).
+## while the Talk tool is armed, a cursor on a figure's collision
+## shape (rework 4, owner 2026-11-27: a physics point query against the
+## game's own body capsule) shows a POINTING HAND and outlines that
+## figure's body in YELLOW (ModularCharacterVisual's talk_hover ring —
+## "if there is a yellow outline the click will select the
+## character"). Set only by mouse motion below and dropped by
+## _process the moment the tool disarms on ANY path (toggle, click,
+## turn reset, weapon fire).
 var _talk_cursor_hint := false
+
+## Issue #690 rework 4: the figure currently wearing the yellow hover
+## outline — the flag and the ring move together, so the ring is
+## cleared from the figure that lost the hover before the next one
+## gets it.
+var _talk_hint_figure: Node = null
 
 func _ready() -> void:
 	# Issue #475: build the teleport player once — the autoload persists
@@ -310,32 +318,67 @@ func can_use_now(tool: int) -> bool:
 
 
 func _process(_delta: float) -> void:
-	# Issue #690 rework: the pointing hand exists only while the Talk
-	# pick is armed. Every disarm path clears armed_tool, so a single
-	# guard here restores the plain arrow cursor without touching any
-	# of them — and it is a no-op (one comparison) whenever the hint is
-	# not showing.
-	if _talk_cursor_hint and armed_tool != TOOL_TALK:
+	# Issue #690 rework: the pointing hand and the yellow outline exist
+	# only while the Talk pick is armed. Every disarm path clears
+	# armed_tool, so a single guard here restores the plain arrow and
+	# drops the outline without touching any of them — and it is a
+	# no-op (one comparison) whenever the hint is not showing.
+	# Rework 4: a hovered figure DYING mid-hover frees its visual — drop
+	# the stale reference and the hand with it (the next motion re-picks).
+	if _talk_hint_figure != null and not is_instance_valid(_talk_hint_figure):
+		_talk_hint_figure = null
 		_talk_cursor_hint = false
+		Input.set_default_cursor_shape(Input.CURSOR_ARROW)
+	if (_talk_cursor_hint or _talk_hint_figure != null) \
+				and armed_tool != TOOL_TALK:
+		_talk_cursor_hint = false
+		_set_talk_hint_figure(null)
 		Input.set_default_cursor_shape(Input.CURSOR_ARROW)
 
 
-## Issue #690 rework: set the Talk hover hint from a MOUSE position in
-## the world — the pointing hand when the cursor is EXACTLY on the
-## figure the armed click would pick (owner 2026-11-26: the hand must
-## not light up merely NEAR the figure), the plain arrow over
-## everything else. The CLICK keeps its friendly TALK_PICK_RADIUS
-## tolerance; only the hover hint is exact.
+## Issue #690 rework 4 (owner 2026-11-27): set the Talk hover hint from
+## a MOUSE position in the world — the owner's prescribed test: the
+## figure whose COLLISION SHAPE contains the cursor (a physics POINT
+## query, so gravity-rotated and scaled figures follow their real
+## occupied space) gets BOTH the pointing hand and the yellow outline
+## ring on its body. Over everything else: the plain arrow, no ring.
+## The CLICK keeps its friendly TALK_PICK_RADIUS tolerance for taps,
+## but tries this same shape pick first — an outline that is showing
+## always selects its figure.
 func _update_talk_cursor_hint(world: Vector2) -> void:
 	var talker: Node = TurnController.active_member
+	var hovered: Node = null
 	if talker != null and is_instance_valid(talker) and talker is Node2D:
-		_talk_cursor_hint = _figure_body_at(
-				world, talker as Node2D) != null
-	else:
-		_talk_cursor_hint = false
+		hovered = _figure_at_point(world, talker as Node2D)
+	_set_talk_hint_figure(hovered)
+	_talk_cursor_hint = hovered != null
 	Input.set_default_cursor_shape(
 			Input.CURSOR_POINTING_HAND if _talk_cursor_hint
 			else Input.CURSOR_ARROW)
+
+
+## Issue #690 rework 4: move the yellow hover ring between figures —
+## the ring is cleared from the figure that lost the hover (cursor
+## moved to another figure, to empty ground, or the pick disarmed)
+## before the new pick gets it; the same figure keeps its ring.
+func _set_talk_hint_figure(figure: Node) -> void:
+	if _talk_hint_figure == figure:
+		return
+	if _talk_hint_figure != null and is_instance_valid(_talk_hint_figure):
+		_set_figure_hover_outline(_talk_hint_figure, false)
+	_talk_hint_figure = figure
+	if _talk_hint_figure != null:
+		_set_figure_hover_outline(_talk_hint_figure, true)
+
+
+## Issue #690 rework 4: flip the talk_hover flag on a figure's body
+## visual (ModularCharacterVisual draws the yellow ring). Duck-typed:
+## only the modular body visual carries the property, so figures
+## without it simply skip the ring — the cursor hint still works.
+func _set_figure_hover_outline(figure: Node, on: bool) -> void:
+	for child in figure.get_children():
+		if child is Control and "talk_hover" in child:
+			child.set("talk_hover", on)
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -355,8 +398,9 @@ func _unhandled_input(event: InputEvent) -> void:
 			use_tool(i)
 			return
 	# Issue #690 rework (owner 2026-11-24): the hover hint — while the
-	# Talk pick is armed, moving the cursor over a figure turns the
-	# cursor into a POINTING HAND (over anything else, the plain arrow).
+	# Talk pick is armed, moving the cursor onto a figure's collision
+	# shape turns the cursor into a POINTING HAND and outlines the body
+	# in yellow (over anything else, the plain arrow, no ring).
 	# Motion is NEVER consumed here: the camera pan drag, zoom and every
 	# other motion consumer keep working while the pick is armed.
 	if armed_tool == TOOL_TALK and event is InputEventMouseMotion:
@@ -419,7 +463,14 @@ func _unhandled_input(event: InputEvent) -> void:
 		var talker: Node = TurnController.active_member
 		if talker != null and is_instance_valid(talker) and talker is Node2D:
 			var talk_world: Vector2 = get_viewport().get_canvas_transform().affine_inverse() * event.position
-			var listener := _figure_at(talk_world, talker as Node2D)
+			# Issue #690 rework 4 (owner 2026-11-27): the yellow outline is
+			# a PROMISE — a click while the ring is showing selects that
+			# figure. Try the exact collision-shape pick FIRST; only a
+			# click that hits no shape at all falls back to the friendly
+			# TALK_PICK_RADIUS tolerance (near-missed taps).
+			var listener := _figure_at_point(talk_world, talker as Node2D)
+			if listener == null:
+				listener = _figure_at(talk_world, talker as Node2D)
 			if listener != null:
 				CharacterLines.exchange(talker, listener)
 				armed_tool = -1
@@ -497,29 +548,65 @@ func _character_width(member: Node2D) -> float:
 
 
 ## Issue #690: the alive FIGURE nearest to the clicked point within
-## TALK_PICK_RADIUS — the Talk tool's pick (a teammate OR an enemy,
-## never the active member itself). A physics shape query over the
-## figure layers finds the body under the cursor however tall the
+## TALK_PICK_RADIUS — the Talk tool's tolerant pick (a teammate OR an
+## enemy, never the active member itself). A physics shape query over
+## the figure layers finds the body under the cursor however tall the
 ## figure is; the hits are then filtered down to real, living figures
-## of either team and the closest one to the click wins.
+## of either team and the closest one to the click wins. Rework 4
+## (owner 2026-11-27): this is now the CLICK's fallback for near-
+## missed taps — the hover hint and the click's first try use the
+## exact _figure_at_point collision-shape pick.
 func _figure_at(world: Vector2, self_figure: Node2D) -> Node:
-	return _nearest_figure(world, self_figure, false)
+	return _nearest_figure(world, self_figure)
 
 
-## Issue #690 rework 2 (owner 2026-11-26): the figure the cursor is
-## EXACTLY on — the hover hint's pick. Same query, same living-figure
-## filters, but a candidate counts only when the point sits inside the
-## figure's drawn 64x64 body square (rotated with the figure), not
-## merely within the click's TALK_PICK_RADIUS reach.
-func _figure_body_at(world: Vector2, self_figure: Node2D) -> Node:
-	return _nearest_figure(world, self_figure, true)
+## Issue #690 rework 4 (owner 2026-11-27): the figure whose COLLISION
+## SHAPE contains the point — the hover hint's pick and the click's
+## first try. The owner's prescribed rule: "use a collision shape as a
+## space where cursor should change" — a physics POINT query against
+## the game's own body capsule, so the hit area is exactly what the
+## figure physically occupies (a capsule rotated with the gravity
+## frame by FigurePose rotates the hit area with it). Where this
+## returns a figure, the yellow ring is showing and the click
+## selects it.
+func _figure_at_point(world: Vector2, self_figure: Node2D) -> Node:
+	var space := self_figure.get_world_2d().direct_space_state
+	var query := PhysicsPointQueryParameters2D.new()
+	query.position = world
+	query.collision_mask = TALK_FIGURE_MASK
+	query.collide_with_areas = false
+	query.collide_with_bodies = true
+	var best: Node = null
+	var best_distance := INF
+	for hit in space.intersect_point(query, 16):
+		var figure: Node = hit.get("collider")
+		if not _is_talk_pickable(figure, self_figure):
+			continue
+		var distance: float = world.distance_to(
+				(figure as Node2D).global_position)
+		if distance < best_distance:
+			best_distance = distance
+			best = figure
+	return best
 
 
-## Issue #690 rework 2: shared pick scan — exact_body false keeps the
-## tolerant click pick (any living figure the query circle touches),
-## true demands the point inside the figure's body square.
-func _nearest_figure(world: Vector2, self_figure: Node2D,
-		exact_body: bool) -> Node:
+## Issue #690 rework 4: shared pick filter — a real, living figure of
+## either team that is not the talker itself. The tolerant scan and
+## the exact point pick accept exactly the same figures.
+func _is_talk_pickable(figure: Node, self_figure: Node2D) -> bool:
+	if figure == null or not is_instance_valid(figure) \
+				or figure == self_figure or not figure is Node2D:
+		return false
+	if not (figure.is_in_group("player_team") \
+				or figure.is_in_group("enemy_team")):
+		return false
+	var hp = figure.get("health")
+	return hp is int and hp > 0
+
+
+## Issue #690 rework 4: tolerant pick scan — any living figure the
+## TALK_PICK_RADIUS circle touches; the closest one to the point wins.
+func _nearest_figure(world: Vector2, self_figure: Node2D) -> Node:
 	var space := self_figure.get_world_2d().direct_space_state
 	var query := PhysicsShapeQueryParameters2D.new()
 	var shape := CircleShape2D.new()
@@ -533,17 +620,7 @@ func _nearest_figure(world: Vector2, self_figure: Node2D,
 	var best_distance := INF
 	for hit in space.intersect_shape(query, 16):
 		var figure: Node = hit.get("collider")
-		if figure == null or not is_instance_valid(figure) \
-				or figure == self_figure or not figure is Node2D:
-			continue
-		if not (figure.is_in_group("player_team") \
-				or figure.is_in_group("enemy_team")):
-			continue
-		var hp = figure.get("health")
-		if not (hp is int) or hp <= 0:
-			continue
-		if exact_body and not _point_on_figure_body(
-					world, figure as Node2D):
+		if not _is_talk_pickable(figure, self_figure):
 			continue
 		var distance: float = world.distance_to(
 				(figure as Node2D).global_position)
@@ -551,13 +628,3 @@ func _nearest_figure(world: Vector2, self_figure: Node2D,
 			best_distance = distance
 			best = figure
 	return best
-
-
-## Issue #690 rework 2 (owner 2026-11-26): exact body hit — the point
-## is inside the figure's 64x64 drawn square. The test runs in the
-## figure's LOCAL space, so a figure rotated by the gravity frame
-## (FigurePose) or flipped still hits on its visible silhouette.
-func _point_on_figure_body(world: Vector2, figure: Node2D) -> bool:
-	var local := figure.global_transform.affine_inverse() * world
-	return absf(local.x) <= TALK_BODY_HALF \
-			and absf(local.y) <= TALK_BODY_HALF

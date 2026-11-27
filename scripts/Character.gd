@@ -260,6 +260,11 @@ func _build_health_bar() -> void:
 	# Issue #178: named so the team shape/color passes skip it.
 	background.name = "HealthBarBackground"
 	background.z_index = Stats.HP_Z
+	# Issue #690 rework 4: a figure-attached overlay never intercepts
+	# the mouse (the Shield bubble's convention) — a STOP bar would eat
+	# clicks in the strip above a figure that the Talk pick's tolerant
+	# click ring covers.
+	background.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	background.offset_left = -BAR_WIDTH / 2.0
 	background.offset_top = -44.0
 	background.offset_right = BAR_WIDTH / 2.0
@@ -268,6 +273,7 @@ func _build_health_bar() -> void:
 	add_child(background)
 
 	_bar_fill = ColorRect.new()
+	_bar_fill.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_bar_fill.offset_left = 1.0
 	_bar_fill.offset_top = 1.0
 	_bar_fill.offset_bottom = -1.0
