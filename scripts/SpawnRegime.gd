@@ -21,27 +21,30 @@ extends RefCounted
 ##   the hand-placed staging IS the designer's spawn set.
 ## - REGIME_CHOOSE   — "choose after the start" (issue #547): the
 ##   level starts, the game pauses, and the player clicks every
-##   FIRST-team figure onto a surface spot of their choosing (the
+##   HUMAN team's figures onto surface spots of their choosing (the
 ##   spot is validated exactly like the sampler's — floor under
-##   local gravity + clearance), then the game runs. Computer and
-##   hot-seat teams keep their authored positions. Rework (owner
-##   2026-11-26, "before I place character it shouldn't exist on the
-##   ground" / "computer didn't place any character at all"): the
-##   whole staged cast enters the phase HIDDEN — a figure exists on
-##   the ground only once it is placed, the player's by their clicks
-##   and everyone else's by the script (the chooser reveals the
-##   other teams' figures on their authored spawn spots, one per
-##   beat, before the game begins). Rework (owner 2026-11-27, "make
-##   spawning turn-based too"): the placements interleave by team —
-##   the first team places a teammate, then every other team places
-##   one, round after round — instead of the whole first team going
-##   first with the rest appearing afterwards. Rework (owner
-##   2026-11-20, "this regime doesn't work"): the figures are placed
-##   by hand whether the first team plays as a human or as the
-##   computer — since the #617 rework v2 defaults EVERY team to the
-##   computer, the old "computer-played hero team → designer
-##   regime" fallback silently swallowed the regime in the default
-##   setup: the figures just spawned and the first turn began.
+##   local gravity + clearance), then the game runs. Hot-seat rework
+##   (owner 2026-11-27, "I was able to choose spawn points only for
+##   the first player"): every team configured as "player" places
+##   its figures by hand — the first team AND the staged hot-seat
+##   teams — while computer-played teams keep the script beats.
+##   Rework (owner 2026-11-26, "before I place character it shouldn't
+##   exist on the ground" / "computer didn't place any character at
+##   all"): the whole staged cast enters the phase HIDDEN — a figure
+##   exists on the ground only once it is placed, the player's by
+##   their clicks and everyone else's by the script (the chooser
+##   reveals the computer teams' figures on their authored spawn
+##   spots, one per beat, before the game begins). Rework (owner
+##   2026-11-27, "make spawning turn-based too"): the placements
+##   interleave by team — each team places a teammate in turn order,
+##   round after round — instead of the whole first team going first
+##   with the rest appearing afterwards. Rework (owner 2026-11-20,
+##   "this regime doesn't work"): the first team's figures are placed
+##   by hand whether it plays as a human or as the computer — since
+##   the #617 rework v2 defaults EVERY team to the computer, the old
+##   "computer-played hero team → designer regime" fallback silently
+##   swallowed the regime in the default setup: the figures just
+##   spawned and the first turn began.
 ##
 ## The random regimes find spots in ANY level with an algorithm that
 ## never assumes flat ground: candidate points are sampled on a grid
@@ -148,55 +151,65 @@ static func apply(level: Node) -> void:
 			_apply_designer(level)
 
 
-## Issue #547 regime 4: hand-place the FIRST team after the start.
+## Issue #547 regime 4: hand-place every HUMAN team after the start.
 ## A SpawnChooser child of the level pauses the tree and walks a
 ## TURN-BASED placement plan: one teammate per team per round, teams
-## in play order — the first team (the player side, hero first) placed
-## by the player's clicks, the other teams' figures script-revealed on
-## their authored spots (see scripts/SpawnChooser.gd). Rework (owner
-## 2026-11-20): the placement runs whether the first team plays as a
-## human or as the computer — the chooser only needs the hand on the
-## mouse, and since the #617 rework v2 defaults every team to the
-## computer, the old controller fallback made the regime a silent
-## no-op in the default setup. Rework (owner 2026-11-26): a figure
-## must not exist on the ground before it is placed — the whole staged
-## cast (first team included) enters the phase hidden, the authored
-## staging doubling as each figure's spawn point. Rework (owner
-## 2026-11-27, "make spawning turn-based too"): the plan interleaves
-## the teams — the first team places a teammate, then every other
-## team places one, round after round — instead of the player placing
-## the whole first team before anyone else appears. A level with no
-## first-team figures at all (pure spectate staging) still falls
-## back to the designer regime — there is nothing on the player
-## side to click.
+## in play order — every human team's figures (the first team plus
+## any staged team configured "player", hot-seat) placed by the
+## player's clicks, the computer teams' figures script-revealed on
+## their authored spots (see scripts/SpawnChooser.gd). Hot-seat
+## rework (owner 2026-11-27, "I was able to choose spawn points only
+## for the first player, but the second player's team teammates were
+## placed by the computer too"): the hand flag now follows the
+## configured controller of a staged team's COLOR — the same source
+## TurnController reads for hot-seat input gating
+## (GameConfig.team_controller_for_color) — so the second human
+## player's team is clicked in by hand too. Rework (owner
+## 2026-11-20): the first team's placement runs whether it plays as
+## a human or as the computer — the chooser only needs the hand on
+## the mouse, and since the #617 rework v2 defaults every team to
+## the computer, the old controller fallback made the regime a
+## silent no-op in the default setup. Rework (owner 2026-11-26): a
+## figure must not exist on the ground before it is placed — the
+## whole staged cast (hand teams included) enters the phase hidden,
+## the authored staging doubling as each figure's spawn point.
+## Rework (owner 2026-11-27, "make spawning turn-based too"): the
+## plan interleaves the teams — each team places a teammate in turn
+## order, round after round — instead of the player placing the
+## whole first team before anyone else appears. A level with NO
+## hand-placable figure at all (pure spectate staging — no
+## first-team figures and every staged team played by the computer)
+## still falls back to the designer regime — there is nothing on
+## the player side to click.
 static func _apply_choose(level: Node) -> void:
-	var figures: Array = []
-	for figure in level.get_tree().get_nodes_in_group("player_team"):
-		if _is_placeable(figure, level):
-			figures.append(figure)
-	if figures.is_empty():
+	var staged: Array = _live_figures(level)
+	var any_hand := false
+	for figure in staged:
+		if _is_hand_figure(figure):
+			any_hand = true
+			break
+	if not any_hand:
 		_apply_designer(level)
 		return
 	# Owner rework 2026-11-26: hide the staged cast BEFORE the chooser
 	# enters the tree — nobody is ever seen standing on the authored
-	# staging. The chooser reveals each figure when it is placed: the
-	# player's at the clicked spot, the other teams' at their authored
-	# spawn spots as their beats come up.
-	var staged: Array = _live_figures(level)
+	# staging. The chooser reveals each figure when it is placed: every
+	# human team's at the clicked spot, the computer teams' at their
+	# authored spawn spots as their beats come up.
 	for figure in staged:
 		(figure as Node2D).visible = false
 	# Owner rework 2026-11-27 ("make spawning turn-based too"): the
-	# placement plan interleaves the teams — the first team places a
-	# teammate, then every other team places one, round after round —
-	# so the spawn order mirrors the game's turn order instead of the
-	# whole first team going first with the rest appearing afterwards.
+	# placement plan interleaves the teams — each team places a
+	# teammate in turn order, round after round — so the spawn order
+	# mirrors the game's turn order instead of the whole first team
+	# going first with the rest appearing afterwards.
 	var entries: Array = _choose_entries(staged)
 	var chooser := SpawnChooserScript.new()
 	chooser.name = "SpawnChooser"
 	chooser.process_mode = Node.PROCESS_MODE_ALWAYS
 	chooser.entries = entries
 	level.add_child(chooser)
-	# Issue #626: everyone NOT placed by hand (the other teams'
+	# Issue #626: everyone NOT placed by hand (the computer teams'
 	# figures, script-revealed on their authored spots) keeps the
 	# authored positions — settle them out of the ground while the
 	# chooser holds its pause. A process_always timer fires through
@@ -204,7 +217,7 @@ static func _apply_choose(level: Node) -> void:
 	# validates its own clicks the same way while paused).
 	var others: Array = []
 	for figure in staged:
-		if not figures.has(figure):
+		if not _is_hand_figure(figure):
 			others.append(figure)
 	var tree := level.get_tree()
 	var settle := func() -> void:
@@ -216,14 +229,16 @@ static func _apply_choose(level: Node) -> void:
 
 
 ## Issue #547 rework (owner 2026-11-27, "make spawning turn-based too"):
-## the chooser's placement plan in TEAM-ROUND order — the first team
-## places a teammate, then every other team places one, round after
-## round, exactly the order the game's turns run in. Teams are read
+## the chooser's placement plan in TEAM-ROUND order — each team
+## places a teammate in turn order, round after round, exactly the
+## order the game's turns run in. Teams are read
 ## the way TurnController scans them: the player side first (the
 ## player_team group, hero first), the enemy teams by COLOR in
 ## first-appearance order (a figure with no team color is a team of
 ## one); a round-robin deals one teammate per team per round until
-## every roster runs out.
+## every roster runs out. Hot-seat rework (owner 2026-11-27): an
+## entry's hand flag follows _is_hand_figure — every HUMAN team is
+## dealt to the player's hand, the computer teams to the script.
 static func _choose_entries(staged: Array) -> Array:
 	var hands: Array = []
 	var keys: Array = []
@@ -259,13 +274,34 @@ static func _choose_entries(staged: Array) -> Array:
 
 
 ## One entry of the chooser's turn-based plan: the figure and whether
-## the player's hand places it (first team) or the script does (the
-## other teams, on the authored spot).
+## the player's hand places it (every human team — the first team
+## plus any hot-seat team configured "player") or the script does
+## (the computer teams, on the authored spot).
 static func _choose_entry(figure: Node2D) -> Dictionary:
 	return {
 		"figure": figure,
-		"hand": figure.is_in_group("player_team"),
+		"hand": _is_hand_figure(figure),
 	}
+
+
+## Issue #547 hot-seat rework (owner 2026-11-27, "I was able to choose
+## spawn points only for the first player, but the second player's
+## team teammates were placed by the computer too"): true when the
+## player's hand places this figure. The player side (the
+## player_team group, hero first) is always hand-placed — whatever
+## plays the team, the hand on the mouse does the choosing (owner
+## rework 2026-11-20). An enemy-color figure is hand-placed exactly
+## when its team is configured "player" — the same hot-seat source
+## TurnController reads (GameConfig.team_controller_for_color →
+## _human_teams): the second human player's teammates are clicked
+## in like the first team's, only computer teams stay with the
+## script beats.
+static func _is_hand_figure(figure: Node) -> bool:
+	if figure.is_in_group("player_team"):
+		return true
+	var color = figure.get("team_color")
+	return color is Color \
+			and GameConfig.team_controller_for_color(color) == "player"
 
 
 ## Issue #523 regime 3: fill the level's "spawn_points" markers (name

@@ -44,6 +44,14 @@ extends Node
 ##   plays as a human or as the computer. Only a level with NO
 ##   first-team figures (pure spectate staging) falls back to the
 ##   designer regime.
+## - Hot-seat rework (owner 2026-11-27, "I was able to choose spawn
+##   points only for the first player, but the second player's team
+##   teammates were placed by the computer too"): every team
+##   configured "player" places its figures BY HAND — the hero team
+##   plus the staged hot-seat teams (their figures' entries carry
+##   hand=true through GameConfig.team_controller_for_color, the same
+##   source TurnController's hot-seat input gating reads); only the
+##   computer teams' figures keep the script beats.
 ##
 ## The floor is thick so its underside is a second walkable surface
 ## (local gravity pulls up below the slab, like Level4's underside
@@ -379,6 +387,105 @@ func _ready() -> void:
 			_fail("designer fallback hid the cast")
 			failed = true
 	level4.queue_free()
+	await _tick(2)
+
+	# --- Hot-seat rework (owner 2026-11-27, "I was able to choose
+	# --- spawn points only for the first player, but the second
+	# --- player's team teammates were placed by the computer too"):
+	# --- the owner's exact game — two HUMAN teams (the hero plus a
+	# --- staged team configured "player", Team 2's color) and one
+	# --- computer team (Team 3's color). Every human team's figures
+	# --- are hand entries; only the computer team's stay with the
+	# --- script beats.
+	GameConfig.teams = GameConfig.default_teams()
+	GameConfig.teams[0]["controller"] = "player"
+	GameConfig.teams[1]["controller"] = "player"
+	if GameConfig.team_controller(1) != "player":
+		_fail("opted-in second team is not human-played")
+		failed = true
+	var level5 := _build_level()
+	add_child(level5)
+	# Npc0 already wears Team 2's color (the second human); Npc1
+	# switches to Team 3's color so it fields the computer team.
+	var bots_figure := _enemies(level5)[1] as Node2D
+	bots_figure.set("team_color", Color(0.9, 0.3, 0.3, 1))
+	SpawnRegime.apply(level5)
+	await _tick(8)
+	var chooser5 := level5.get_node_or_null("SpawnChooser")
+	if chooser5 == null:
+		_fail("hot-seat apply(CHOOSE) added no chooser")
+		failed = true
+	else:
+		# Plan: Hero H, Npc0 H (the second human's), Npc1 S (the
+		# computer's), Mate1 H, Mate2 H — one teammate per team per
+		# round, every human team dealt to the player's hand.
+		var hot_names := ["Hero", "Npc0", "Npc1", "Mate1", "Mate2"]
+		var hot_hands := [true, true, false, true, true]
+		var plan5: Array = chooser5.entries
+		if plan5.size() != hot_names.size():
+			_fail("hot-seat chooser got %d entries, want %d"
+					% [plan5.size(), hot_names.size()])
+			failed = true
+		else:
+			for i in plan5.size():
+				var entry: Dictionary = plan5[i]
+				if str((entry["figure"] as Node).name) != hot_names[i]:
+					_fail("hot-seat entry %d is %s, want %s" % [i,
+							str((entry["figure"] as Node).name),
+							hot_names[i]])
+					failed = true
+				if bool(entry["hand"]) != hot_hands[i]:
+					_fail("hot-seat entry %d hand flag is %s" % [i,
+							str(entry["hand"])])
+					failed = true
+		# The second human's figure is placed by the PLAYER's clicks —
+		# it used to be script-placed on its authored spot.
+		if not chooser5.confirm_spot(Vector2(220.0, 80.0)):
+			_fail("hot-seat hero spot was rejected")
+			failed = true
+		if not chooser5.confirm_spot(Vector2(640.0, 80.0)):
+			_fail("the second human team's spot was rejected")
+			failed = true
+		var second := _enemies(level5)[0] as Node2D
+		if absf(second.position.y - STAND_Y) > 1.0 \
+				or absf(second.position.x - 640.0) > 1.0:
+			_fail("the second human's figure was not placed by hand (%s)"
+					% str(second.position))
+			failed = true
+		# The computer team's figure still takes its script beat on the
+		# authored spot — and the beat ignores clicks like before.
+		if chooser5.confirm_spot(Vector2(1060.0, 80.0)):
+			_fail("a click during the computer's beat placed a figure")
+			failed = true
+		await _tick(6)
+		var bot := _enemies(level5)[1] as Node2D
+		if not bot.visible or bot.position != Vector2(60, 60):
+			_fail("the computer team's figure was not script-placed (%s)"
+					% str(bot.position))
+			failed = true
+		# The rest of both human teams goes back to the players' hands.
+		if not chooser5.confirm_spot(Vector2(1060.0, 80.0)):
+			_fail("hot-seat Mate1 spot was rejected")
+			failed = true
+		if not chooser5.confirm_spot(Vector2(1400.0, 80.0)):
+			_fail("hot-seat Mate2 spot was rejected")
+			failed = true
+		await _tick(2)
+		if get_tree().paused:
+			_fail("hot-seat phase did not lift the pause")
+			failed = true
+		if level5.get_node_or_null("SpawnChooser") != null:
+			_fail("hot-seat chooser outlived the phase")
+			failed = true
+		var stood5 := 0
+		for figure in _players(level5):
+			if absf(figure.position.y - STAND_Y) < 1.0:
+				stood5 += 1
+		if stood5 != 3:
+			_fail("hot-seat: only %d/3 player figures stand" % stood5)
+			failed = true
+	level5.queue_free()
+	await _tick(2)
 
 	# --- Restore the world the test found. ---
 	GameConfig.teams = saved_teams

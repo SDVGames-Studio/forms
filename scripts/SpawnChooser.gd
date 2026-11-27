@@ -12,19 +12,23 @@ extends Node2D
 ##   bodies become queryable only after a physics step), then the
 ##   WHOLE TREE is paused: the first-team roll freezes mid-flicker,
 ##   nothing falls, nobody shoots;
-## - a HAND entry (the first team — the player side) is placed by the
-##   player: the figure follows the cursor and a left click drops it
+## - a HAND entry (every human team — the first team plus any
+##   hot-seat team configured "player", owner rework 2026-11-27:
+##   "I was able to choose spawn points only for the first player,
+##   but the second player's team teammates were placed by the
+##   computer too") is placed by the player: the figure follows the
+##   cursor and a left click drops it
 ##   onto the first surface under LOCAL gravity beneath the click
 ##   (LevelTerrain.gravity_at), the standing spot validated exactly
 ##   like the random regimes' sampler — a clearance circle free of
 ##   ground — so a figure can never be embedded in terrain; a click
 ##   that cannot hold a figure flashes a hint instead;
-## - a SCRIPT entry (the other teams) is placed automatically: its
+## - a SCRIPT entry (the computer teams) is placed automatically: its
 ##   figure appears on its authored spot one AUTO_STEP beat after it
 ##   becomes current. Owner rework 2026-11-27 ("make spawning
-##   turn-based too"): the plan interleaves the teams — the first
-##   team places a teammate, then every other team places one, round
-##   after round — so the spawn order mirrors the game's turn order
+##   turn-based too"): the plan interleaves the teams — each team
+##   places a teammate in turn order, round after round — so the
+##   spawn order mirrors the game's turn order
 ##   instead of the whole first team going first with the rest
 ##   appearing afterwards;
 ## - clicks while a script beat runs are ignored (nothing is there to
@@ -59,15 +63,18 @@ extends Node2D
 ##   other teams' on their authored spawn spots as their script beats
 ##   come up.
 ##
-## Only the FIRST team is placed by hand. Rework (owner 2026-11-20):
-## the chooser runs whatever plays the team — since the #617 rework
+## Every HUMAN team is placed by hand (owner rework 2026-11-27, the
+## hot-seat report above): the plan's hand flag follows the team's
+## configured controller — the first team (the player side) always,
+## plus any staged team set to "player" in the level configuration,
+## the same source TurnController's hot-seat input gating reads. The
+## chooser runs whatever plays the first team — since the #617 rework
 ## v2 defaults every team to the computer, a computer-played first
 ## team must still get its placement phase (the hand on the mouse
 ## does the choosing; before, SpawnRegime._apply_choose silently fell
 ## back to the designer regime and the feature looked dead). The
-## other teams' figures are placed by the SCRIPT (hot-seat teams on
-## their authored spots included — hand-placing those is a separate
-## slice if the owner wants it).
+## computer teams' figures are placed by the SCRIPT on their
+## authored spots.
 ##
 ## The chooser and its hint run in PROCESS_MODE_ALWAYS (input, process
 ## and SceneTreeTimers keep working while the tree is paused); the
