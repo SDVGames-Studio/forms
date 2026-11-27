@@ -1,11 +1,14 @@
 extends CanvasLayer
 ## Simple celebration overlay (issue #194).
 ##
-## Shows a "Level Complete!" banner that pops in with a tween and rains
-## confetti (square particles, the game's own shapes). Issue #194 rework
-## (owner, 2026-11-27): the animation runs a little longer, and before it
-## stops the confetti stops spawning and the remaining particles fly away
-## out through the BOTTOM edge — nothing pops out mid-screen. Then the
+## Shows a banner that pops in with a tween and rains confetti (square
+## particles, the game's own shapes). Issue #194 rework (owner,
+## 2026-11-27): the banner names the winning team — "<Teamname> team
+## wins!" — TurnController sets `message` accordingly; the default text
+## is only a plain fallback for direct instantiation. Earlier #194
+## rework: the animation runs a little longer, and before it stops the
+## confetti stops spawning and the remaining particles fly away out
+## through the BOTTOM edge — nothing pops out mid-screen. Then the
 ## overlay emits `finished` and frees itself.
 
 signal finished

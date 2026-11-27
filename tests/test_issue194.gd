@@ -9,6 +9,8 @@ extends Node
 ##     longer than the old 2.0 s, and before the end the emitter stops
 ##     spawning and gravity surges so the remaining confetti flies away
 ##     out through the bottom edge.
+##   - Issue #194 rework (owner, 2026-11-27): the banner names the WINNING
+##     team (TurnController sets `message` to "<Teamname> team wins!").
 ##
 ## Issue #614 removed the Finish trigger area — the celebration-on-win
 ## wiring is covered by tests/test_issue614.gd.
@@ -24,8 +26,11 @@ func _ready() -> void:
 	probe.free()
 
 	# --- Celebration overlay lifecycle.
+	# Issue #194 rework (owner, 2026-11-27): the banner names the winning
+	# team — TurnController sets `message` to "<Teamname> team wins!".
 	var celebration: CanvasLayer = load("res://scripts/Celebration.gd").new()
 	celebration.duration = 2.0
+	celebration.message = "YELLOW team wins!"
 	add_child(celebration)
 	await get_tree().process_frame
 
@@ -40,6 +45,8 @@ func _ready() -> void:
 	var label: Label = labels[0] if labels.size() == 1 else null
 	if label != null and label.text.is_empty():
 		failures.append("banner label must have text")
+	if label != null and label.text != "YELLOW team wins!":
+		failures.append("banner must show the winner text, got %s" % label.text)
 	var confetti: CPUParticles2D = particles[0] if particles.size() == 1 else null
 	if confetti != null and not confetti.emitting:
 		failures.append("confetti must be raining while the animation plays")

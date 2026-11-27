@@ -861,6 +861,14 @@ func _team_color(team: String) -> Color:
 ## actually painted with, not by a hard-coded level-independent name —
 ## a green team must never be announced as "PINK TEAM".
 func _team_name(team: String) -> String:
+	return "%s TEAM" % _team_color_name(team)
+
+
+## Issue #194 rework (owner, 2026-11-27): the celebration banner says
+## "<Teamname> team wins!" — the color word of the winning team (this
+## is a team deathmatch), without the " TEAM" suffix the turn/wins
+## banners append. Shares the color matching of _team_name().
+func _team_color_name(team: String) -> String:
 	var c := _team_color(team)
 	# Issue #521: multi-team ids ("enemy:<color>") are not authored in
 	# TEAM_NAMES — the COLOR_NAMES loop below names every team by its
@@ -872,7 +880,7 @@ func _team_name(team: String) -> String:
 		var d: float = pow(c.r - pc.r, 2.0) + pow(c.g - pc.g, 2.0) + pow(c.b - pc.b, 2.0)
 		if d < best_d:
 			best_d = d
-			best = "%s TEAM" % entry[0]
+			best = str(entry[0])
 	return best
 
 
@@ -937,7 +945,7 @@ func _check_win() -> void:
 	if alive_teams.size() == 1 and not _win_celebrated \
 				and get_tree().current_scene == _level:
 		_win_celebrated = true
-		_celebrate_win()
+		_celebrate_win(alive_teams[0])
 
 
 ## Issue #614: the finish sequence that replaced the Finish trigger
@@ -949,8 +957,12 @@ func _check_win() -> void:
 ## game_over, live camera, spectate hint) while the celebration plays
 ## and after it ends; the player leaves through the standard in-game
 ## menu (ESC -> Main Menu, issues #31/#211) — no new tools were added.
-func _celebrate_win() -> void:
+## Issue #194 rework (owner, 2026-11-27): the banner names the WINNING
+## team — "<Teamname> team wins!" — instead of the generic "Level
+## Complete!" (this is a team deathmatch, the winner is who matters).
+func _celebrate_win(winner: String) -> void:
 	var celebration: CanvasLayer = CELEBRATION_SCRIPT.new()
+	celebration.message = "%s team wins!" % _team_color_name(winner)
 	add_child(celebration)
 	await celebration.finished
 
