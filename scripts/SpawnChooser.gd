@@ -4,25 +4,36 @@ extends Node2D
 ##
 ## SpawnRegime.apply adds ONE chooser as a child of the level (after
 ## GameConfig.apply trimmed and dressed the live figures) and hands it
-## the first team's figures in group order — hero first. The chooser
-## then lets the player pick each figure's standing spot AFTER the
-## level has started:
+## the TURN-BASED placement plan — see `entries`. The chooser then
+## walks that plan once the level has started:
 ##
 ## - the level's physics space is given two frames to flush (the same
 ##   rule SpawnRegime's scatter follows — freshly-entered ground
 ##   bodies become queryable only after a physics step), then the
 ##   WHOLE TREE is paused: the first-team roll freezes mid-flicker,
 ##   nothing falls, nobody shoots;
-## - the figure being placed follows the cursor; a left click drops it
+## - a HAND entry (the first team — the player side) is placed by the
+##   player: the figure follows the cursor and a left click drops it
 ##   onto the first surface under LOCAL gravity beneath the click
-##   (LevelTerrain.gravity_at), and the standing spot is validated
-##   exactly like the random regimes' sampler — a clearance circle
-##   free of ground — so a figure can never be embedded in terrain;
-##   a click that cannot hold a figure flashes a hint instead;
-## - Esc cancels the rest: the un-placed figures keep their authored
-##   positions and the game starts with what was placed;
-## - once the last figure is placed the pause lifts, the chooser frees
-##   itself, and the (still running) roll hands the first turn over;
+##   (LevelTerrain.gravity_at), the standing spot validated exactly
+##   like the random regimes' sampler — a clearance circle free of
+##   ground — so a figure can never be embedded in terrain; a click
+##   that cannot hold a figure flashes a hint instead;
+## - a SCRIPT entry (the other teams) is placed automatically: its
+##   figure appears on its authored spot one AUTO_STEP beat after it
+##   becomes current. Owner rework 2026-11-27 ("make spawning
+##   turn-based too"): the plan interleaves the teams — the first
+##   team places a teammate, then every other team places one, round
+##   after round — so the spawn order mirrors the game's turn order
+##   instead of the whole first team going first with the rest
+##   appearing afterwards;
+## - clicks while a script beat runs are ignored (nothing is there to
+##   place by hand yet); Esc cancels the REST of the hand placement —
+##   the current figure returns to its authored spot and every
+##   remaining entry is placed by the script, one per beat, so the
+##   game still starts with the complete field;
+## - once the plan runs out the pause lifts, the chooser frees itself,
+##   and the (still running) roll hands the first turn over;
 ## - the shared zoom camera stays LIVE through the pause (owner
 ##   rework 2026-11-21, "unblock camera in the spawn regime"): every
 ##   player_camera runs PROCESS_MODE_ALWAYS for the phase, so the
@@ -43,20 +54,20 @@ extends Node2D
 ##   all"): the whole staged cast enters the phase HIDDEN — SpawnRegime
 ##   hides every live figure before this chooser enters the tree, so
 ##   nobody stands on the authored staging while the player chooses.
-##   The figure being placed is revealed at the cursor the moment it
-##   becomes current; once the player's team is done (last figure
-##   placed, or Esc) the SCRIPT places everyone still hidden — the
-##   other teams' figures appear on their authored spawn spots one
-##   per AUTO_STEP beat while the pause still holds, and only when
-##   the field is complete does the pause lift and the game begin.
+##   A figure exists on the ground only once it is placed: the
+##   player's at the clicked spot the moment it becomes current, the
+##   other teams' on their authored spawn spots as their script beats
+##   come up.
 ##
 ## Only the FIRST team is placed by hand. Rework (owner 2026-11-20):
 ## the chooser runs whatever plays the team — since the #617 rework
 ## v2 defaults every team to the computer, a computer-played first
 ## team must still get its placement phase (the hand on the mouse
-## does the choosing; before, SpawnRegime._apply_choose silently
-## fell back to the designer regime and the feature looked dead).
-## Hot-seat teams keep their authored spots.
+## does the choosing; before, SpawnRegime._apply_choose silently fell
+## back to the designer regime and the feature looked dead). The
+## other teams' figures are placed by the SCRIPT (hot-seat teams on
+## their authored spots included — hand-placing those is a separate
+## slice if the owner wants it).
 ##
 ## The chooser and its hint run in PROCESS_MODE_ALWAYS (input, process
 ## and SceneTreeTimers keep working while the tree is paused); the
@@ -91,8 +102,8 @@ const GROUND_MASK := 1
 const FLUSH_FRAMES := 2
 ## How long the "no ground there" hint stays up after a bad click.
 const BAD_FLASH := 1.2
-## Owner rework 2026-11-26: pause between two script-placed figures —
-## the other teams' characters appear on the field one per beat.
+## Pause between two script-placed figures — a script entry's figure
+## appears on its spawn spot one beat after it becomes current.
 const AUTO_STEP := 0.2
 ## The chooser's hint rides ABOVE the turn HUD (layer 50) and the
 ## in-game menu (layer 10).
@@ -100,29 +111,36 @@ const HUD_LAYER := 60
 
 const HINT := "Choose a spawn point for %s — click on a surface"
 const HINT_BAD := "No ground there — pick a surface spot for %s"
-## Owner rework 2026-11-26: shown while the script places the cast
-## the player did not place by hand.
+## Shown while a script entry waits out its beat.
 const HINT_AUTO := "Placing the other teams..."
 
-## Figures to place, hero first (filled by SpawnRegime._apply_choose
-## before the chooser enters the tree).
-var figures: Array = []
-## Owner rework 2026-11-26: every live figure the phase hid (filled
-## by SpawnRegime._apply_choose) — the auto-place tail reveals the
-## still-hidden ones once the player is done.
-var staged: Array = []
+## The turn-based placement plan (owner rework 2026-11-27, "make
+## spawning turn-based too"), filled by SpawnRegime._apply_choose
+## before the chooser enters the tree: TEAM-ROUND order — the first
+## team places a teammate, then every other team places one, round
+## after round. Each entry is a Dictionary:
+##   figure — the Node2D being placed;
+##   hand   — true: the player clicks it in; false: the script
+##            reveals it on its authored spot.
+var entries: Array = []
 
 var _level: Node2D = null
+## The plan's cursor: the index of the entry being placed.
 var _index := 0
 var _bad_left := 0.0
 var _done := false
-## True while the player is still placing their team; the auto-place
-## tail (script placement of the still-hidden cast) runs when false.
-var _placing := true
-## Seconds to the next script-placed figure (the tail's beat).
+## True while the current entry waits for the player's click (its
+## figure follows the cursor); false while it waits out its script
+## beat — an auto entry, or any entry after Esc.
+var _waiting_hand := false
+## True after Esc: every remaining entry turns into a script one.
+var _cancelled := false
+## Seconds to the current entry's script placement.
 var _auto_left := 0.0
-## Still-hidden figures waiting for their auto-place beat.
-var _auto_rest: Array = []
+## The current hand figure's authored spot, captured the moment it
+## becomes current (before it starts following the cursor) — Esc
+## returns it there instead of leaving it floating at the mouse.
+var _home := Vector2.INF
 var _we_paused := false
 var _layer: CanvasLayer = null
 var _label: Label = null
@@ -157,19 +175,22 @@ func _ready() -> void:
 	# never start a camera drag) while everything else pans/zooms.
 	add_to_group("spawn_chooser")
 	_unblock_cameras()
-	_hint()
+	_settle_current()
 
 
 func _process(delta: float) -> void:
 	if _done or not _we_paused:
 		return
-	if _placing:
+	if _waiting_hand:
 		if _bad_left > 0.0:
 			_bad_left = maxf(0.0, _bad_left - delta)
 			if _bad_left == 0.0:
 				_hint()
-		var figure := _current()
-		if figure != null:
+		var figure := _figure_at(_index)
+		if figure == null:
+			# The figure died mid-choose — skip its entry.
+			_advance()
+		else:
 			# Owner rework 2026-11-26: the figure being placed appears at
 			# the cursor the moment it becomes current — before that it
 			# did not exist on the ground.
@@ -177,17 +198,13 @@ func _process(delta: float) -> void:
 				figure.visible = true
 			figure.global_position = get_global_mouse_position()
 	else:
-		# Owner rework 2026-11-26: the script-placement tail — one
-		# still-hidden figure per beat (the pause holds, so the other
-		# teams' characters visibly APPEAR on their spawn spots) until
-		# the field is complete and the game may begin.
 		_auto_left -= delta
 		if _auto_left <= 0.0:
-			_reveal_next()
+			_place_current_by_script()
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if _done or not _placing or not _we_paused:
+	if _done or not _waiting_hand or not _we_paused:
 		return
 	if event is InputEventMouseButton and event.pressed \
 			and event.button_index == MOUSE_BUTTON_LEFT:
@@ -200,11 +217,13 @@ func _unhandled_input(event: InputEvent) -> void:
 		cancel()
 
 
-## Place the CURRENT figure at `at` — the first validated surface spot
-## under local gravity beneath it. Returns false (and flashes the
-## hint) when nothing there can hold a figure. Public for tests.
+## Place the CURRENT hand figure at `at` — the first validated surface
+## spot under local gravity beneath it. Returns false (and flashes the
+## hint) when nothing there can hold a figure; a click while a script
+## beat runs is simply ignored (also false — there is nothing to place
+## by hand at that moment). Public for tests.
 func confirm_spot(at: Vector2) -> bool:
-	if _done or not _placing:
+	if _done or not _waiting_hand:
 		return false
 	var stand := standing_spot(at)
 	if stand == Vector2.INF:
@@ -212,25 +231,30 @@ func confirm_spot(at: Vector2) -> bool:
 		if _label != null:
 			_label.text = HINT_BAD % _figure_name()
 		return false
-	var figure := _current()
+	var figure := _figure_at(_index)
 	if figure == null:
-		_finish()
+		_advance()
 		return true
 	figure.global_position = stand
-	_index += 1
 	_bad_left = 0.0
-	if _index >= figures.size():
-		_finish()
-	else:
-		_hint()
+	_advance()
 	return true
 
 
-## Esc: stop choosing — the script places the un-placed figures on
-## their authored positions and the game starts. Public for tests.
+## Esc: stop choosing by hand — the current figure returns to its
+## authored spot and the script places every remaining entry, one per
+## beat, and the game starts. Public for tests.
 func cancel() -> void:
-	if _placing:
-		_finish()
+	if _done:
+		return
+	if _waiting_hand:
+		var figure := _figure_at(_index)
+		if figure != null and _home != Vector2.INF:
+			# The figure followed the cursor since it became current —
+			# put it back where the phase found it.
+			figure.global_position = _home
+	_cancelled = true
+	_settle_current()
 
 
 ## The standing spot a click at `at` would produce (mirrors the
@@ -262,48 +286,44 @@ func _exit_tree() -> void:
 	_restore_cameras()
 
 
-## The player is done (last figure placed, or Esc). Owner rework
-## 2026-11-26: the still-hidden cast — the other teams, and the
-## un-placed first-team figures of a cancel — is placed by the
-## SCRIPT: one figure per AUTO_STEP beat under the still-held pause
-## (the chooser keeps processing through it), and the phase truly
-## ends only when the field is complete. With nothing left hidden
-## the phase ends immediately, exactly as before.
-func _finish() -> void:
-	if not _placing:
+## Set the phase for the entry the cursor sits on: skip dead entries,
+## end the phase past the last one, and either wait for the player's
+## click (a hand entry — capture its authored spot first) or arm the
+## script beat. Called whenever the plan advances.
+func _settle_current() -> void:
+	while _index < entries.size():
+		if _figure_at(_index) != null:
+			break
+		_index += 1
+	if _index >= entries.size():
+		_end_phase()
 		return
-	_placing = false
-	_auto_rest = []
-	for figure in staged:
-		var node := figure as Node2D
-		if node != null and is_instance_valid(node) \
-				and not node.is_queued_for_deletion() \
-				and not node.visible:
-				_auto_rest.append(node)
-	if _auto_rest.is_empty():
-		_end_phase()
+	var entry: Dictionary = entries[_index]
+	if entry.get("hand", false) and not _cancelled:
+		_waiting_hand = true
+		_home = (_figure_at(_index) as Node2D).global_position
+		_hint()
 	else:
+		_waiting_hand = false
+		_auto_left = AUTO_STEP
 		if _label != null:
-				_label.text = HINT_AUTO
-		_auto_left = AUTO_STEP
+			_label.text = HINT_AUTO
 
 
-## One beat of the script-placement tail: the next still-hidden
-## figure appears on its spawn spot; the phase ends once the queue
-## runs out.
-func _reveal_next() -> void:
-	while not _auto_rest.is_empty():
-		var figure := _auto_rest.pop_front() as Node2D
-		if figure == null or not is_instance_valid(figure) \
-				or figure.is_queued_for_deletion():
-			continue
-		if not figure.visible:
-			figure.visible = true
-		break
-	if _auto_rest.is_empty():
-		_end_phase()
-	else:
-		_auto_left = AUTO_STEP
+## One step of the plan: the cursor moves to the next entry.
+func _advance() -> void:
+	_index += 1
+	_settle_current()
+
+
+## One script beat: the current entry's figure APPEARS on its authored
+## spot (script figures are never moved — the beat only reveals them,
+## so the #626 settle pass's placements stand) and the plan moves on.
+func _place_current_by_script() -> void:
+	var figure := _figure_at(_index)
+	if figure != null:
+		figure.visible = true
+	_advance()
 
 
 ## The phase truly ends: the pause lifts, the cameras are restored,
@@ -313,7 +333,7 @@ func _end_phase() -> void:
 	if _we_paused:
 		_we_paused = false
 		get_tree().paused = false
-	_restore_cameras()
+		_restore_cameras()
 	remove_from_group("spawn_chooser")
 	if _layer != null:
 		_layer.queue_free()
@@ -322,22 +342,23 @@ func _end_phase() -> void:
 	queue_free()
 
 
-## The figure currently following the cursor; skips freed figures (a
-## mid-choose death cannot happen while paused, but never wedge on a
-## dead one either) and finishes the phase when the list runs out.
-func _current() -> Node2D:
-	while _index < figures.size():
-		var figure := figures[_index] as Node2D
-		if figure != null and is_instance_valid(figure):
-			return figure
-		_index += 1
-	if not _done:
-		_finish()
-	return null
+## The live figure of entry `i`, or null when the entry is out of the
+## plan or its figure is gone (freed figures cannot be placed).
+func _figure_at(i: int) -> Node2D:
+	if i < 0 or i >= entries.size():
+		return null
+	var node: Node2D = null
+	var raw = (entries[i] as Dictionary).get("figure")
+	if raw is Node2D:
+		node = raw
+	if node == null or not is_instance_valid(node) \
+			or node.is_queued_for_deletion():
+		return null
+	return node
 
 
 func _figure_name() -> String:
-	var figure := _current()
+	var figure := _figure_at(_index)
 	if figure != null and figure.get("display_name") != null:
 		return str(figure.get("display_name"))
 	return "figure %d" % (_index + 1)
