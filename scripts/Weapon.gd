@@ -415,6 +415,15 @@ var _held_style := -1
 ## configured per style in _update_held, positioned and rotated by the
 ## aim in _physics_process just like the rectangle above.
 var _held_sprite: Sprite2D
+## Issue #680 (part 3): recoil animation clock — < 0 idle, else seconds
+## since the committed shot that kicked the held visual back along the
+## aim (ticked with the held-weapon visual in _physics_process). The
+## kick MAGNITUDE is per-weapon data (WeaponVisuals.recoil).
+var _recoil_t := -1.0
+## Issue #680 (part 3): how long the recoil takes to ease back to the
+## hold position (seconds). Visual only — the kick never touches a
+## gameplay number, corridor or hitbox.
+const RECOIL_TIME := 0.28
 
 ## Issue #354: true while THIS member is the one acting — the active
 ## member of the currently running turn. Only that figure takes a
@@ -765,6 +774,22 @@ func _physics_process(delta: float) -> void:
 				else:
 					_shovel_swing_t = -1.0
 		_held.position += aim * dig_swing
+		# Issue #680 (part 3): RECOIL — the held visual snaps back along
+		# the aim on a committed shot and eases back to the hold position
+		# over RECOIL_TIME seconds (a squared ease-out: the kick is a
+		# jolt, the recovery is smooth). Magnitude is per-weapon data
+		# (WeaponVisuals.recoil, 0 for melee styles). VISUAL ONLY — this
+		# offset feeds the drawn _held/_held_sprite and nothing else; no
+		# corridor, hitbox or gameplay calculation reads it.
+		var recoil := 0.0
+		if _recoil_t >= 0.0:
+			_recoil_t += delta
+			if _recoil_t <= RECOIL_TIME:
+				var k := 1.0 - _recoil_t / RECOIL_TIME
+				recoil = WeaponVisuals.recoil(_held_style) * k * k
+			else:
+				_recoil_t = -1.0
+		_held.position -= aim * recoil
 		# Issue #307: the drilling jackhammer shakes in the wielder's hands.
 		if _drill_left > 0.0:
 			_held.position += Vector2(randf_range(-2.0, 2.0), randf_range(-2.0, 2.0))
@@ -919,6 +944,10 @@ func _fire(power := 1.0) -> void:
 	WeaponInventory.spend_weapon(team_id, selected_weapon)
 	# Issue #101: 3-second pause before the next shot of the same turn.
 	_shot_delay_left = SHOT_DELAY
+	# Issue #680 (part 3): every committed shot kicks the held weapon
+	# back along the aim (per-weapon magnitude in WeaponVisuals.recoil;
+	# melee styles carry 0 — their own lunge/swing is the animation).
+	_recoil_t = 0.0
 	# Issue #252: debug action log — every shot names its wielder.
 	var shooter := get_parent()
 	var who: Variant = "?"
@@ -984,15 +1013,21 @@ func _total_shots_used() -> int:
 
 ## Issue #368: brief muzzle flash where a shot leaves the barrel — a
 ## hot point of light that fades in ~0.1 s.
-func _muzzle_flash(at: Vector2) -> void:
+## Issue #680 (part 3): the flash is a CARTOON starburst now too — a
+## bold dark outline, vivid flat fills and an exaggerated forward
+## spike along the firing direction (MuzzleFlash), layered on top of
+## the light so the shot reads in the weapon art style everywhere.
+func _muzzle_flash(at: Vector2, dir := Vector2.RIGHT) -> void:
 	var level_root := get_parent().get_parent()
 	if level_root == null:
 		return
 	ShotLight.flash(level_root, at, Color(1.0, 0.85, 0.45), 110.0, 2.6, 0.12)
+	MuzzleFlash.pop(level_root, at, dir)
 
 
 func _spawn_projectile(type: int, velocity: Vector2, damage: int, lifetime: float,
-		size: Vector2, color: Color, blast_radius: float = 0.0) -> Area2D:
+		size: Vector2, color: Color, blast_radius: float = 0.0,
+		pop_flash := true) -> Area2D:
 	var projectile := Area2D.new()
 	projectile.set_script(ProjectileScript)
 	projectile.setup(type, velocity, damage, lifetime, size, color, blast_radius)
@@ -1001,17 +1036,27 @@ func _spawn_projectile(type: int, velocity: Vector2, damage: int, lifetime: floa
 	projectile.global_position = global_position + _aim() * 36.0
 	get_parent().get_parent().add_child(projectile)
 	# Issue #368: muzzle flash where the shot leaves the barrel.
-	_muzzle_flash(projectile.global_position)
+	# Issue #680 (part 3): aimed along the shot's own velocity; the
+	# shotgun suppresses it per pellet (one flash per volley, see
+	# _fire_shotgun).
+	if pop_flash:
+		_muzzle_flash(projectile.global_position, velocity.normalized())
 	return projectile
 
 
 func _fire_shotgun() -> void:
 	var aim := _aim()
+	# Issue #680 (part 3): the volley pops ONE cartoon flash for the
+	# whole fan — five starbursts stacked at the same muzzle would only
+	# smear into a blob. It aims dead along the barrel (the fan spreads
+	# from there).
+	_muzzle_flash(global_position + aim * 36.0, aim)
 	for i in 5:
 		var spread := deg_to_rad(-8.0 + 4.0 * i)
 		var velocity := aim.rotated(spread) * PELLET_SPEED
 		_spawn_projectile(Projectile.Type.PELLET, velocity, PELLET_DAMAGE,
-			PELLET_LIFETIME, Vector2(10, 4), Color(0.95, 0.85, 0.3, 1))
+			PELLET_LIFETIME, Vector2(10, 4), Color(0.95, 0.85, 0.3, 1),
+			0.0, false)
 
 
 ## Issue #526: the pistol shot — ONE bullet straight along the aim (the
@@ -1339,7 +1384,8 @@ func _spawn_body(kind: int, velocity: Vector2, damage: int, lifetime: float,
 	body.global_position = global_position + _aim() * 36.0
 	get_parent().get_parent().add_child(body)
 	# Issue #368: muzzle flash where the shot leaves the barrel.
-	_muzzle_flash(body.global_position)
+	# Issue #680 (part 3): aimed along the shot's own velocity.
+	_muzzle_flash(body.global_position, velocity.normalized())
 	return body
 
 
@@ -1603,7 +1649,8 @@ func _fire_railgun(power: float = 1.0) -> void:
 			target.take_damage(railgun_damage(power), wielder)
 	_railgun_beam(muzzle, beam_end, power)
 	# Issue #368: the railgun's shot flashes bright at the muzzle.
-	_muzzle_flash(muzzle)
+	# Issue #680 (part 3): the cartoon burst rides the beam direction.
+	_muzzle_flash(muzzle, dir)
 
 
 ## Issue #359: the railgun tracer — a thick Line2D from the muzzle to the
