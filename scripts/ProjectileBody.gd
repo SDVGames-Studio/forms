@@ -202,6 +202,19 @@ func _ready() -> void:
 	linear_velocity = launch_velocity
 	contact_monitor = true
 	max_contacts_reported = 4
+	# Issue #727: continuous collision detection. A lobbed grenade/mine
+	# clears 20+ px per physics step (550 px/s launch speed, 1200 gravity
+	# after a long fall), while carved destructible ground splits into
+	# pieces as thin as 2 px (DestructibleGround.MIN_PIECE) — a discrete
+	# step can jump clean across such a strip and leave the projectile
+	# INSIDE or BELOW the ground. Godot 4.7's speculative contacts catch
+	# much of that already; CCD (shape casting) makes it a guarantee for
+	# the whole flight, rotation included. The ROCKET stays discrete: it
+	# detonates on any reported contact (body_entered), and CCD's
+	# speculative contacts could fire that mid-air while the rocket
+	# merely skims a surface.
+	continuous_cd = RigidBody2D.CCDMode.CCD_MODE_CAST_SHAPE \
+			if kind != Kind.ROCKET else RigidBody2D.CCDMode.CCD_MODE_DISABLED
 	body_entered.connect(_on_body_entered)
 
 	var shape := CollisionShape2D.new()
