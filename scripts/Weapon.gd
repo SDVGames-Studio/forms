@@ -1373,6 +1373,33 @@ func throw_rock(power := 1.0) -> void:
 	ToolInventory.rock_thrown(get_parent())
 
 
+## Issue #727: never spawn a projectile inside the ground. `offset` is
+## the intended spawn offset from the weapon (aim * 36); a ground-layer
+## ray from the weapon to that point reports the first terrain in the
+## way, and the spawn backs off so the whole body clears the surface
+## (half the body's diagonal + margin). The offset never collapses
+## below SPAWN_MIN_OFFSET, so a point-blank throw still starts in front
+## of the wielder (outside its 24 px capsule) and then simply bounces
+## off the surface — visible, never buried.
+const SPAWN_MIN_OFFSET := 12.0
+const SPAWN_SURFACE_MARGIN := 2.0
+
+
+func _safe_spawn_position(offset: Vector2, size: Vector2) -> Vector2:
+	var target := global_position + offset
+	var space := get_world_2d().direct_space_state
+	var query := PhysicsRayQueryParameters2D.create(
+			global_position, target, 1)
+	var hit: Dictionary = space.intersect_ray(query)
+	if hit.is_empty():
+		return target
+	var clear := size.length() / 2.0 + SPAWN_SURFACE_MARGIN
+	var t: float = maxf(
+			(hit.position - global_position).length() - clear,
+			SPAWN_MIN_OFFSET)
+	return global_position + offset.normalized() * t
+
+
 ## Issue #114: spawn a physics-driven explosive projectile (rigid body).
 func _spawn_body(kind: int, velocity: Vector2, damage: int, lifetime: float,
 		size: Vector2, color: Color, blast_radius: float, mass: float) -> RigidBody2D:
@@ -1381,7 +1408,14 @@ func _spawn_body(kind: int, velocity: Vector2, damage: int, lifetime: float,
 	body.setup(kind, velocity, damage, lifetime, size, color, blast_radius, mass)
 	# Issue #57: remember the wielder so shots pass through them.
 	body.shooter = get_parent()
-	body.global_position = global_position + _aim() * 36.0
+	# Issue #727: a close-range throw aimed at the ground used to spawn
+	# the projectile 36 px ahead of the weapon — inside the terrain (the
+	# figure centre sits ~29 px above the floor, so a steep throw clears
+	# the surface well before the spawn point; a wall at point-blank did
+	# the same sideways). The spawn is now clamped to the surface: the
+	# first ground between the weapon and the intended point backs the
+	# spawn off so the whole body starts clear of the soil.
+	body.global_position = _safe_spawn_position(_aim() * 36.0, size)
 	get_parent().get_parent().add_child(body)
 	# Issue #368: muzzle flash where the shot leaves the barrel.
 	# Issue #680 (part 3): aimed along the shot's own velocity.
