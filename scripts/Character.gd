@@ -274,8 +274,19 @@ func _build_health_bar() -> void:
 
 	_bar_fill = ColorRect.new()
 	_bar_fill.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# Issue #726: full-rect anchors make the fill's offsets measure from
+	# the background's own edges — the 1 px inset (offsets 1, 1, -1, -1)
+	# only works with them. Without anchor_right/anchor_bottom = 1 the
+	# fill's height collapsed to zero (offset_bottom -1 landed ABOVE its
+	# top edge), the fill turned invisible and the bar read as an empty
+	# dark line with no HP in it.
+	_bar_fill.anchor_left = 0.0
+	_bar_fill.anchor_top = 0.0
+	_bar_fill.anchor_right = 1.0
+	_bar_fill.anchor_bottom = 1.0
 	_bar_fill.offset_left = 1.0
 	_bar_fill.offset_top = 1.0
+	_bar_fill.offset_right = -1.0
 	_bar_fill.offset_bottom = -1.0
 	_bar_fill.color = _bar_fill_color(1.0)
 	background.add_child(_bar_fill)
@@ -289,15 +300,23 @@ func _update_bar() -> void:
 	DebugInfo.update_hp(self, health, MAX_HEALTH)
 	var inner_width := BAR_WIDTH - 2.0
 	var ratio := float(health) / float(MAX_HEALTH)
-	_bar_fill.offset_right = 1.0 + inner_width * ratio
+	# Issue #726: the remaining HP fills the middle of the bar. Full
+	# health paints the whole inner width; damage shrinks the fill
+	# symmetrically from both edges toward the centre (never anchored
+	# to one side). The symmetric offsets keep the fill centred in the
+	# background whatever the ratio.
+	var edge: float = (BAR_WIDTH - inner_width * ratio) / 2.0
+	_bar_fill.offset_left = edge
+	_bar_fill.offset_right = -edge
 	_bar_fill.color = _bar_fill_color(ratio)
 
 
-## Issue #611: the bar fill's color policy — the player-side bar turns
-## red as health drops (issue #6 heritage); computer figures keep their
-## team color (issue #60 heritage). One hook, both looks, no copies.
-func _bar_fill_color(ratio: float) -> Color:
-	return Color(0.75 - 0.5 * ratio, 0.25 + 0.5 * ratio, 0.3, 1)
+## Issue #726: the HP fill is red — full health paints the full bar
+## red, and damage shrinks it from the edges to the centre. (Supersedes
+## the issue #6 green-at-full-health look: a green bar read as "no HP".)
+## Computer figures keep their team color (Npc override, issue #60).
+func _bar_fill_color(_ratio: float) -> Color:
+	return Color(0.85, 0.15, 0.15, 1)
 
 
 ## Issue #521: rename the figure after the level was staged — the name
