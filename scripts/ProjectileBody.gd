@@ -36,7 +36,11 @@ extends RigidBody2D
 ##             and disappears. A settling watchdog forces the spin even
 ##             if the saw never rests (endless slide), so a turn can
 ##             never hang waiting for it.
-## Visuals are plain rectangles built in code — no assets.
+## Visuals are plain rectangles built in code — no assets, EXCEPT the
+## grenade and the mine since issue #719 (roadmap part 4a): both draw
+## their cartoon sprite from the WeaponVisuals registry (in flight and
+## at rest), a Sprite2D child of the visual rect that inherits the
+## #717 launch stretch and tumble; everything else stays code-drawn.
 
 enum Kind { ROCKET, GRENADE, ROCK, MINE, SAW }
 
@@ -111,6 +115,10 @@ const ROCK_CHAR_CLEAR := 1.3 * 64.0
 ## Issue #216: grenade acceleration matches the figures (Stats.GRAVITY).
 const Stats := preload("res://scripts/CharacterStats.gd")
 const GRAVITY := Stats.GRAVITY
+## Issue #719 (roadmap part 4a): the cartoon sprites of the grenade and
+## the mine — held, thrown and placed — come from the WeaponVisuals
+## registry (one table for the whole arsenal).
+const WeaponVisuals := preload("res://scripts/WeaponVisuals.gd")
 
 ## Issue #475 (godot-sound-work skill): the blast/crumble sounds —
 ## preloaded once, never loaded per blast at runtime. Issue #495 adds
@@ -155,6 +163,14 @@ var _fuse_left := 0.0
 ## Issue #281: current mine health (MINE_HP while intact).
 var _hp := 0
 var _visual: ColorRect = null
+## Issue #719 (part 4a): the cartoon Sprite2D riding the visual rect of
+## the grenade/mine (null for every other kind). A CHILD of the rect at
+## its pivot/centre, so it inherits the rect's launch-stretch scale,
+## tumble rotation and every transform the #717 code animates — no
+## second animation path. The rect's fill turns transparent for these
+## kinds: the sprite IS the visible body (the physics rect stays
+## untouched).
+var _visual_sprite: Sprite2D = null
 ## Issue #368: the armed mine's red warning light (null while dormant).
 var _mine_light: ShotLight = null
 ## Issue #570: saw state — spinning flag, seconds left, the per-figure
@@ -236,6 +252,24 @@ func _ready() -> void:
 	visual.color = _color
 	add_child(visual)
 	_visual = visual
+	# Issue #719 (roadmap part 4a): the grenade and the mine draw their
+	# cartoon SPRITE (registry data: WeaponVisuals.PROJECTILE_SPRITES)
+	# through a Sprite2D child of the rect, placed at the rect's pivot
+	# (its centre) so it inherits the launch stretch and tumble below.
+	# The rect's fill goes transparent: the sprite is the visible body.
+	# Physics shape, spawn, velocities, bounces — frozen (#680).
+	var sprite_style := WeaponVisuals.projectile_sprite(_sprite_key())
+	if not sprite_style.is_empty():
+		_visual.color = Color(1.0, 1.0, 1.0, 0.0)
+		var spr := Sprite2D.new()
+		var tex: Texture2D = sprite_style["texture"]
+		spr.texture = tex
+		var draw_size: Vector2 = sprite_style["size"]
+		spr.scale = draw_size / Vector2(
+				tex.get_width(), tex.get_height())
+		spr.position = _size / 2.0
+		_visual.add_child(spr)
+		_visual_sprite = spr
 
 	# Issue #680 part 3b (#717): LAUNCH character on the VISUAL only —
 	# the rocket stretches along its launch velocity leaving the tube,
@@ -383,9 +417,16 @@ func _physics_process(delta: float) -> void:
 	else:
 		# Armed: blink red while the fuse counts down, then explode.
 		_fuse_left -= delta
-		if _visual != null:
-				_visual.color = Color(1.0, 0.15, 0.1, 1) \
-					if fmod(_fuse_left, 0.25) < 0.125 else _color
+		# Issue #719 (part 4a): the blink paints the SPRITE modulate for
+		# the textured kinds (their rect fill is transparent) and the
+		# rect fill for the plain ones — same red, same cadence.
+		var blink_on: bool = fmod(_fuse_left, 0.25) < 0.125
+		if _visual_sprite != null:
+			_visual_sprite.modulate = Color(1.0, 0.15, 0.1, 1) \
+					if blink_on else Color.WHITE
+		elif _visual != null:
+			_visual.color = Color(1.0, 0.15, 0.1, 1) \
+					if blink_on else _color
 		if _mine_light != null and is_instance_valid(_mine_light):
 				_mine_light.energy = 2.2 \
 					if fmod(_fuse_left, 0.25) < 0.125 else 0.5
@@ -518,6 +559,37 @@ func _trail_key() -> String:
 	return ""
 
 
+## Issue #719 (roadmap part 4a): the WeaponVisuals projectile-sprite key
+## for this kind ("" for the kinds that keep their code-drawn visual).
+func _sprite_key() -> String:
+	match kind:
+		Kind.GRENADE:
+			return "grenade"
+		Kind.MINE:
+			return "mine"
+	return ""
+
+
+## Issue #719 (roadmap part 4a): one soft dust puff where the grenade or
+## the mine touches down — the 3b trail's Puff component (world-space,
+## self-animating, drawn behind the gameplay layer by its own z_index)
+## with an earthy tint. Purely visual.
+func _pop_dust() -> void:
+	var parent := get_parent()
+	if parent == null:
+		return
+	var puff := ProjectileTrail.Puff.new()
+	puff.radius = 5.0
+	puff.life = 0.4
+	puff.grow = 1.7
+	puff.alpha = 0.5
+	puff.fill = Color(0.76, 0.68, 0.55, 0.5)
+	puff.highlight = Color(0.93, 0.89, 0.80, 0.42)
+	parent.add_child(puff)
+	puff.global_position = global_position
+	puff._animate()
+
+
 func _integrate_forces(state: PhysicsDirectBodyState2D) -> void:
 	# Issue #216: the grenade (and the rock, issue #227) obeys the level's
 	# gravity — terrain sources first, then the center-line rule, then the
@@ -542,6 +614,14 @@ func _on_body_entered(body: Node2D) -> void:
 	# Issue #57: never interact with the character that fired us.
 	if body == shooter:
 		return
+	# Issue #719 (roadmap part 4a): the grenade's landing bounce and the
+	# mine's placement pop a small soft DUST puff — the 3b smoke
+	# component (ProjectileTrail.Puff) tinted earthy, one per touch while
+	# the body still flies fast enough to read as a landing. Visual only;
+	# the physics bounce itself is untouched.
+	if (kind == Kind.GRENADE or kind == Kind.MINE) and not _settled \
+			and linear_velocity.length() > 60.0:
+		_pop_dust()
 	# Issue #246: the mine ignores contact — it only wakes through its
 	# proximity trigger in _physics_process.
 	if kind == Kind.ROCKET:
