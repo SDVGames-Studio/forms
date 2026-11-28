@@ -46,6 +46,17 @@ extends RefCounted
 ## shotgun, rocket, grenade, spear, then the rock TOOL, mine,
 ## jackhammer, railgun, pistol, baseball bat, circular saw, shovel.
 
+## Issue #723 (roadmap part 4e — arsenal consistency & cleanup): the
+## migration is COMPLETE — every weapon slot renders through its
+## cartoon sprite (only the rock TOOL keeps the plain rectangle, out
+## of the arsenal's scope by the issue text). The arsenal-wide
+## conventions are uniform and pinned by tests/test_issue723.gd: all
+## eleven generators share the one recipe (the character outline
+## color, the 16x work scale, the 1.8 in-game-px bold outline), and
+## every registry draw size is exactly a quarter of its texture's
+## pixel size (the 4:1 source:draw ratio), so the on-screen outline
+## weight reads identically across the whole arsenal.
+
 const ROCKET_LAUNCHER_TEX := preload(
 		"res://assets/weapons/rocket_launcher.png")
 const SHOTGUN_TEX := preload("res://assets/weapons/shotgun.png")
