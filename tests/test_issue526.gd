@@ -63,9 +63,14 @@ func _ready() -> void:
 	var max_shots := 0
 	for count in WeaponScript.SHOTS_PER_TURN:
 		max_shots = maxi(max_shots, int(count))
-	_check(max_shots == 3 and int(WeaponScript.SHOTS_PER_TURN[
-			WEAPON_SLOT_PISTOL]) == max_shots,
-			"three must be the highest per-turn shot count, held by the pistol")
+	# 4e cleanup (#723): the entrenching shovel digs five times a turn
+	# (#656), so the pistol no longer holds the top count — it keeps
+	# its own frozen three.
+	_check(int(WeaponScript.SHOTS_PER_TURN[WEAPON_SLOT_PISTOL]) == 3
+			and max_shots == 5
+			and int(WeaponScript.SHOTS_PER_TURN[10]) == max_shots,
+			"the pistol must keep three shots and the shovel hold the top"
+			+ " count (five digs per turn, #656)")
 	WeaponInventory.reset_uses()
 	var team := TurnController.TEAM_PLAYER
 	_check(WeaponInventory.weapon_uses_left(team, WEAPON_SLOT_PISTOL)
@@ -120,11 +125,15 @@ func _ready() -> void:
 		pellet.queue_free()
 
 	# Held-visual wiring: weapon 7 maps to its own HELD_STYLES entry.
+	# 4e cleanup (#723): #570 added the saw (style 10) and #656 the
+	# shovel (style 11), so the table now holds 12 entries — the pistol
+	# keeps index 8 either way.
 	pistol.selected_weapon = WEAPON_SLOT_PISTOL
 	_check(pistol._held_style_index() == 8
-			and WeaponScript.HELD_STYLES.size() == 10,
+			and WeaponScript.HELD_STYLES.size() == 12,
 			"the pistol must have its own held-weapon style (index 8; the bat"
-			+ " took index 9 in #527, so HELD_STYLES now has 10 entries)")
+			+ " took index 9 in #527, the saw 10 in #570 and the shovel 11 in"
+			+ " #656, so HELD_STYLES now has 12 entries)")
 
 	if failures == 0:
 		print("PASS: issue #526 pistol")
