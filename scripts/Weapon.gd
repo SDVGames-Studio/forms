@@ -139,6 +139,24 @@ const MIN_SHOT_POWER := 0.4
 const MAX_CHARGE_TIME := 1.5
 const ROCKET_MASS := 1.0
 const GRENADE_MASS := 0.6
+## Issue #722 rework (owner 2026-11-28): the POWERING animation — the
+## jackhammer and the circular saw REV in the wielder's hands while F
+## is held (the charge builds the throw/drill power, and the animation
+## must show it): a tremble whose amplitude grows with the charge
+## fraction, the jackhammer's bit chattering along the aim (the
+## pneumatic pulse) and the saw blade juddering in angle as its motor
+## spins it up — the #721 wind-up's power scaling mirrored on the
+## CHARGE side, before the release. The jackhammer's full level equals
+## the running drill's own shake, so the rev eases straight into the
+## drilling tremble at the release. Purely visual: no gameplay
+## calculation reads any of it, and every frozen #680 number stays
+## untouched (see powering_jitter / powering_wobble).
+const JACKHAMMER_REV_JITTER := 2.0
+const JACKHAMMER_REV_CHATTER := 1.6
+const JACKHAMMER_REV_HZ := 11.0
+const SAW_REV_JITTER := 1.5
+const SAW_REV_HZ := 13.0
+const SAW_REV_WOBBLE := 0.12
 ## Issue #227: the Rock tool projectile is a touch heavier than a grenade.
 const ROCK_MASS := 0.8
 ## Issue #307: the jackhammer — hold F to charge (the shared charge
@@ -331,6 +349,12 @@ var _shot_delay_left := 0.0
 var _charging := false
 var _charge_time := 0.0
 var _charge_bar: ColorRect
+## Issue #722 rework (owner 2026-11-28): the POWERING rev clock —
+## advances only while the jackhammer or the circular saw is charging
+## (the visual block's powering animation reads it: the bit chatter and
+## the blade judder oscillate on this clock), reset whenever the rev
+## stops, so every charge starts its rev from phase zero.
+var _rev_t := 0.0
 ## Issue #133 (rework): the melee spear uses the HELD spear itself — no
 ## separate projectile rectangle is spawned. _thrust_t animates a quick
 ## forward lunge along the aim axis followed by a slow return to the hand.
@@ -926,6 +950,34 @@ func _physics_process(delta: float) -> void:
 		# while the charge builds (the aim itself wobbles via sight_shake).
 		if is_charging_railgun():
 			_held.position += Vector2(randf_range(-1.5, 1.5), randf_range(-1.5, 1.5))
+		# Issue #722 rework (owner 2026-11-28): POWERING the contact
+		# weapons — while F is held the jackhammer and the circular saw
+		# REV in the wielder's hands: the tremble amplitude grows with the
+		# charge fraction (a fresh press is calm, the full hold revs at the
+		# running drill's own shake level — the rev eases straight into
+		# the drilling tremble at the release), the jackhammer's bit
+		# chatters along the aim and the saw blade judders in angle as
+		# its motor spins it up. The #721 wind-up scaled with the strike
+		# power AFTER the release; this is the same scaling on the charge
+		# side, BEFORE it — the tool visibly powers up while the player
+		# holds F. Visual only: these offsets feed the drawn
+		# _held/_held_sprite and nothing else — no corridor, hitbox or
+		# damage calculation reads them, and every #680-frozen number
+		# stays untouched. A charged ROCK (the armed tool) never plays it
+		# (rock_armed: the rock, not the weapon, is being powered).
+		if _charging and not rock_armed \
+				and (selected_weapon == 5 or selected_weapon == 9):
+			_rev_t += delta
+			var charge := clampf(_charge_time / MAX_CHARGE_TIME, 0.0, 1.0)
+			var jitter: float = powering_jitter(selected_weapon, charge)
+			_held.position += Vector2(randf_range(-jitter, jitter),
+					randf_range(-jitter, jitter))
+			if selected_weapon == 5:
+				_held.position += aim * sin(_rev_t * TAU * JACKHAMMER_REV_HZ) \
+						* JACKHAMMER_REV_CHATTER * charge
+			else:
+				_held.rotation += sin(_rev_t * TAU * SAW_REV_HZ) \
+						* powering_wobble(selected_weapon, charge)
 		# Issue #680: a textured style mirrors the very same anchor,
 		# rotation and thrust/swing/shake offsets on its Sprite2D
 		# (visual only). flip_v keeps the grip below the tube once the
@@ -2013,6 +2065,31 @@ func sight_shake() -> float:
 	if not is_charging_railgun():
 		return 0.0
 	return randf_range(-RAILGUN_SIGHT_SHAKE, RAILGUN_SIGHT_SHAKE)
+
+
+## Issue #722 rework (owner 2026-11-28): the powering tremble's
+## AMPLITUDE for a charge fraction — 0 for every other weapon, growing
+## linearly from 0 at the press to the jackhammer's/saw's full rev at
+## the MAX_CHARGE_TIME hold (the jackhammer's full level equals the
+## running drill's own shake, so the rev hands over to the drilling
+## tremble without a jump). Pure data for the visual block and the
+## #722 regression test.
+static func powering_jitter(weapon: int, charge: float) -> float:
+	if weapon != 5 and weapon != 9:
+		return 0.0
+	var full: float = JACKHAMMER_REV_JITTER if weapon == 5 \
+			else SAW_REV_JITTER
+	return full * clampf(charge, 0.0, 1.0)
+
+
+## Issue #722 rework: the powering BLADE-JUDDER's angular amplitude
+## (radians) — the saw alone judders in rotation (its motor spins the
+## blade up while F is held); the jackhammer and every other weapon
+## return 0 (the jackhammer's rev is the linear bit chatter instead).
+static func powering_wobble(weapon: int, charge: float) -> float:
+	if weapon != 9:
+		return 0.0
+	return SAW_REV_WOBBLE * clampf(charge, 0.0, 1.0)
 
 
 ## Issue #359: railgun damage for a charge fraction — 60 on an instant
