@@ -43,6 +43,13 @@ extends RefCounted
 const ROCKET_LAUNCHER_TEX := preload(
 		"res://assets/weapons/rocket_launcher.png")
 const SHOTGUN_TEX := preload("res://assets/weapons/shotgun.png")
+## Issue #719 (roadmap part 4a): the grenade and the mine — the first
+## THROWN & PLACED weapons migrated to the cartoon art style. The same
+## textures serve both sides: the HELD weapon in hands (STYLES below)
+## and the rigid body in flight / at rest (PROJECTILE_SPRITES, consumed
+## by ProjectileBody).
+const GRENADE_TEX := preload("res://assets/weapons/grenade.png")
+const MINE_TEX := preload("res://assets/weapons/mine.png")
 
 ## Issue #559: default distance from the body CENTRE along the aim axis
 ## — the 64 px reference body's EDGE (32 px), outside the modular
@@ -78,12 +85,25 @@ const STYLES: Array = [
 		"size": Vector2(52, 20), "color": Color(0.9, 0.35, 0.15, 1),
 		"texture": ROCKET_LAUNCHER_TEX,
 		"anchor": 32.0, "lift_keep": 0.3, "drop": 9.0, "recoil": 12.0},
-	{"size": Vector2(12, 12), "color": Color(0.3, 0.7, 0.3, 1)},    # grenade
+	{# 2 grenade — issue #719 (roadmap part 4a): the round pineapple
+	 # bomb with the steel cap and pin. A small lobbed weapon rides the
+	 # same waist hold as the guns; the throw itself kicks the arm back
+	 # slightly (recoil 6).
+		"size": Vector2(16, 16), "color": Color(0.3, 0.7, 0.3, 1),
+		"texture": GRENADE_TEX,
+		"anchor": 30.0, "lift_keep": 0.3, "drop": 8.0, "recoil": 6.0},
 	{# 3 spear — melee: the thrust lunge is the animation, no recoil.
 		"size": Vector2(40, 4), "color": Color(0.8, 0.8, 0.9, 1),
 		"recoil": 0.0},
 	{"size": Vector2(14, 14), "color": Color(0.55, 0.5, 0.45, 1)},  # rock (tool)
-	{"size": Vector2(14, 14), "color": Color(0.22, 0.24, 0.3, 1)},  # mine (#246)
+	{# 5 mine — issue #719 (roadmap part 4a): the naval contact mine —
+	 # dark navy hull with a stud ring that reads at ANY rotation (the
+	 # placed body rests at arbitrary angles). The dormant mine stays
+	 # stealthy (#717): dark fills only — the armed fuse blink tints the
+	 # whole sprite red through modulate in ProjectileBody.
+		"size": Vector2(18, 18), "color": Color(0.22, 0.24, 0.3, 1),
+		"texture": MINE_TEX,
+		"anchor": 30.0, "lift_keep": 0.3, "drop": 8.0, "recoil": 6.0},
 	{# 6 jackhammer — the drill shake is the animation, no recoil.
 		"size": Vector2(10, 18), "color": Color(0.85, 0.85, 0.95, 1),
 		"recoil": 0.0},  # jackhammer (#307)
@@ -141,3 +161,23 @@ static func drop(idx: int) -> float:
 static func recoil(idx: int) -> float:
 	var s := style(idx)
 	return s.get("recoil", DEFAULT_RECOIL) as float
+
+
+## Issue #719 (roadmap part 4a): the THROWN and PLACED sides of the two
+## lobbed weapons — the sprite and drawn size their RIGID BODIES render
+## in flight and at rest (ProjectileBody's grenade/mine kinds), keyed
+## by kind name, so the in-world art comes from this registry too
+## instead of a second table. The drawn sizes sit a touch above the
+## 14 px physics rectangles so the silhouettes stay readable at
+## gameplay scale; hitboxes and every gameplay number are frozen by
+## the #680 constraints.
+const PROJECTILE_SPRITES := {
+	"grenade": {"texture": GRENADE_TEX, "size": Vector2(16, 16)},
+	"mine": {"texture": MINE_TEX, "size": Vector2(18, 18)},
+}
+
+
+## The projectile-sprite entry for a kind name ({} when the kind keeps
+## its code-drawn visual — the saw, the rock, the rocket body).
+static func projectile_sprite(kind_name: String) -> Dictionary:
+	return PROJECTILE_SPRITES.get(kind_name, {}) as Dictionary
