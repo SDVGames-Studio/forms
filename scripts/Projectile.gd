@@ -65,6 +65,21 @@ func _ready() -> void:
 	visual.color = _color
 	add_child(visual)
 
+	# Issue #680 part 3b (#717): the LAUNCH — a pellet leaves the muzzle
+	# already turned along its flight and briefly STRETCHED along the
+	# velocity (classic motion stretch), easing back to 1:1 over a
+	# fraction of a second. Data: ProjectileTrail.STYLES. Visual only —
+	# the collision shape, velocity and damage are untouched. The scale
+	# is set DIRECTLY at spawn so the very first rendered frame is the
+	# stretch peak (a .from() tween can step past it on a slow frame).
+	if type == Type.PELLET and velocity.length_squared() > 1.0:
+		visual.pivot_offset = _size / 2.0
+		visual.rotation = velocity.angle()
+		visual.scale = ProjectileTrail.launch_stretch("pellet")
+		var tween := visual.create_tween()
+		tween.tween_property(visual, "scale", Vector2.ONE,
+				ProjectileTrail.launch_stretch_time("pellet"))
+
 	# Issue #368: lighting effect — every shot carries a soft light that
 	# travels with it (bigger for the explosive types).
 	add_child(ShotLight.create(_color,

@@ -165,6 +165,11 @@ var _saw_spin_left := 0.0
 var _saw_cut_acc: Dictionary = {}
 var _saw_blade: Polygon2D = null
 var _saw_player: AudioStreamPlayer = null
+## Issue #680 part 3b (#717): the grenade's tumble direction — set from
+## the launch velocity at spawn (+1 rolls forward when flying right,
+## -1 when flying left); the rate itself scales with live speed in
+## _physics_process.
+var _tumble_dir := 1.0
 
 
 func setup(p_kind: int, p_velocity: Vector2, p_damage: int, p_lifetime: float,
@@ -232,6 +237,26 @@ func _ready() -> void:
 	add_child(visual)
 	_visual = visual
 
+	# Issue #680 part 3b (#717): LAUNCH character on the VISUAL only —
+	# the rocket stretches along its launch velocity leaving the tube,
+	# the grenade pops out of the hand small and eases to full size
+	# (data: ProjectileTrail.STYLES). The physics shape below this
+	# rect is exactly what it always was — spawn, velocity and bounces
+	# untouched. The scale is set DIRECTLY at spawn so the very first
+	# rendered frame is the stretch peak (a .from() tween can step past
+	# it on a slow frame).
+	_visual.pivot_offset = _size / 2.0
+	if kind == Kind.ROCKET or kind == Kind.GRENADE:
+		# The rocket is born already pointing along its launch vector;
+		# the round grenade keeps its upright start and tumbles instead.
+		if kind == Kind.ROCKET:
+			_visual.rotation = launch_velocity.angle()
+		_visual.scale = ProjectileTrail.launch_stretch(_trail_key())
+		var tween := _visual.create_tween()
+		tween.tween_property(_visual, "scale", Vector2.ONE,
+				ProjectileTrail.launch_stretch_time(_trail_key()))
+		_tumble_dir = 1.0 if launch_velocity.x >= 0.0 else -1.0
+
 	# Issue #368: lighting effect — the rocket's exhaust flickers bright
 	# orange, the grenade glows green; the thrown mine stays dark until
 	# its fuse arms (see _physics_process), the rock is a plain clod.
@@ -242,6 +267,14 @@ func _ready() -> void:
 		Kind.GRENADE:
 			add_child(ShotLight.create(
 				Color(0.4, 0.9, 0.4), 90.0, 1.6))
+
+	# Issue #680 part 3b (#717): the rocket drags a cartoon SMOKE TRAIL
+	# (data: ProjectileTrail.STYLES). Puffs are world-space children of
+	# the level, stamped behind the gameplay layer, so the stream stays
+	# where the flight was even after the blast and fades out on its
+	# own — the follower frees itself together with this body.
+	if kind == Kind.ROCKET:
+		ProjectileTrail.follow(get_parent(), self, _trail_key())
 
 	# Issue #246: the mine has NO fuse timer — it only explodes after a
 	# character stepped near it. While it flies it counts as a live
@@ -296,6 +329,21 @@ func _ready() -> void:
 
 
 func _physics_process(delta: float) -> void:
+	# Issue #680 part 3b (#717): in-flight VISUAL character, applied to
+	# the ColorRect child ONLY — the rigid body's own rotation, angular
+	# velocity and bounces are exactly what the engine says they are.
+	# The rocket's drawn body tracks its flight direction (it arcs under
+	# level gravity, issue #245); the grenade tumbles while it moves, the
+	# rate scaling with live speed so a resting grenade stops rolling.
+	if _visual != null and kind == Kind.ROCKET \
+				and linear_velocity.length() > 20.0:
+		_visual.rotation = linear_velocity.angle()
+	elif _visual != null and kind == Kind.GRENADE:
+		var rate := ProjectileTrail.tumble_rate(_trail_key())
+		if rate > 0.0:
+			_visual.rotation += rate * delta \
+					* clampf(linear_velocity.length() / 400.0, 0.0, 1.0) \
+					* _tumble_dir
 	# Issue #246: the mine's state machine. Everything else is physics
 	# handled by the engine plus the level gravity in _integrate_forces.
 	if kind == Kind.SAW:
@@ -457,6 +505,17 @@ func _settle() -> void:
 func _on_mine_watchdog() -> void:
 	if kind == Kind.MINE and not _settled and not _exploded:
 		_settle()
+
+
+## Issue #680 part 3b (#717): the ProjectileTrail STYLES key for this
+## kind (kinds without a launch/trail entry answer "" — no effect).
+func _trail_key() -> String:
+	match kind:
+		Kind.ROCKET:
+			return "rocket"
+		Kind.GRENADE:
+			return "grenade"
+	return ""
 
 
 func _integrate_forces(state: PhysicsDirectBodyState2D) -> void:
