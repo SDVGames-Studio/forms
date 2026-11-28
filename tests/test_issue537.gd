@@ -12,6 +12,9 @@ extends Node
 ##    full, no "+"), 1 the floor (a team always fields a figure).
 ##  - FREE squares carry a "+"; _add_member appends, _remove_member
 ##    drops (click wiring is exercised via the same handlers).
+##  - Issue #394 rework v4: the grids pick the decoupled
+##    "level_members" COUNT — the roster (team["names"]) is never
+##    edited by the level setup.
 ##  - "+ Add team" PULLS from the game's team set: with the default
 ##    three-team set (issue #572) the fourth level team wraps to the
 ##    FIRST team again, but with a fresh, level-unused color (item 5).
@@ -72,6 +75,8 @@ func _ready() -> void:
 	var grid := _grid_of(menu, 0)
 	_check("team 0 carries a member grid", grid != null)
 	var members: Array = GameConfig.teams[0]["names"]
+	var level_count: int = int(GameConfig.teams[0].get(
+			GameConfig.LEVEL_MEMBERS_KEY, 0))
 	if grid != null:
 		var shape_cells := 0
 		var plus_cells := 0
@@ -95,28 +100,33 @@ func _ready() -> void:
 					plus_cells += 1
 			if is_shape:
 				shape_cells += 1
-		_check("1x4 tier: grid holds 4 squares for %d members" % members.size(),
+		_check("1x4 tier: grid holds 4 squares for %d members" % level_count,
 			grid.get_child_count() == 4)
 		_check("one square per member, two free spots",
-			shape_cells == members.size() and plus_cells == 2)
+			shape_cells == level_count and plus_cells == 2)
 		_check("shapes are centered in their squares", centered)
 		_check("1x4 cells keep the grid footprint",
 			absf(grid.get_child(0).custom_minimum_size.x - 29.5) < 0.01)
 
 	# Item 3: appending members — the 3rd still fits the 1x4 tier; the
 	# 4th member bumps the grid to 2x8 (16 squares, smaller cells, the
-	# same 124 px footprint).
+	# same 124 px footprint). Issue #394 rework v4: the grid edits the
+	# decoupled "level_members" count — the roster names never change.
 	var count_before: int = members.size()
 	menu._add_member(0)
 	_check("add member appends a teammate",
-		GameConfig.teams[0]["names"].size() == count_before + 1)
+		int(GameConfig.teams[0][GameConfig.LEVEL_MEMBERS_KEY])
+				== level_count + 1)
+	_check("grid appends never touch the roster",
+		(GameConfig.teams[0]["names"] as Array).size() == count_before)
 	grid = _grid_of(menu, 0)
 	if grid != null:
 		_check("3 members stay in the 1x4 tier",
 			grid.get_child_count() == 4)
 	menu._add_member(0)
 	_check("the 4th member joins too",
-		GameConfig.teams[0]["names"].size() == count_before + 2)
+		int(GameConfig.teams[0][GameConfig.LEVEL_MEMBERS_KEY])
+				== level_count + 2)
 	grid = _grid_of(menu, 0)
 	if grid != null:
 		_check("4th member bumps the grid to the 2x8 tier",
@@ -125,24 +135,22 @@ func _ready() -> void:
 			absf(grid.get_child(0).custom_minimum_size.x - 13.75) < 0.01)
 
 	# Item 2: clicking a filled square removes that teammate.
-	var before: int = GameConfig.teams[0]["names"].size()
+	var before: int = int(GameConfig.teams[0][GameConfig.LEVEL_MEMBERS_KEY])
 	menu._remove_member(0, 0)
 	_check("remove member drops a teammate",
-		GameConfig.teams[0]["names"].size() == before - 1)
+		int(GameConfig.teams[0][GameConfig.LEVEL_MEMBERS_KEY]) == before - 1)
+	_check("grid removals never touch the roster",
+		(GameConfig.teams[0]["names"] as Array).size() == count_before)
 	# The floor: one member always stays on a team.
-	var solo: Array = ["Solo"]
-	GameConfig.teams[1]["names"] = solo
+	GameConfig.teams[1][GameConfig.LEVEL_MEMBERS_KEY] = 1
 	menu._rebuild_team_rows()
 	menu._remove_member(1, 0)
 	_check("floor: the last member of a team is kept",
-		GameConfig.teams[1]["names"].size() == 1)
+		int(GameConfig.teams[1][GameConfig.LEVEL_MEMBERS_KEY]) == 1)
 
 	# Item 4: the 4x16 tier is the ceiling — at 64 members the grid runs
 	# full (no free spot) and nothing more can be appended.
-	var many: Array = []
-	for i in range(1, 64):
-		many.append("Member %d" % i)
-	GameConfig.teams[1]["names"] = many
+	GameConfig.teams[1][GameConfig.LEVEL_MEMBERS_KEY] = 63
 	menu._rebuild_team_rows()
 	await get_tree().process_frame
 	grid = _grid_of(menu, 1)
@@ -150,7 +158,7 @@ func _ready() -> void:
 		grid != null and grid.get_child_count() == 64)
 	menu._add_member(1)
 	_check("64 teammates is the maximum",
-		GameConfig.teams[1]["names"].size() == 64)
+		int(GameConfig.teams[1][GameConfig.LEVEL_MEMBERS_KEY]) == 64)
 	menu._rebuild_team_rows()
 	await get_tree().process_frame
 	grid = _grid_of(menu, 1)
@@ -163,7 +171,7 @@ func _ready() -> void:
 		_check("the full 4x16 tier has no free spot left", plus_at_max == 0)
 	menu._add_member(1)
 	_check("past 64 nothing is appended",
-		GameConfig.teams[1]["names"].size() == 64)
+		int(GameConfig.teams[1][GameConfig.LEVEL_MEMBERS_KEY]) == 64)
 
 	# Item 5: "+ Add team" pulls the next definition from the GAME's
 	# team set — with the default three-team set (#617 rework v2) the
@@ -185,7 +193,9 @@ func _ready() -> void:
 		_check("added team wears a fresh color",
 			not used.has(added["color"]))
 		_check("added team starts at the default squad size",
-			added["names"].size() == GameConfig.DEFAULT_TEAM_MEMBERS)
+			added["names"].size() == GameConfig.DEFAULT_TEAM_MEMBERS
+			and int(added.get(GameConfig.LEVEL_MEMBERS_KEY, 0))
+					== GameConfig.DEFAULT_TEAM_MEMBERS)
 	else:
 		_check("added team comes from the game's set", false)
 
