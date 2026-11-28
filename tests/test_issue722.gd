@@ -24,6 +24,14 @@ extends Node
 ##     saw throw pops its spark muzzle burst in the saw's palette, and
 ##     the spinning blade's grind streams throttled stars in the same
 ##     family (ProjectileBody.SAW_SPARK mirrors the registry).
+##  5. POWERING ANIMATION (owner rework 2026-11-28): while F is held
+##     the jackhammer and the circular saw REV in the wielder's hands —
+##     the tremble amplitude (and the saw blade's angular judder)
+##     ramps linearly with the charge fraction, the jackhammer's full
+##     level equals the running drill's own shake, every other weapon
+##     (and a charged rock) stays at 0; on the drawn sprite: still at
+##     the press, visibly revving at the full hold. Purely visual —
+##     every frozen gameplay number from 2) is re-pinned after it.
 ##
 ## Run headless: godot --headless res://tests/test_issue722.tscn
 ## Exit code 0 = pass.
@@ -399,12 +407,116 @@ func _ready() -> void:
 						saw_body.global_position))
 	saw_level.queue_free()
 
+	# --- 5) Powering animation (owner rework 2026-11-28) -----------------
+	# 5a) The amplitude DATA: the tremble ramps linearly with the charge
+	# fraction for both contact weapons — 0 at the press, the full rev at
+	# the MAX_CHARGE_TIME hold, the jackhammer's full level equal to the
+	# running drill's own shake (the rev hands over to the drilling
+	# tremble without a jump); the blade judder is the saw's alone; every
+	# other weapon stays at 0.
+	_check(WeaponScript.powering_jitter(5, 0.0) == 0.0
+			and WeaponScript.powering_jitter(5, 0.5) == 1.0
+			and WeaponScript.powering_jitter(5, 1.0)
+					== WeaponScript.JACKHAMMER_REV_JITTER,
+			"the jackhammer's tremble must ramp 0 -> full with the charge (got %s/%s/%s)"
+			% [WeaponScript.powering_jitter(5, 0.0),
+					WeaponScript.powering_jitter(5, 0.5),
+					WeaponScript.powering_jitter(5, 1.0)])
+	_check(WeaponScript.powering_jitter(9, 0.0) == 0.0
+			and WeaponScript.powering_jitter(9, 0.5) == 0.75
+			and WeaponScript.powering_jitter(9, 1.0)
+					== WeaponScript.SAW_REV_JITTER,
+			"the saw's tremble must ramp 0 -> full with the charge (got %s/%s/%s)"
+			% [WeaponScript.powering_jitter(9, 0.0),
+					WeaponScript.powering_jitter(9, 0.5),
+					WeaponScript.powering_jitter(9, 1.0)])
+	_check(WeaponScript.powering_jitter(0, 1.0) == 0.0
+			and WeaponScript.powering_jitter(6, 1.0) == 0.0
+			and WeaponScript.powering_jitter(8, 1.0) == 0.0,
+			"only the contact weapons must rev while charging")
+	_check(WeaponScript.powering_wobble(9, 1.0)
+					== WeaponScript.SAW_REV_WOBBLE
+			and WeaponScript.powering_wobble(9, 0.5)
+					== WeaponScript.SAW_REV_WOBBLE * 0.5
+			and WeaponScript.powering_wobble(5, 1.0) == 0.0
+			and WeaponScript.powering_wobble(1, 1.0) == 0.0,
+			"the blade judder must be the saw's alone, charge-scaled")
+
+	# 5b) The animation itself, on the drawn sprite: a charging
+	# jackhammer sits EXACTLY on its calm hold position at the press and
+	# visibly revs at the full hold (tremble + bit chatter).
+	var rev_level := Node2D.new()
+	add_child(rev_level)
+	var rev_wielder := _make_wielder(rev_level, Vector2(0, 0))
+	var rev_gun: Node2D = rev_wielder.get_node("Weapon")
+	rev_gun.selected_weapon = 5
+	await _settle(4)
+	rev_gun._charging = true
+	rev_gun._charge_time = 0.0
+	await _settle(6)
+	var calm_pos: Vector2 = rev_gun._held_sprite.position
+	var still_calm := true
+	for _i in 20:
+		await get_tree().physics_frame
+		if rev_gun._held_sprite.position.distance_to(calm_pos) > 0.05:
+			still_calm = false
+	_check(still_calm,
+			"the jackhammer must sit still at the press (charge 0)")
+	var revved := 0.0
+	for _i in 20:
+		await get_tree().physics_frame
+		rev_gun._charge_time = WeaponScript.MAX_CHARGE_TIME
+		revved = maxf(revved,
+				rev_gun._held_sprite.position.distance_to(calm_pos))
+	_check(revved > 0.5,
+			"the fully charged jackhammer must visibly rev (max off %s)" % revved)
+	rev_level.queue_free()
+	await get_tree().physics_frame
+
+	# 5c) The saw: still at the press, trembles AND judders in angle at
+	# the full hold (the blade spinning up) — straight on the sprite.
+	var saw_rev_level := Node2D.new()
+	add_child(saw_rev_level)
+	var saw_rev_wielder := _make_wielder(saw_rev_level, Vector2(0, 0))
+	var saw_rev_gun: Node2D = saw_rev_wielder.get_node("Weapon")
+	saw_rev_gun.selected_weapon = 9
+	await _settle(4)
+	saw_rev_gun._charging = true
+	saw_rev_gun._charge_time = 0.0
+	await _settle(6)
+	var saw_calm_pos: Vector2 = saw_rev_gun._held_sprite.position
+	var saw_calm_rot: float = saw_rev_gun._held_sprite.rotation
+	var saw_still := true
+	for _i in 20:
+		await get_tree().physics_frame
+		if saw_rev_gun._held_sprite.position.distance_to(saw_calm_pos) > 0.05 \
+				or absf(saw_rev_gun._held_sprite.rotation - saw_calm_rot) > 0.01:
+			saw_still = false
+	_check(saw_still,
+			"the saw must sit still at the press (charge 0)")
+	var saw_revved := 0.0
+	var saw_wobbled := 0.0
+	for _i in 25:
+		await get_tree().physics_frame
+		saw_rev_gun._charge_time = WeaponScript.MAX_CHARGE_TIME
+		saw_revved = maxf(saw_revved,
+				saw_rev_gun._held_sprite.position.distance_to(saw_calm_pos))
+		saw_wobbled = maxf(saw_wobbled,
+				absf(saw_rev_gun._held_sprite.rotation - saw_calm_rot))
+	_check(saw_revved > 0.5,
+			"the fully charged saw must visibly tremble (max off %s)" % saw_revved)
+	_check(saw_wobbled > 0.05,
+			"the saw blade must judder in angle at full charge (max %s)"
+			% saw_wobbled)
+	saw_rev_level.queue_free()
+	await get_tree().physics_frame
+
 	_finish()
 
 
 func _finish() -> void:
 	if failures == 0:
-		print("ISSUE722 ok=true (jackhammer & circular saw: registry, frozen gameplay, held sprites, contact feedback)")
+		print("ISSUE722 ok=true (jackhammer & circular saw: registry, frozen gameplay, held sprites, contact feedback, powering animation)")
 	else:
 		print("ISSUE722 ok=false failures=", failures)
 	get_tree().quit(1 if failures > 0 else 0)
