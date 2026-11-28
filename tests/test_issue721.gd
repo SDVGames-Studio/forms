@@ -24,6 +24,16 @@ extends Node
 ##     thrust, the bat swing and the shovel swing; a shovel swing into
 ##     bare air (no figures, no destructible ground) stays silent; a
 ##     dig that DOES open ground pops exactly one earthy star.
+##  5. #721 REWORK (owner 2026-11-28): the spear and the shovel join
+##     the CHARGED weapons (hold F picks the strike power); every melee
+##     strike WINDS UP before it lands (no damage mid-wind-up, the hit
+##     lands at the forward sweep's peak); the wind-up duration scales
+##     with the power; the spear's power scales its thrust REACH (a
+##     half-power thrust falls short); the shovel's power scales the
+##     dig carve (a stronger swing re-carves the same bore deeper, a
+##     weaker one is the historic no-op); the bat rests on the OPPOSITE
+##     side of the wielder (back carry, carry_sign -1) while the spear
+##     and the shovel keep the front carry.
 ##
 ## Run headless: godot --headless res://tests/test_issue721.tscn
 ## Exit code 0 = pass.
@@ -77,9 +87,11 @@ class Victim:
 class FakeGround:
 	extends Node2D
 	var dug := false
+	var carves: Array = []
 	func apply_dig(_point: Vector2, _half_w: float, _half_h: float,
 			_up: Vector2) -> void:
 		dug = true
+		carves.append([_half_w, _half_h])
 
 
 func _make_level() -> Node2D:
@@ -251,8 +263,13 @@ func _ready() -> void:
 	spear_victim.global_position = gun.global_position + Vector2(40, 0)
 	gun.selected_weapon = 3
 	await _settle(2)
-	gun._thrust_spear()
-	await _settle(4)
+	gun._thrust_spear(1.0)
+	await _settle(8)
+	_check(spear_victim.health == 50,
+			"the spear WIND-UP must not damage yet — the strike is the"
+			+ " lunge, not the pull-back (health %s)"
+			% spear_victim.health)
+	await _settle(12)
 	_check(spear_victim.health == 50 - WeaponScript.SPEAR_DAMAGE,
 			"the spear sweep must damage the figure once (health %s)"
 			% spear_victim.health)
@@ -282,7 +299,12 @@ func _ready() -> void:
 	gun.selected_weapon = 8
 	await _settle(2)
 	gun._swing_bat(1.0)
-	await _settle(3)
+	await _settle(8)
+	_check(bat_victim.health == 50,
+			"the bat WIND-UP must not damage yet — the strike lands at"
+			+ " the sweep's peak (health %s)"
+			% bat_victim.health)
+	await _settle(14)
 	_check(bat_victim.health == 50 - WeaponScript.BAT_DAMAGE,
 			"the bat swing must damage the figure (health %s)"
 			% bat_victim.health)
@@ -303,8 +325,8 @@ func _ready() -> void:
 	# strike star stays silent (the dig pop only fires on a real carve).
 	gun.selected_weapon = 10
 	await _settle(2)
-	gun._swing_shovel()
-	await _settle(3)
+	gun._swing_shovel(1.0)
+	await _settle(22)
 	stars = _hit_stars(level)
 	_check(stars.is_empty(),
 			"a shovel swing into bare air must pop nothing (got %s)"
@@ -325,8 +347,8 @@ func _ready() -> void:
 	var ground := FakeGround.new()
 	ground.add_to_group("destructible_ground")
 	level2.add_child(ground)
-	gun2._swing_shovel()
-	await _settle(3)
+	gun2._swing_shovel(1.0)
+	await _settle(22)
 	_check(dig_victim.health == 50 - WeaponScript.SHOVEL_DAMAGE,
 			"the shovel swing must damage the figure (health %s)"
 			% dig_victim.health)
@@ -344,6 +366,111 @@ func _ready() -> void:
 	ground.queue_free()
 	gun2.get_parent().queue_free()
 	level2.queue_free()
+
+	# --- 5) #721 rework: melee strike power + wind-up --------------------
+	# The spear and the shovel join the charged weapons; the shotgun and
+	# the pistol stay instant press-fire.
+	_check(WeaponScript.is_charged_weapon(3)
+			and WeaponScript.is_charged_weapon(10),
+			"the spear and the shovel must be charged (#721 rework)")
+	_check(not WeaponScript.is_charged_weapon(0)
+			and not WeaponScript.is_charged_weapon(7),
+			"the shotgun and the pistol must stay instant press-fire")
+	# The wind-up window scales with the strike power.
+	gun._melee_power = 0.0
+	var w_tap: float = gun._melee_windup_time()
+	gun._melee_power = 0.5
+	var w_half: float = gun._melee_windup_time()
+	gun._melee_power = 1.0
+	var w_full: float = gun._melee_windup_time()
+	_check(w_tap > 0.0 and w_half > w_tap and w_full > w_half,
+			"the wind-up duration must grow with the power (%s, %s, %s)"
+			% [w_tap, w_half, w_full])
+	# The bat carries on the OPPOSITE side; the spear and the shovel
+	# keep the front carry (the anchor magnitude stays in the #559 band
+	# — pinned by tests/test_issue723).
+	_check(WeaponVisualsScript.carry_sign(9) == -1.0,
+			"the bat must be a back-carry style (got %s)"
+			% WeaponVisualsScript.carry_sign(9))
+	_check(WeaponVisualsScript.carry_sign(3) == 1.0
+			and WeaponVisualsScript.carry_sign(11) == 1.0,
+			"the spear and the shovel must keep the front carry")
+	gun.selected_weapon = 8
+	await _settle(3)
+	_check(gun._held_sprite.position.x < -20.0,
+			"the held bat must REST BEHIND the wielder (x %s)"
+			% gun._held_sprite.position.x)
+	gun.selected_weapon = 3
+	await _settle(3)
+	_check(gun._held_sprite.position.x > 20.0,
+			"the held spear stays in front (x %s)"
+			% gun._held_sprite.position.x)
+	gun.selected_weapon = 10
+	await _settle(3)
+	_check(gun._held_sprite.position.x > 20.0,
+			"the held shovel stays in front (x %s)"
+			% gun._held_sprite.position.x)
+
+	# The spear's power scales its REACH: a half-power thrust falls
+	# short of a figure the full lunge strikes.
+	var level3 := _make_level()
+	var gun3 := _make_gun(level3)
+	gun3.selected_weapon = 3
+	await _settle(2)
+	var far_victim := Victim.new()
+	far_victim.add_to_group("enemy_team")
+	level3.add_child(far_victim)
+	far_victim.global_position = gun3.global_position + Vector2(100, 0)
+	gun3._thrust_spear(0.5)
+	await _settle(30)
+	_check(far_victim.health == 50,
+			"a half-power thrust must fall short of 100 px (health %s)"
+			% far_victim.health)
+	gun3._thrust_spear(1.0)
+	await _settle(30)
+	_check(far_victim.health == 50 - WeaponScript.SPEAR_DAMAGE,
+			"the full-power thrust must reach 100 px (health %s)"
+			% far_victim.health)
+	far_victim.queue_free()
+
+	# The shovel's power scales the dig: a half-power swing carves at
+	# the 70% charge scale, a full swing deepens the same bore, and a
+	# weaker follow-up is the historic once-per-anchor no-op.
+	var level4 := _make_level()
+	var gun4 := _make_gun(level4)
+	gun4.selected_weapon = 10
+	await _settle(2)
+	var ground4 := FakeGround.new()
+	ground4.add_to_group("destructible_ground")
+	level4.add_child(ground4)
+	gun4._swing_shovel(0.5)
+	await _settle(25)
+	var half_scale: float = lerpf(WeaponScript.MIN_SHOT_POWER, 1.0, 0.5) \
+			* WeaponScript.SHOVEL_DIG_WIDTH / 2.0
+	_check(ground4.carves.size() == 1,
+			"the half-power swing must carve once (got %s)"
+			% ground4.carves.size())
+	if ground4.carves.size() >= 1:
+		_check(absf(ground4.carves[0][0] - half_scale) < 0.01
+				and absf(ground4.carves[0][1] - half_scale) < 0.01,
+				"the half-power carve must be the charge-scaled bore (got %s)"
+				% [ground4.carves[0]])
+	gun4._swing_shovel(1.0)
+	await _settle(25)
+	_check(ground4.carves.size() == 2
+			and absf(ground4.carves[1][0] - 32.0) < 0.01,
+			"a full-power swing must deepen the bore to the full 32"
+			+ " (carves %s)" % ground4.carves.size())
+	gun4._swing_shovel(0.5)
+	await _settle(25)
+	_check(ground4.carves.size() == 2,
+			"a weaker follow-up must not re-carve (got %s)"
+			% ground4.carves.size())
+	ground4.queue_free()
+	gun4.get_parent().queue_free()
+	level4.queue_free()
+	gun3.get_parent().queue_free()
+	level3.queue_free()
 	gun.get_parent().queue_free()
 	level.queue_free()
 	await _settle(2)

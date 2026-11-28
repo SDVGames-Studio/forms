@@ -61,6 +61,13 @@ func _ready() -> void:
 	add_child(victim)
 	victim.add_to_group("enemy_team")
 	gun._swing_bat(1.0)
+	# Issue #721 rework: the strike lands at the forward sweep's peak —
+	# wait out the wind-up so the flight below starts from its first
+	# physics tick exactly as before (the strike is ~20 frames in).
+	for i in 30:
+		await get_tree().physics_frame
+		if gun._bat_push_left > 0.0:
+			break
 	_check(victim.health == 100 - WeaponScript.BAT_DAMAGE,
 			"the swing must still damage the figure it reaches")
 

@@ -103,7 +103,10 @@ func _covered(point: Vector2) -> bool:
 
 
 func _settle() -> void:
-	for i in 4:
+	# Issue #721 rework: the shovel's strike lands at the forward
+	# sweep's peak (~0.32 s after the release — the wind-up runs first),
+	# so a settle must outlast the swing before dig/corridor assertions.
+	for i in 25:
 		await get_tree().physics_frame
 
 
@@ -148,6 +151,7 @@ func _ready() -> void:
 	add_child(beyond)
 	beyond.add_to_group("enemy_team")
 	gun._swing_shovel()
+	await _settle()
 	_check(victim.health == 100 - WeaponScript.SHOVEL_DAMAGE,
 			"a figure within the shovel's reach takes SHOVEL_DAMAGE (got %d)"
 			% victim.health)

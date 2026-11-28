@@ -27,6 +27,10 @@ extends RefCounted
 ##   texture   — renders the style as a centered Sprite2D instead of
 ##               the rectangle, scaled to `size`
 ##   anchor    — per-weapon anchor along the aim (default DEFAULT_ANCHOR)
+##   carry_sign — +1 (default) holds the visual in FRONT of the wielder
+##               along the aim; -1 flips it to the OPPOSITE side (the
+##               #721 rework's baseball bat back carry: the bat rests
+##               behind the body and swings THROUGH to the strike)
 ##   lift_keep — per-weapon lift damping for textured styles
 ##               (default DEFAULT_LIFT_KEEP)
 ##   drop      — per-weapon fixed drop along the stance-gravity axis
@@ -210,10 +214,16 @@ const STYLES: Array = [
 	 # taped grip and a round knob, fat barrel toward the strike.
 	 # MELEE: the swing lunge is the animation, no recoil; the swing
 	 # corridor is the fixed BAT_RANGE constant, so the size change
-	 # (30x8 -> 32x10) is visual only.
+	 # (30x8 -> 32x10) is visual only. Issue #721 rework (owner
+	 # 2026-11-28): BACK CARRY — the bat rests on the OPPOSITE side of
+	 # the wielder (carry_sign -1 on the shared #559 anchor band) and
+	 # the wind-up pulls it further back before the forward sweep.
+	 # The strike sweep's peak is measured from this flipped anchor so
+	 # the corridor reach itself is unchanged.
 		"size": Vector2(32, 10), "color": Color(0.85, 0.6, 0.3, 1),
 		"texture": BASEBALL_BAT_TEX,
 		"anchor": 30.0, "lift_keep": 0.3, "drop": 8.0, "recoil": 0.0,
+		"carry_sign": -1.0,
 		"flash": {
 			"inner": Color(1.0, 0.55, 0.15, 1),
 			"core": Color(1.0, 0.9, 0.7, 1),
@@ -270,6 +280,16 @@ static func textured(idx: int) -> bool:
 static func anchor(idx: int) -> float:
 	var s := style(idx)
 	return s.get("anchor", DEFAULT_ANCHOR) as float
+
+
+## Issue #721 rework (owner 2026-11-28): the carry SIDE along the aim
+## axis — +1 (default) holds the visual in front of the wielder, -1
+## flips it to the opposite side (the baseball bat's back carry: it
+## rests behind the body and swings through to the strike). The
+## magnitude stays the shared #559 anchor band; only the side flips.
+static func carry_sign(idx: int) -> float:
+	var s := style(idx)
+	return s.get("carry_sign", 1.0) as float
 
 
 ## Per-weapon lift damping for textured styles (entry override or the
