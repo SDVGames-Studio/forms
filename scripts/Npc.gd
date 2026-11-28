@@ -212,12 +212,6 @@ func _apply_team_shape() -> void:
 	_keep_weapon_in_front()
 
 
-## Issue #60: computer figures keep their TEAM color in the health bar
-## fill (the base's player-side fill turns red as health drops).
-func _bar_fill_color(_ratio: float) -> Color:
-	return team_color
-
-
 ## Issue #221 heritage: the Shield bubble's box — the NPC-side geometry.
 func _shield_offsets() -> Vector4:
 	return Vector4(-BAR_WIDTH / 2.0 - 4.0, -44.0 - BAR_HEIGHT - 8.0,

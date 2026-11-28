@@ -322,7 +322,9 @@ func _update_bar() -> void:
 ## Issue #726: the HP fill is red — full health paints the full bar
 ## red, and damage shrinks it from the edges to the centre. (Supersedes
 ## the issue #6 green-at-full-health look: a green bar read as "no HP".)
-## Computer figures keep their team color (Npc override, issue #60).
+## Issue #726 rework: the fill is red for EVERY figure — computer
+## figures too; the old #60 Npc team-color override is gone (a team-
+## colored bar read as "this figure has no HP").
 func _bar_fill_color(_ratio: float) -> Color:
 	return Color(0.85, 0.15, 0.15, 1)
 

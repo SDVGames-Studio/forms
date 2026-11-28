@@ -4,18 +4,44 @@ extends Node
 ## Issue #726: the fill must be VISIBLE (height > 0 — the old zero-height
 ## fill made the bar an empty dark line), always red, and shrink
 ## symmetrically from both edges toward the centre as HP drops.
+## Issue #726 rework: the fill is red for EVERY figure — computer
+## figures too (the old #60 Npc team-color override is gone).
 ##
 ## Run headless: godot --headless res://tests/test_health_bar.tscn
-## Exit code 0 = pass. Two checks:
+## Exit code 0 = pass. Three checks:
 ##  1. A fresh CharacterBody2D with Player.gd attached.
-##  2. The real Player inside Level1.tscn.
+##  2. A fresh CharacterBody2D with Npc.gd attached (fill is red, not
+##     the team color).
+##  3. The real Player inside Level1.tscn.
 
 func _ready() -> void:
 	var ok := true
 	ok = await _check_fresh() and ok
+	ok = await _check_npc() and ok
 	ok = await _check_in_scene() and ok
 	print("ISSUE97 ALL_OK=", ok)
 	get_tree().quit(0 if ok else 1)
+
+
+func _check_npc() -> bool:
+	var npc := CharacterBody2D.new()
+	npc.set_script(load("res://scripts/Npc.gd"))
+	add_child(npc)
+	await get_tree().process_frame
+	var fill: ColorRect = npc.get("_bar_fill")
+	# Issue #726 rework: the NPC fill must be the base RED, not the
+	# figure's team color (default yellow 1, 0.84, 0.2 vs red 0.85,
+	# 0.15, 0.15) — and stay red after damage too.
+	var red := Color(0.85, 0.15, 0.15, 1)
+	var ok: bool = fill.size.y > 0.0 \
+		and fill.color.is_equal_approx(red)
+	npc.take_damage(30)
+	ok = ok and fill.color.is_equal_approx(red) \
+		and absf(fill.offset_left + fill.offset_right) < 0.001
+	print("ISSUE97 npc: h=", fill.size.y, " color=", fill.color,
+		" ok=", ok)
+	npc.queue_free()
+	return ok
 
 
 func _check_fresh() -> bool:
