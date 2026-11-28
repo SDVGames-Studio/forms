@@ -221,6 +221,15 @@ const MAX_LEVEL_TEAM_MEMBERS := 64
 ## "+" spots).
 const DEFAULT_TEAM_MEMBERS := 2
 
+## Issue #394 rework v4 (owner 2026-11-28): each team carries its own
+## LEVEL member count ("level_members") — the pre-game level setup's
+## composition, fully decoupled from the team customization menu's
+## roster ("names"). Team-menu edits never grow or shrink a level's
+## team, and the level setup's extras ("mateK") never appear in the
+## team menu. 0 = unset; the level setup derives it once from the
+## roster size and persists it.
+const LEVEL_MEMBERS_KEY := "level_members"
+
 ## Issue #524: the languages a team may speak — picked per team in the
 ## team menu; that team's teammates' spoken lines (CharacterLines)
 ## follow it.
@@ -254,6 +263,7 @@ static func default_teams() -> Array:
 			"skill": ai_skill, "friendly_fire": ai_friendly_fire,
 			"language": DEFAULT_LANGUAGE,
 			"controller": "computer",
+			"level_members": DEFAULT_TEAM_MEMBERS,
 		},
 		{
 			"label": "Team 2", "color": Color(0.75, 0.2, 0.45, 1),
@@ -262,6 +272,7 @@ static func default_teams() -> Array:
 			"skill": ai_skill, "friendly_fire": ai_friendly_fire,
 			"language": DEFAULT_LANGUAGE,
 			"controller": "computer",
+			"level_members": DEFAULT_TEAM_MEMBERS,
 		},
 		{
 			"label": "Team 3", "color": Color(0.9, 0.3, 0.3, 1),
@@ -270,6 +281,7 @@ static func default_teams() -> Array:
 			"skill": ai_skill, "friendly_fire": ai_friendly_fire,
 			"language": "Russian",
 			"controller": "computer",
+			"level_members": DEFAULT_TEAM_MEMBERS,
 		},
 	]
 
@@ -425,8 +437,34 @@ static func _sanitize_teams(raw: Array) -> Array:
 			"friendly_fire": clampi(int(team.get("friendly_fire", 0)), 0, 10),
 			"language": _valid_language(str(team.get("language", DEFAULT_LANGUAGE))),
 			"controller": controller,
+			# Issue #394 rework v4: the level setup's own member count rides
+			# with the team (0 = unset; the level setup derives it once).
+			"level_members": clampi(int(team.get(LEVEL_MEMBERS_KEY, 0)),
+					0, MAX_LEVEL_TEAM_MEMBERS),
 		})
 	return out.slice(0, MAX_TEAMS) if not out.is_empty() else default_teams()
+
+
+## Issue #394 rework v4 (owner 2026-11-28): the member names one team
+## fields in a level started from the level setup. The team menu's
+## ROSTER fills first ("if there are N teammates in my team, they
+## should be chosen first if I add N teammates in the level setup");
+## every member past the roster end is a generic "mateK" extra that
+## never appears in the team customization menu. An unset count (0)
+## falls back to the roster size.
+static func resolve_level_names(team: Dictionary) -> Array[String]:
+	var roster: Array = team.get("names", [])
+	var count: int = int(team.get(LEVEL_MEMBERS_KEY, 0))
+	if count <= 0:
+		count = maxi(1, roster.size())
+	count = clampi(count, 1, MAX_LEVEL_TEAM_MEMBERS)
+	var names: Array[String] = []
+	for i in count:
+		if i < roster.size():
+			names.append(str(roster[i]))
+		else:
+			names.append("mate%d" % (i - roster.size() + 1))
+	return names
 
 
 ## Issue #169: load the saved team customisation (if any) into these

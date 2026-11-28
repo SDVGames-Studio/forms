@@ -17,6 +17,12 @@ extends Control
 ## - The shape picker is graphical: one little figure per shape.
 ## - "Save" persists the whole set to user://team.cfg (GameConfig.teams).
 ##
+## Issue #394 rework v4 (owner 2026-11-28): the roster edited here is
+## fully DECOUPLED from the level setup's team composition — the
+## roster members are chosen first when a level fields a team, and
+## level extras ("mateK") never appear here. Roster edits never touch
+## a team's "level_members" count and vice versa.
+##
 ## Owner rework (issue #208): there is NO "Player Team"/"Enemies" concept —
 ## the teams are just an ordered set with neutral names; in the game the
 ## player may choose ANY team and the computer plays any of the left ones.
@@ -254,6 +260,10 @@ func _on_add_team_pressed() -> void:
 		"skill": 5,
 		"friendly_fire": 0,
 		"language": GameConfig.DEFAULT_LANGUAGE,
+		# Issue #394 rework v4: a fresh team's LEVEL member count starts
+		# at the default squad size — the level setup edits it separately
+		# (the roster and the level composition stay decoupled).
+		"level_members": GameConfig.DEFAULT_TEAM_MEMBERS,
 	})
 	_selected = GameConfig.teams.size() - 1
 	_refresh_all()

@@ -67,6 +67,16 @@ extends Control
 ## runs on the host device; the synchronized shared match over the
 ## wire remains the next step).
 
+## Issue #394 rework v4 (owner 2026-11-28): the member grids pick the
+## level's OWN per-team member count ("level_members"), fully
+## decoupled from the team customization menu's roster — adding
+## teammates in the team menu never changes a level's team, and the
+## level's extras never leak back into the roster. Start resolves the
+## names a team fields: the ROSTER members first (in order), every
+## member past the roster end a generic "mateK" that never appears in
+## the team menu. The counts persist with the team set the moment
+## they change, so a team-menu round-trip cannot lose them.
+
 ## Issue #647 rework v2 (owner 2026-11-20): the menu now USES the
 ## width instead of hugging the right edge — the brand is a compact
 ## TOP header, the form sits in a left column and the teams panel
@@ -230,6 +240,18 @@ func _ready() -> void:
 			"label": str(team["label"]),
 			"color": team["color"] if team.get("color") is Color else Color(1, 1, 1),
 		})
+	# Issue #394 rework v4: derive the level's own member count for every
+	# team that never got one (an old team.cfg, a fresh team) — the
+	# ROSTER size, once — and persist it right away so a later visit to
+	# the team customization menu cannot re-couple the two.
+	var derived_counts := false
+	for team in GameConfig.teams:
+		if int(team.get(GameConfig.LEVEL_MEMBERS_KEY, 0)) <= 0:
+			team[GameConfig.LEVEL_MEMBERS_KEY] = maxi(1,
+					(team["names"] as Array).size())
+			derived_counts = true
+	if derived_counts:
+		_persist_roster_set()
 	_add_team_button.pressed.connect(_on_add_team_pressed)
 	# Issue #647 rework v2: dense row styling for the in-scene add-team
 	# button (the script-built team-row buttons get it in
@@ -368,25 +390,48 @@ func _on_start_pressed() -> void:
 		get_tree().change_scene_to_file(GameConfig.level_path)
 		return
 	# Issue #537 rework v3 (item 2): from here on the level takes every
-	# team's SIZE from this menu's grids.
+	# team's SIZE from this menu's grids. Issue #394 rework v4: the
+	# grids drive the decoupled "level_members" counts — the roster set
+	# persists untouched, and the live set the level plays wears the
+	# resolved names (roster first, "mateK" extras past the roster end).
+	_prepare_level_sets()
+	# Issue #463: the picked level's endless background music starts with
+	# the level and survives the scene change (autoload).
+	MusicManager.play_for_level(GameConfig.level_path)
+	get_tree().change_scene_to_file(GameConfig.level_path)
+
+
+## Issue #394 rework v4: Start's set handling, kept as a method so
+## tests drive the exact same path without the scene change.
+## Persists the ROSTER set (original labels and colors from
+## _game_identity, ROSTER member names, the per-team level counts)
+## to team.cfg, then dresses the LIVE set with the resolved member
+## names and re-syncs the classic fields from it.
+func _prepare_level_sets() -> void:
 	GameConfig.menu_team_sizes = true
-	# Issue #521: persist the edited team set (with the controller
-	# choices) before the level applies it. Issue #537 rework v3
-	# (items 5+6): the per-game color/name overrides are NOT persisted —
-	# the save carries each team's ORIGINAL label and color while the
-	# live set (the one the level plays) keeps the overrides.
-	var live: Array = GameConfig.teams.duplicate(true)
-	GameConfig.teams = GameConfig.teams.duplicate(true)
+	_persist_roster_set()
+	for team in GameConfig.teams:
+		team["names"] = GameConfig.resolve_level_names(team)
+	GameConfig._sync_from_teams()
+
+
+## Issue #394 rework v4: write the ROSTER set to team.cfg — the team
+## customization domain — with each team's ORIGINAL label and color
+## (the per-game overrides live and die with the level run, exactly
+## like the old Start save) and its "level_members" count. Called
+## whenever a level count changes (so a team-menu round-trip cannot
+## lose the level setup's composition) and at Start. A LAN client
+## never writes — its local file is irrelevant in the lobby.
+func _persist_roster_set() -> void:
+	if _lan and not _lan_host:
+		return
+	var live: Array = GameConfig.teams
+	GameConfig.teams = live.duplicate(true)
 	for i in mini(GameConfig.teams.size(), _game_identity.size()):
 		GameConfig.teams[i]["label"] = _game_identity[i]["label"]
 		GameConfig.teams[i]["color"] = _game_identity[i]["color"]
 	GameConfig.save_teams()
 	GameConfig.teams = live
-	GameConfig._sync_from_teams()
-	# Issue #463: the picked level's endless background music starts with
-	# the level and survives the scene change (autoload).
-	MusicManager.play_for_level(GameConfig.level_path)
-	get_tree().change_scene_to_file(GameConfig.level_path)
 
 
 # -------------------------------------------------- teams (issue #521) --
@@ -619,10 +664,16 @@ func _on_lan_connection_lost(_reason: String) -> void:
 ## teammate. FREE squares carry a "+" sign; clicking one appends a
 ## teammate. Cells shrink per tier so the grid keeps one footprint.
 func _build_member_grid(team: Dictionary, team_index: int) -> GridContainer:
-	var members: Array = team["names"]
+	## Issue #394 rework v4: the grid shows the team's LEVEL member
+	## count (the decoupled "level_members"), not the roster — the
+	## roster members fill the first squares, the rest are "mateK"
+	## extras that exist in the level only.
+	var count: int = int(team.get(GameConfig.LEVEL_MEMBERS_KEY, 0))
+	if count <= 0:
+		count = maxi(1, (team["names"] as Array).size())
 	var shape := str(team["shape"])
 	var color: Color = team["color"] if team.get("color") is Color else Color(1, 1, 1)
-	var tier := _tier_for(members.size())
+	var tier := _tier_for(count)
 	var rows: int = tier[0]
 	var columns: int = tier[1]
 	var cell_size := (GRID_WIDTH - (columns - 1) * GRID_SEPARATION) / columns
@@ -639,7 +690,7 @@ func _build_member_grid(team: Dictionary, team_index: int) -> GridContainer:
 	grid.add_theme_constant_override("h_separation", int(GRID_SEPARATION))
 	grid.add_theme_constant_override("v_separation", int(GRID_SEPARATION))
 	for slot in rows * columns:
-		var filled := slot < members.size()
+		var filled := slot < count
 		var cell := Control.new()
 		cell.custom_minimum_size = Vector2(cell_size, cell_size)
 		cell.mouse_filter = Control.MOUSE_FILTER_STOP
@@ -696,6 +747,19 @@ static func _tier_for(member_count: int) -> Array:
 		if member_count < tier[0] * tier[1]:
 			return tier
 	return GRID_TIERS[GRID_TIERS.size() - 1]
+
+
+## Issue #394 rework v4: one team's current level member count (the
+## decoupled "level_members"; a missing value falls back to the
+## roster size, as the level setup derives at open).
+func _level_member_count(team_index: int) -> int:
+	if team_index < 0 or team_index >= GameConfig.teams.size():
+		return 1
+	var team: Dictionary = GameConfig.teams[team_index]
+	var count: int = int(team.get(GameConfig.LEVEL_MEMBERS_KEY, 0))
+	if count <= 0:
+		count = maxi(1, (team["names"] as Array).size())
+	return count
 
 
 func _is_left_click(event: InputEvent) -> bool:
@@ -783,8 +847,12 @@ func _commit_team_rename(team_index: int, text: String) -> void:
 	_after_local_edit(team_index)
 
 
-## Owner item 2: a filled square's click drops that teammate; one is
+## Owner item 2: a filled square's click drops a teammate; one is
 ## the floor — a team always fields at least one figure.
+## Issue #394 rework v4: the grid picks the level's member COUNT —
+## the roster (the team menu's domain) is never edited here. The
+## ROSTER always fills the lineup first, so removing a square trims
+## the tail: the last member goes, whatever square was clicked.
 func _remove_member(team_index: int, member_index: int) -> void:
 	if team_index < 0 or team_index >= GameConfig.teams.size():
 		return
@@ -792,15 +860,20 @@ func _remove_member(team_index: int, member_index: int) -> void:
 	# offline) may resize it.
 	if not _can_edit_team(team_index):
 		return
-	var names: Array = GameConfig.teams[team_index]["names"]
-	if member_index < 0 or member_index >= names.size() or names.size() <= 1:
+	var count := _level_member_count(team_index)
+	if count <= 1:
 		return
-	names.remove_at(member_index)
+	GameConfig.teams[team_index][GameConfig.LEVEL_MEMBERS_KEY] = count - 1
 	_after_local_edit(team_index)
+	# The count is durable the moment it changes — a team-menu visit
+	# between level-setup visits cannot lose the level's composition.
+	_persist_roster_set()
 
 
 ## Owner item 3: a free square's click appends a teammate, up to the
-## 4x16 tier's 64.
+## 4x16 tier's 64. Issue #394 rework v4: the append grows the team's
+## LEVEL count only — an extra past the roster end becomes a "mateK"
+## figure that never appears in the team customization menu.
 func _add_member(team_index: int) -> void:
 	if team_index < 0 or team_index >= GameConfig.teams.size():
 		return
@@ -808,11 +881,12 @@ func _add_member(team_index: int) -> void:
 	# offline) may resize it.
 	if not _can_edit_team(team_index):
 		return
-	var names: Array = GameConfig.teams[team_index]["names"]
-	if names.size() >= GameConfig.MAX_LEVEL_TEAM_MEMBERS:
+	var count := _level_member_count(team_index)
+	if count >= GameConfig.MAX_LEVEL_TEAM_MEMBERS:
 		return
-	names.append("Member %d" % (names.size() + 1))
+	GameConfig.teams[team_index][GameConfig.LEVEL_MEMBERS_KEY] = count + 1
 	_after_local_edit(team_index)
+	_persist_roster_set()
 
 
 func _on_add_team_pressed() -> void:
@@ -833,6 +907,10 @@ func _on_add_team_pressed() -> void:
 		"friendly_fire": clampi(int(source.get("friendly_fire", 0)), 0, 10),
 		"controller": "computer",
 		"language": str(source.get("language", GameConfig.DEFAULT_LANGUAGE)),
+		# Issue #394 rework v4: the fresh team's LEVEL count starts at the
+		# default squad size (its roster size) — the grid grows it from
+		# there, decoupled from the roster.
+		"level_members": GameConfig.DEFAULT_TEAM_MEMBERS,
 	})
 	_after_local_edit()
 
