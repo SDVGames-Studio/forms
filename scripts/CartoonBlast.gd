@@ -60,6 +60,14 @@ var _fleck_angles: PackedFloat32Array = []
 ## Smoke wisp directions — a fan around straight up.
 var _smoke_angles: PackedFloat32Array = []
 
+## Issue #720 (part 4b): optional per-weapon HIT palette (fed from the
+## WeaponVisuals "flash" registry entry — the same "inner"/"core"
+## colors as the weapon's muzzle burst, so a weapon's impacts read in
+## its own family). The defaults keep the #718 warm comic star for
+## every existing caller.
+var hit_inner := HIT_INNER
+var hit_core := CORE
+
 
 func _init() -> void:
 	for i in 7:
@@ -88,10 +96,15 @@ static func pop(parent: Node, at: Vector2, blast_radius: float) -> CartoonBlast:
 ## `intensity` scales the star — bigger hits read bigger (callers pass
 ## a damage-derived value). Randomly rotated so repeated grind hits
 ## never look like a strobing stamp.
-static func pop_hit(parent: Node, at: Vector2, intensity := 1.0) -> CartoonBlast:
+static func pop_hit(parent: Node, at: Vector2, intensity := 1.0,
+		palette := {}) -> CartoonBlast:
 	var fx := CartoonBlast.new()
 	fx.mode = Mode.HIT
 	fx.size = 11.0 * clampf(intensity, 0.6, 2.0)
+	# Issue #720 (part 4b): the per-weapon palette override, when the
+	# caller passes one (see Weapon._fire_railgun).
+	fx.hit_inner = palette.get("inner", HIT_INNER) as Color
+	fx.hit_core = palette.get("core", CORE) as Color
 	parent.add_child(fx)
 	fx.global_position = at
 	fx.z_index = 60
@@ -160,8 +173,8 @@ func _draw_hit() -> void:
 	var reach := size * (0.35 + 0.75 * eased)
 	var alpha := 1.0 - p
 	_draw_starburst(reach, Color(OUTLINE, alpha))
-	_draw_starburst(reach * 0.78, Color(CORE, alpha))
-	_draw_starburst(reach * 0.50, Color(HIT_INNER, alpha))
+	_draw_starburst(reach * 0.78, Color(hit_core, alpha))
+	_draw_starburst(reach * 0.50, Color(hit_inner, alpha))
 
 
 ## One jagged 6-spike starburst (long spike, deep notch, repeated) —

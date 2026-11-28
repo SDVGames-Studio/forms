@@ -1126,7 +1126,15 @@ func _muzzle_flash(at: Vector2, dir := Vector2.RIGHT) -> void:
 	if level_root == null:
 		return
 	ShotLight.flash(level_root, at, Color(1.0, 0.85, 0.45), 110.0, 2.6, 0.12)
-	MuzzleFlash.pop(level_root, at, dir)
+	# Issue #720 (part 4b): the registry's per-weapon flash data — size
+	# and palette — feeds straight into MuzzleFlash.pop. Styles without a
+	# "flash" entry resolve to the #715 default burst (the warm 22 px
+	# starburst), so every earlier weapon reads exactly as before; the
+	# railgun pops its big icy burst in the beam's own colors and the
+	# pistol a small hot one.
+	var flash := WeaponVisuals.flash_style(_held_style_index())
+	MuzzleFlash.pop(level_root, at, dir,
+			flash.get("size", 22.0) as float, flash)
 
 
 func _spawn_projectile(type: int, velocity: Vector2, damage: int, lifetime: float,
@@ -1780,12 +1788,27 @@ func _fire_railgun(power: float = 1.0) -> void:
 		query.exclude = exclude
 	var hit := get_world_2d().direct_space_state.intersect_ray(query)
 	var beam_end := muzzle + dir * RAILGUN_RANGE
+	# Issue #720 (part 4b): whether the beam landed on the WORLD (not a
+	# damage-taker — figures and items keep their own take_damage
+	# feedback, e.g. the warm hit star from Character._pop_hit_star).
+	var struck_world := false
 	if not hit.is_empty():
 		beam_end = hit["position"]
 		var target: Object = hit["collider"]
 		if target != null and target.has_method("take_damage"):
 			target.take_damage(railgun_damage(power), wielder)
+		else:
+			struck_world = true
 	_railgun_beam(muzzle, beam_end, power)
+	# Issue #720 (part 4b): the beam's landing on the WORLD pops an icy
+	# hit star (the 3c CartoonBlast.hit re-paletted from the same
+	# registry flash entry as the muzzle burst) so the boring-in point
+	# reads in the weapon's own colors.
+	if struck_world:
+		var fx_root := get_parent().get_parent()
+		if fx_root != null:
+			CartoonBlast.pop_hit(fx_root, beam_end, 1.4,
+					WeaponVisuals.flash_style(_held_style_index()))
 	# Issue #368: the railgun's shot flashes bright at the muzzle.
 	# Issue #680 (part 3): the cartoon burst rides the beam direction.
 	_muzzle_flash(muzzle, dir)
