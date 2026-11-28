@@ -633,6 +633,12 @@ func _explode_now() -> void:
 	if get_parent() != null:
 		ShotLight.flash(get_parent(), global_position,
 			Color(1.0, 0.8, 0.4), maxf(blast_radius, 60.0) * 1.6, 3.0, 0.4)
+	# Issue #718 (roadmap part 3c): the cartoon fireball on top of the
+	# glow and the radius ring below — same shared component the legacy
+	# Projectile uses, so every explosion in the game pops the same
+	# blast (the rock crumble above keeps its own brown ring: no fire).
+	if blast_radius > 0.0 and get_parent() != null:
+		CartoonBlast.pop(get_parent(), global_position, blast_radius)
 	_spawn_blast_visual()
 	queue_free()
 
