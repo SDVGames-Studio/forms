@@ -21,6 +21,11 @@ extends Node
 ## and point-only touches never unite.
 ## Issue #699: the SNAP TO GRID toggle — default on, the GROUND & VIEW
 ## button turning it off, and free (unsnapped) authoring clicks.
+## Issue #740: pictures per GROUND KIND plus the BACKGROUND — the
+## GROUND PICTURES column (choose / drop buttons, a preview thumbnail
+## per slot, exact tile size W/H and rotation per ground kind), the
+## level-file "pictures" embed/round-trip and CustomLevel applying
+## each kind its own picture and drawing the background.
 ##
 ## Run headless: godot --headless res://tests/test_level_editor_ui.tscn
 ## Exit code 0 = pass; the printed LEVELEDITOR ok= verdict is
@@ -101,6 +106,7 @@ class LevelEditorDriver extends Node:
 	const TEST_NAME := "issue464_roundtrip"
 	const TEST_SHAPES := "issue632_shapes"
 	const TEST_PIC := "issue633_picture"
+	const TEST_740 := "issue740_pictures"
 	const SHAPE_TOOLS := {
 		"rect": "%RectTool", "tri": "%TriangleTool",
 		"circle": "%CircleTool", "loop": "%LoopTool",
@@ -121,8 +127,15 @@ class LevelEditorDriver extends Node:
 				"EditorCanvas",
 				"FileNameEdit", "SaveButton", "LoadButton", "FileSelect",
 				"ClearButton", "BackButton", "StatusText",
-				"PictureButton", "NoPictureButton", "ResetViewButton",
-				"PictureDialog", "SnapButton"]:
+				"IndestructiblePicButton", "IndestructibleNoPicButton",
+				"IndestructiblePreview", "IndestructibleW",
+				"IndestructibleH", "IndestructibleRot",
+				"DestructiblePicButton", "DestructibleNoPicButton",
+				"DestructiblePreview", "DestructibleW",
+				"DestructibleH", "DestructibleRot",
+				"BackgroundPicButton", "BackgroundNoPicButton",
+				"BackgroundPreview",
+				"ResetViewButton", "PictureDialog", "SnapButton"]:
 			var found: Node = editor.get_node_or_null("%" + unique)
 			print("LEVELEDITOR node ", unique, " ok=", found != null)
 			ok = ok and found != null
@@ -611,7 +624,8 @@ class LevelEditorDriver extends Node:
 		editor_s.queue_free()
 		DirAccess.remove_absolute(shapes_path)
 
-		# --- Issue #633: the ground picture embeds and round-trips. ---
+		# --- Issue #633/#740: a ground picture embeds and round-trips
+		# (its exact tile size and rotation with it). ---
 		var editor_p: Node = load("res://scenes/menus/LevelEditor.tscn").instantiate()
 		add_child(editor_p)
 		await get_tree().process_frame
@@ -619,8 +633,9 @@ class LevelEditorDriver extends Node:
 		var pic_bytes := Marshalls.base64_to_raw(_tiny_picture_b64())
 		var pic_image := Image.new()
 		pic_image.load_png_from_buffer(pic_bytes)
-		canvas_p.set_ground_picture(
-			ImageTexture.create_from_image(pic_image), "tiny.png", pic_bytes)
+		canvas_p.set_picture("destructible",
+			ImageTexture.create_from_image(pic_image), "tiny.png", pic_bytes,
+			Vector2(64.0, 64.0), 90.0)
 		canvas_p.set_pieces([{"kind": "destructible", "shape": "rect",
 			"rect": Rect2(Vector2(256, 448), Vector2(256, 128))}])
 		(editor_p.get_node("%FileNameEdit") as LineEdit).text = TEST_PIC
@@ -632,15 +647,20 @@ class LevelEditorDriver extends Node:
 			FileAccess.get_file_as_string(pic_path))
 		if typeof(parsed_p) == TYPE_DICTIONARY:
 			var lvlp: Dictionary = parsed_p
-			var pcp = lvlp.get("picture", {})
-			pic_json = typeof(pcp) == TYPE_DICTIONARY \
-				and str((pcp as Dictionary).get("name", "")) == "tiny.png" \
-				and str((pcp as Dictionary).get("png", "")).length() > 32
+			var pcp = lvlp.get("pictures", {})
+			var pde = {}
+			if typeof(pcp) == TYPE_DICTIONARY:
+				pde = (pcp as Dictionary).get("destructible", {})
+			pic_json = typeof(pde) == TYPE_DICTIONARY \
+				and str((pde as Dictionary).get("name", "")) == "tiny.png" \
+				and str((pde as Dictionary).get("png", "")).length() > 32 \
+				and (pde as Dictionary).get("w", 0.0) == 64.0 \
+				and (pde as Dictionary).get("rot", 0.0) == 90.0
 		print("LEVELEDITOR picture_json=", pic_json)
 		ok = ok and pic_json
-		(editor_p.get_node("%NoPictureButton") as Button).pressed.emit()
+		(editor_p.get_node("%DestructibleNoPicButton") as Button).pressed.emit()
 		await get_tree().process_frame
-		var no_pic: bool = not canvas_p.has_ground_picture()
+		var no_pic: bool = not canvas_p.has_picture("destructible")
 		var select_p: OptionButton = editor_p.get_node("%FileSelect")
 		var sel_p := -1
 		for i in select_p.item_count:
@@ -649,17 +669,152 @@ class LevelEditorDriver extends Node:
 		select_p.select(sel_p)
 		(editor_p.get_node("%LoadButton") as Button).pressed.emit()
 		await get_tree().process_frame
-		var restored: Dictionary = canvas_p.get_ground_picture()
+		var restored: Dictionary = canvas_p.get_picture("destructible")
 		var picture_roundtrip: bool = no_pic \
-			and canvas_p.has_ground_picture() \
+			and canvas_p.has_picture("destructible") \
 			and restored.get("name", "") == "tiny.png" \
 			and (restored.get("png", PackedByteArray()) \
 				as PackedByteArray) == pic_bytes \
-			and restored.get("texture", null) is Texture2D
+			and restored.get("texture", null) is Texture2D \
+			and (restored.get("size", Vector2.ZERO) as Vector2) \
+				== Vector2(64.0, 64.0) \
+			and is_equal_approx(
+					float(restored.get("rotation", 0.0)), 90.0)
 		print("LEVELEDITOR picture_roundtrip=", picture_roundtrip)
 		ok = ok and picture_roundtrip
 		editor_p.queue_free()
 		DirAccess.remove_absolute(pic_path)
+
+		# --- Issue #740: DIFFERENT pictures per ground kind plus the
+		# background — chosen through the editor's own flow (the
+		# previews show them in the interface), resized / rotated live
+		# with the spinboxes, embedded per kind in the level file and
+		# built into per-kind playable ground with the background. ---
+		var editor_7: Node = load("res://scenes/menus/LevelEditor.tscn").instantiate()
+		add_child(editor_7)
+		await get_tree().process_frame
+		var canvas_7: Control = editor_7.get_node("%EditorCanvas") as Control
+		var pic_a := Image.create_empty(8, 8, false, Image.FORMAT_RGBA8)
+		pic_a.fill(Color(0.9, 0.2, 0.2, 1.0))
+		var pic_b := Image.create_empty(8, 8, false, Image.FORMAT_RGBA8)
+		pic_b.fill(Color(0.2, 0.2, 0.9, 1.0))
+		var pic_bg := Image.create_empty(8, 8, false, Image.FORMAT_RGBA8)
+		pic_bg.fill(Color(0.2, 0.9, 0.2, 1.0))
+		var tmp_a := "user://tmp_issue740_in.png"
+		var tmp_b := "user://tmp_issue740_de.png"
+		var tmp_bg := "user://tmp_issue740_bg.png"
+		var fa := FileAccess.open(tmp_a, FileAccess.WRITE)
+		fa.store_buffer(pic_a.save_png_to_buffer())
+		fa.close()
+		var fb := FileAccess.open(tmp_b, FileAccess.WRITE)
+		fb.store_buffer(pic_b.save_png_to_buffer())
+		fb.close()
+		var fbg := FileAccess.open(tmp_bg, FileAccess.WRITE)
+		fbg.store_buffer(pic_bg.save_png_to_buffer())
+		fbg.close()
+		# Choose each slot through the editor's own picture handler.
+		editor_7.set("_picture_kind", "indestructible")
+		editor_7.call("_on_picture_selected", tmp_a)
+		editor_7.set("_picture_kind", "destructible")
+		editor_7.call("_on_picture_selected", tmp_b)
+		editor_7.set("_picture_kind", "background")
+		editor_7.call("_on_picture_selected", tmp_bg)
+		# The previews show the chosen pictures in the interface, and
+		# every slot carries its own picture.
+		var previews_ok: bool = \
+				(editor_7.get_node("%IndestructiblePreview") \
+					as TextureRect).texture != null \
+				and (editor_7.get_node("%DestructiblePreview") \
+					as TextureRect).texture != null \
+				and (editor_7.get_node("%BackgroundPreview") \
+					as TextureRect).texture != null \
+				and canvas_7.has_picture("indestructible") \
+				and canvas_7.has_picture("destructible") \
+				and canvas_7.has_picture("background") \
+				and (canvas_7.get_picture("indestructible").get("name", "") \
+					as String) == "tmp_issue740_in.png" \
+				and (canvas_7.get_picture("background").get("name", "") \
+					as String) == "tmp_issue740_bg.png"
+		print("LEVELEDITOR picture_previews=", previews_ok)
+		ok = ok and previews_ok
+
+		# The tile size / rotation spinboxes drive the canvas live
+		# (a chosen picture starts at its native 8x8 tile).
+		(editor_7.get_node("%IndestructibleW") as SpinBox).set_value(256.0)
+		(editor_7.get_node("%IndestructibleH") as SpinBox).set_value(64.0)
+		(editor_7.get_node("%IndestructibleRot") as SpinBox).set_value(45.0)
+		var param_live: Dictionary = canvas_7.get_picture("indestructible")
+		var params_ok: bool = \
+				(param_live.get("size", Vector2.ZERO) as Vector2) \
+				== Vector2(256.0, 64.0) \
+			and is_equal_approx(
+					float(param_live.get("rotation", 0.0)), 45.0)
+		print("LEVELEDITOR picture_params=", params_ok)
+		ok = ok and params_ok
+		canvas_7.set_pieces([
+			{"kind": "indestructible", "shape": "rect",
+				"rect": Rect2(Vector2(0, 576), Vector2(1152, 72))},
+			{"kind": "destructible", "shape": "rect",
+				"rect": Rect2(Vector2(64, 448), Vector2(256, 128))}])
+		(editor_7.get_node("%FileNameEdit") as LineEdit).text = TEST_740
+		(editor_7.get_node("%SaveButton") as Button).pressed.emit()
+		await get_tree().process_frame
+		var path_740 := "user://levels/%s.json" % TEST_740
+		var pictures_json := false
+		var parsed_7 = JSON.parse_string(
+			FileAccess.get_file_as_string(path_740))
+		if typeof(parsed_7) == TYPE_DICTIONARY:
+			var lvl7: Dictionary = parsed_7
+			var raws = lvl7.get("pictures", {})
+			var r_in = {}
+			var r_de = {}
+			var r_bg = {}
+			if typeof(raws) == TYPE_DICTIONARY:
+				r_in = (raws as Dictionary).get("indestructible", {})
+				r_de = (raws as Dictionary).get("destructible", {})
+				r_bg = (raws as Dictionary).get("background", {})
+			pictures_json = typeof(r_in) == TYPE_DICTIONARY \
+				and str((r_in as Dictionary).get("name", "")) == "tmp_issue740_in.png" \
+				and (r_in as Dictionary).get("w", 0.0) == 256.0 \
+				and (r_in as Dictionary).get("rot", 0.0) == 45.0 \
+				and typeof(r_de) == TYPE_DICTIONARY \
+				and str((r_de as Dictionary).get("name", "")) == "tmp_issue740_de.png" \
+				and (r_de as Dictionary).get("w", 0.0) == 8.0 \
+				and typeof(r_bg) == TYPE_DICTIONARY \
+				and str((r_bg as Dictionary).get("name", "")) == "tmp_issue740_bg.png"
+		print("LEVELEDITOR pictures_json=", pictures_json)
+		ok = ok and pictures_json
+		editor_7.queue_free()
+		DirAccess.remove_absolute(tmp_a)
+		DirAccess.remove_absolute(tmp_b)
+		DirAccess.remove_absolute(tmp_bg)
+
+		# --- Issue #740: CustomLevel gives each ground kind its OWN
+		# picture (the exact tile size with it) and draws the background. ---
+		GameConfig.custom_level_name = TEST_740
+		var level_7: Node = load("res://scenes/levels/CustomLevel.tscn").instantiate()
+		add_child(level_7)
+		await get_tree().process_frame
+		var in_pic = null
+		var de_pic = null
+		var in_size = Vector2.ZERO
+		for g in get_tree().get_nodes_in_group("indestructible_ground"):
+			in_pic = g.get("picture")
+			in_size = g.get("picture_size")
+		for g in get_tree().get_nodes_in_group("destructible_ground"):
+			de_pic = g.get("picture")
+		var per_kind: bool = in_pic is Texture2D \
+				and de_pic is Texture2D \
+				and in_pic != de_pic \
+				and in_size == Vector2(256.0, 64.0) \
+				and level_7.background_picture() is Texture2D \
+				and (level_7.background_picture() as Texture2D) != in_pic
+		print("LEVELEDITOR pictures_build=", per_kind)
+		ok = ok and per_kind
+		level_7.queue_free()
+		await get_tree().process_frame
+		GameConfig.custom_level_name = ""
+		DirAccess.remove_absolute(path_740)
 
 		# --- Issue #632: the shapes build PLAYABLE ground (CustomLevel).
 		_write_shapes_level("user://levels/%s.json" % TEST_SHAPES)

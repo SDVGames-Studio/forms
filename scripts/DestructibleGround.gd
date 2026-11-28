@@ -68,7 +68,16 @@ const MIN_BAND := 4.0
 ## the picture AND its mapping (`picture_origin` / `picture_span` =
 ## the local-space rect the texture is stretched over), so craters
 ## keep showing the same, world-continuous part of the picture.
+## Issue #740: the level's ground kinds carry their OWN picture — this
+## chunk draws the destructible one, tiled at its exact size and
+## rotated as authored (a zero size keeps the stretch mapping above).
 @export var picture: Texture2D
+## Issue #740: the picture's exact TILE SIZE in pixels — one
+## repetition of the pattern (world space, so carved pieces stay
+## continuous); Vector2.ZERO stretches over the mapping instead.
+@export var picture_size := Vector2.ZERO
+## Issue #740: the tile pattern's rotation in degrees.
+@export var picture_rotation := 0.0
 var picture_origin := Vector2.ZERO
 var picture_span := Vector2.ZERO
 
@@ -84,6 +93,9 @@ func _ready() -> void:
 					-PI / 2.0 + (float(i) + 0.5) * span, span))
 		return
 	add_to_group("destructible_ground")
+	# Issue #740: a tiled picture needs texture wrapping on.
+	if picture != null and picture_size.x > 0.0 and picture_size.y > 0.0:
+		texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
 	# Issue #633: a picture without an explicit mapping is stretched
 	# over the chunk's own geometry (authored chunks; carved children
 	# always receive their shifted mapping explicitly).
@@ -136,17 +148,41 @@ func _draw() -> void:
 		draw_rect(Rect2(-rect_size / 2.0, rect_size), COLOR)
 
 
-## Issue #633: UVs of local points inside the chunk's picture mapping
-## (always within [0, 1] — chunks and their carved children are subsets
-## of the rect the mapping covers).
+## Issue #633/#740: UVs of local points onto the picture — tiled at
+## `picture_size` world pixels per repetition (the pattern turned by
+## `picture_rotation`; world space = local + position, so carved
+## children stay continuous), or stretched over the chunk's picture
+## mapping (`picture_origin` / `picture_span`) with the same
+## rotation. The stretch mapping always stays within [0, 1] — chunks
+## and their carved children are subsets of the rect it covers.
 func _picture_uvs(points: PackedVector2Array) \
 		-> PackedVector2Array:
+	if picture != null and picture_size.x > 0.001 \
+			and picture_size.y > 0.001:
+		var tiled := PackedVector2Array()
+		var a := -deg_to_rad(picture_rotation)
+		var c := cos(a)
+		var s := sin(a)
+		for p in points:
+			var d: Vector2 = p + position
+			tiled.append(Vector2(
+				(d.x * c - d.y * s) / picture_size.x,
+				(d.x * s + d.y * c) / picture_size.y))
+		return tiled
 	var span := Vector2(
 			picture_span.x if picture_span.x > 0.001 else 1.0,
 			picture_span.y if picture_span.y > 0.001 else 1.0)
 	var uvs := PackedVector2Array()
 	for p in points:
 		uvs.append((p - picture_origin) / span)
+	if absf(picture_rotation) > 0.01:
+		var a := -deg_to_rad(picture_rotation)
+		var c := cos(a)
+		var s := sin(a)
+		for i in uvs.size():
+			var d: Vector2 = uvs[i] - Vector2(0.5, 0.5)
+			uvs[i] = Vector2(d.x * c - d.y * s,
+					d.x * s + d.y * c) + Vector2(0.5, 0.5)
 	return uvs
 
 
@@ -520,6 +556,9 @@ func _spawn_poly(pts: PackedVector2Array) -> DestructibleGround:
 	piece.picture = picture
 	piece.picture_origin = picture_origin
 	piece.picture_span = picture_span
+	# Issue #740: the tile size / rotation carries over with it.
+	piece.picture_size = picture_size
+	piece.picture_rotation = picture_rotation
 	return piece
 
 
@@ -728,4 +767,8 @@ func _spawn(offset: Vector2, size: Vector2) -> void:
 		piece.picture_origin = picture_origin \
 				- (offset + size / 2.0)
 		piece.picture_span = picture_span
+		# Issue #740: the tile size / rotation carries over (world-space
+		# tiling needs no shift).
+		piece.picture_size = picture_size
+		piece.picture_rotation = picture_rotation
 	get_parent().add_child(piece)
