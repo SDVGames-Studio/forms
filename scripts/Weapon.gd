@@ -11,7 +11,11 @@ extends Node2D
 ##                    under the level's gravity (issue #245), big blast
 ##  3 Grenade       — lobbed arc with gravity, explodes on fuse or impact
 ##  4 Melee spear   — thrust that damages along the whole spearhead
-##                     trajectory (out and back), not one instant check
+##                     trajectory (out and back), not one instant check.
+##                     #721 rework (owner 2026-11-28): charged like the
+##                     rocket — hold F to pick the strike power; the
+##                     spear pulls BACK before the lunge and the thrust
+##                     reach scales with the power (damage frozen)
 ##  5 Mine (key 9)  — thrown like a grenade, then lies dormant until a
 ##                    character steps near it — 2-second fuse, boom
 ##                    (issue #246); it persists across turns
@@ -42,7 +46,12 @@ extends Node2D
 ##                    (issue #549) — one initial impulse along the shot
 ##                    direction with a guaranteed lift, after which the
 ##                    level's gravity bends the flight into an arc until
-##                    the victim lands
+##                    the victim lands. #721 rework (owner 2026-11-28):
+##                    the bat RESTS ON THE OPPOSITE SIDE of the wielder
+##                    (back carry) and the swing is a WIND-UP FIRST —
+##                    the bat pulls back behind the body (amplitude and
+##                    duration scale with the strike power) and only the
+##                    forward sweep's peak lands the hit
 ## 10 Circular saw (key C) — issue #570: thrown like a mine (hold F to
 ##                    charge the lob). On landing the blade SPINS for a
 ##                    few seconds, SUCKING IN every nearby figure (a
@@ -57,6 +66,11 @@ extends Node2D
 ##                    (one diameter = the figure's height, the other =
 ##                    half its width). Five swings per turn, ENDLESS
 ##                    uses (never on the team budget, like the spear).
+##                    #721 rework (owner 2026-11-28): charged too —
+##                    hold F to pick the swing power; the swing winds up
+##                    first (power-scaled) and the strike's carve scale
+##                    grows with the power (a stronger swing re-carves
+##                    the same bore deeper, damage frozen)
 ## Held-weapon visuals are data-driven: plain rectangles for the tools
 ## and melee shapes, hand-drawn cartoon sprites for the redesigned
 ## weapons (registry: scripts/WeaponVisuals.gd, issue #680).
@@ -282,6 +296,27 @@ const SHOVEL_DIG_OFFSET := 12.0
 ## so the tunnel extends instead of dead-ending; a smaller stance
 ## jitter still keeps the one anchored ellipse.
 const SHOVEL_DIG_REANCHOR := 12.0
+## Issue #721 rework (owner 2026-11-28): MELEE STRIKE POWER + WIND-UP.
+## The spear and the shovel join the charged weapons (hold F, release)
+## and every melee strike now WINDS UP before it lands: the weapon
+## pulls back behind the wielder and then lunges/swings forward. The
+## wind-up AMPLITUDE and DURATION scale with the strike power —
+## SPEAR_PULLBACK / BAT_WINDUP / SHOVEL_WINDUP are the per-weapon
+## pull-back amplitudes at FULL power, MELEE_WINDUP_MIN..+RANGE the
+## wind-up duration window from a tap to the full hold. Damage stays
+## frozen everywhere: the spear's power scales its thrust REACH, the
+## shovel's scales the dig carve, the bat keeps its knockback scaling.
+const SPEAR_PULLBACK := 22.0
+const BAT_WINDUP := 30.0
+const SHOVEL_WINDUP := 24.0
+const MELEE_WINDUP_MIN := 0.08
+const MELEE_WINDUP_RANGE := 0.14
+## Issue #721 rework: the strike sweep's out/return phase lengths (the
+## historic #257/#527/#656 shapes — fast strike, slower return).
+const BAT_SWING_OUT := 0.1
+const BAT_SWING_BACK := 0.3
+const SHOVEL_SWING_OUT := 0.1
+const SHOVEL_SWING_BACK := 0.3
 
 var _facing := 1.0
 var _cooldown_left := 0.0
@@ -303,6 +338,19 @@ var _thrust_t := -1.0
 ## Issue #257: bodies already damaged by the CURRENT thrust — each target
 ## on the spearhead's path takes the spear hit at most once per thrust.
 var _thrust_hit: Array = []
+## Issue #721 rework (owner 2026-11-28): the charged strike power
+## (0..1) of the melee strike currently animating — set by the release
+## (or the NPC's default full power), read by the wind-up amplitude,
+## the spear's thrust reach and the shovel's dig carve.
+var _melee_power := 1.0
+## Issue #721 rework: this tick's melee offsets along the aim axis —
+## the spear's thrust and the bat/shovel swing, computed by _tick_melee
+## (the strike state machine) and mirrored onto the held visual below.
+## Gameplay timing, not just visuals: the values advance for EVERY
+## wielder, the visual block only reads them.
+var _melee_thrust := 0.0
+var _melee_swing := 0.0
+var _melee_shovel_swing := 0.0
 ## Issue #527 rework: the bat is a CHARGED weapon like the rocket
 ## (issue #114) — hold F, release to swing. The charge picks the swing
 ## power: the launch speed scales from 40% (a tap) to the full
@@ -325,10 +373,18 @@ var _bat_push: Array = []
 var _bat_push_dir := Vector2.ZERO
 var _bat_push_left := 0.0
 var _bat_effect: Node = null
+## Issue #721 rework: false while a running bat swing still owes its
+## corridor strike — the wind-up plays first and the hit lands at the
+## forward sweep's peak (see the swing tick in _physics_process).
+var _bat_strike_done := true
 ## Issue #656: the shovel swing timer — the bat's quick swipe shape on
 ## the shovel's own (shorter) reach; the hit itself is instant, see
 ## _swing_shovel.
 var _shovel_swing_t := -1.0
+## Issue #721 rework: same as the bat — false while the shovel's
+## wind-up still owes the corridor hit + dig (they land at the forward
+## sweep's peak, see _shovel_strike).
+var _shovel_strike_done := true
 ## Issue #656 rework: the anchored dig of the current stance — the
 ## ellipse centre/up fixed in world space by the first swing there,
 ## the wielder's position when it was fixed, and whether that exact
@@ -337,7 +393,10 @@ var _shovel_swing_t := -1.0
 var _shovel_dig_anchor := Vector2.INF
 var _shovel_dig_up := Vector2.ZERO
 var _shovel_dig_body := Vector2.INF
-var _shovel_dig_carved := false
+## Issue #721 rework: the power scale already carved at the current
+## dig anchor (-1 = nothing yet) — a STRONGER swing re-carves the bore
+## deeper, an equal or weaker one is the historic no-op.
+var _shovel_dig_power := -1.0
 ## Issue #307: jackhammer drill state — seconds left, drill direction
 ## (re-sampled from the live aim every tick so the aim keys steer a
 ## running drill, #316), the per-body accrued grind damage of THIS
@@ -413,8 +472,12 @@ static func lobbed_velocity(aim: Vector2, up: Vector2, speed: float,
 ## the shot. It was missing from the gate, so the saw fired at full
 ## power on the press instead of charging.
 static func is_charged_weapon(slot: int) -> bool:
-	return slot == 1 or slot == 2 or slot == 4 or slot == 5 \
-			or slot == 6 or slot == 8 or slot == 9
+	# Issue #721 rework (owner 2026-11-28): the spear (3) and the
+	# entrenching shovel (10) join the charged set — hold F to pick the
+	# strike power (the thrust reach / the dig carve). Only the shotgun
+	# and the pistol keep the instant press-fire.
+	return slot == 1 or slot == 2 or slot == 3 or slot == 4 or slot == 5 \
+			or slot == 6 or slot == 8 or slot == 9 or slot == 10
 
 ## Issue #68: visual of the weapon currently held "in hands".
 var _held: ColorRect
@@ -635,6 +698,14 @@ func _physics_process(delta: float) -> void:
 	# hit figures keep flying after the shot handed the turn over.
 	if _bat_push_left > 0.0:
 		_tick_bat_push(delta)
+	# Issue #721 rework (owner 2026-11-28): the MELEE STRIKE state
+	# machine — wind-up, sweep, strike, return — advances here, for
+	# EVERY wielder: the strike's timing is gameplay now (the hit lands
+	# at the forward sweep's peak, after the power-scaled wind-up), so
+	# it must tick even when the held VISUAL below is skipped (a
+	# stand-in shooter without the aim_dir accessor). The offsets it
+	# computes feed the held visual's positions.
+	_tick_melee(delta)
 
 	var parent := get_parent() as CharacterBody2D
 	var new_facing := _facing
@@ -703,7 +774,9 @@ func _physics_process(delta: float) -> void:
 			and not ToolInventory.has_used_tool(get_parent())
 	# Issue #114: rocket (1), grenade (2) are CHARGED — pressing F starts
 	# the charge, releasing F fires with power scaled by the hold time.
-	# Shotgun and spear keep their instant press-fire behavior.
+	# Issue #721 rework (owner 2026-11-28): the spear (3) and the shovel
+	# (10) are charged too — the F hold picks the melee strike power.
+	# Shotgun and pistol keep their instant press-fire behavior.
 	# Issue #234: an armed rock is charged too — same F mechanic as the
 	# grenade; releasing F throws the rock instead of firing the weapon.
 	# Issue #246: the mine (4) is charged too — it is thrown like a grenade.
@@ -812,8 +885,10 @@ func _physics_process(delta: float) -> void:
 			delta / IDLE_FADE_TIME)
 		var style: Dictionary = HELD_STYLES[_held_style_index()]
 		# Issue #680 (part 2): per-weapon anchor from the registry (plain
-		# styles resolve to the historic #559 default).
-		var style_anchor := WeaponVisuals.anchor(_held_style_index())
+		# styles resolve to the historic #559 default). Issue #721 rework:
+		# a back-carry style (the bat) flips the anchor to the OPPOSITE
+		# side of the aim — the weapon rests BEHIND the wielder.
+		var style_anchor := _carry_anchor()
 		_held.position = aim * style_anchor - style["size"] / 2.0
 		# Issue #133: the spear (and every held weapon) rotates to the aim
 		# axis instead of staying parallel to the ground.
@@ -821,50 +896,13 @@ func _physics_process(delta: float) -> void:
 		# Issue #716: the drawn angle is the eased follow-through angle
 		# (see above), not the raw aim — visual only.
 		_held.rotation = _drawn_aim_angle
-		# Issue #133 (rework): thrust offset along the aim axis — fast out,
-		# slow back. 0.12 s lunge to SPEAR_RANGE, then 0.5 s return.
-		var thrust := 0.0
-		if _thrust_t >= 0.0:
-			_thrust_t += delta
-			if _thrust_t <= 0.12:
-				thrust = SPEAR_RANGE * (_thrust_t / 0.12)
-			elif _thrust_t <= 0.62:
-				thrust = SPEAR_RANGE * (1.0 - (_thrust_t - 0.12) / 0.5)
-			else:
-				_thrust_t = -1.0
-			# Issue #257: the hitbox follows the spearhead for the ENTIRE
-			# thrust (lunge out and pull back) — everything between the
-			# wielder and the current tip position is damaged as it is
-			# reached, instead of one instant press-time check.
-			if _thrust_t >= 0.0:
-				_spear_sweep_hit(SPEAR_TIP_BASE + thrust
-						+ HELD_STYLES[3]["size"].x / 2.0)
-		_held.position += aim * thrust
-		# Issue #527: the bat swing — a quick forward swipe along the aim
-		# axis, fast out (0.1 s) and slower back (0.3 s), mirroring the
-		# spear's lunge but shorter (half the bat's reach).
-		var swing := 0.0
-		if _bat_swing_t >= 0.0:
-				_bat_swing_t += delta
-				if _bat_swing_t <= 0.1:
-					swing = BAT_RANGE * 0.5 * (_bat_swing_t / 0.1)
-				elif _bat_swing_t <= 0.4:
-					swing = BAT_RANGE * 0.5 * (1.0 - (_bat_swing_t - 0.1) / 0.3)
-				else:
-					_bat_swing_t = -1.0
-		_held.position += aim * swing
-		# Issue #656: the shovel swing — the bat's quick swipe shape on
-		# the shovel's own (shorter) reach.
-		var dig_swing := 0.0
-		if _shovel_swing_t >= 0.0:
-				_shovel_swing_t += delta
-				if _shovel_swing_t <= 0.1:
-					dig_swing = SHOVEL_RANGE * 0.5 * (_shovel_swing_t / 0.1)
-				elif _shovel_swing_t <= 0.4:
-					dig_swing = SHOVEL_RANGE * 0.5 * (1.0 - (_shovel_swing_t - 0.1) / 0.3)
-				else:
-					_shovel_swing_t = -1.0
-		_held.position += aim * dig_swing
+		# Issue #721 rework: this tick's melee offsets — the thrust and
+		# swing math lives in _tick_melee (gameplay timing: wind-up,
+		# sweep, strike at the peak, return; see the state machine's
+		# doc there). The visual only mirrors the offsets along the aim.
+		_held.position += aim * _melee_thrust
+		_held.position += aim * _melee_swing
+		_held.position += aim * _melee_shovel_swing
 		# Issue #680 (part 3): RECOIL — the held visual snaps back along
 		# the aim on a committed shot and eases back to the hold position
 		# over RECOIL_TIME seconds (a squared ease-out: the kick is a
@@ -1079,14 +1117,14 @@ func _fire(power := 1.0) -> void:
 		0: _fire_shotgun()
 		1: _fire_rocket(power)
 		2: _fire_grenade(power)
-		3: _thrust_spear()
+		3: _thrust_spear(power)
 		4: _throw_mine(power)
 		5: _start_jackhammer(power)
 		6: _fire_railgun(power)
 		7: _fire_pistol()
 		8: _swing_bat(power)
 		9: _throw_saw(power)
-		10: _swing_shovel()
+		10: _swing_shovel(power)
 	# Issue #101+#65: only the LAST shot of the turn hands the turn over;
 	# with quota remaining the character keeps acting after the pause.
 	if _shots_used[clampi(selected_weapon, 0, _shots_used.size() - 1)] >= _shot_limit():
@@ -1216,16 +1254,43 @@ func _fire_pistol() -> void:
 ## (same pattern as the drill). Issue #527 rework: the swing power
 ## (chosen by the hold-F charge, the rocket's issue-#114 recipe) scales
 ## the launch — a tap pushes at 40% of BAT_KNOCKBACK_SPEED, the full
-## hold at 100%.
+## hold at 100%. Issue #721 rework (owner 2026-11-28): the swing is a
+## WIND-UP first — the corridor hit lands at the forward sweep's peak
+## (see _bat_strike), not at the release; the bat rests on the opposite
+## side of the wielder and pulls further back for the wind-up, scaled
+## by the same power. The turn-effect gate is created here, at the
+## swing's start, so the handover waits through the whole animation.
 func _swing_bat(power := 1.0) -> void:
+	_melee_power = clampf(power, 0.0, 1.0)
 	_bat_swing_t = 0.0
+	_bat_strike_done = false
 	_bat_push.clear()
-	_bat_push_dir = _aim().normalized()
 	_bat_push_left = 0.0
-	_bat_push_speed = BAT_KNOCKBACK_SPEED * lerpf(MIN_SHOT_POWER, 1.0, power)
+	_bat_push_speed = BAT_KNOCKBACK_SPEED \
+			* lerpf(MIN_SHOT_POWER, 1.0, _melee_power)
 	var parent := get_parent() as Node2D
 	if parent == null:
 		return
+	if _bat_effect == null or not is_instance_valid(_bat_effect):
+			_bat_effect = Node.new()
+			_bat_effect.name = "BatKnockback"
+			_bat_effect.add_to_group(TurnController.EFFECT_GROUP)
+			if parent.get_parent() != null:
+				parent.get_parent().add_child(_bat_effect)
+
+
+## Issue #721 rework: the bat strike itself — the corridor check that
+## runs the instant the forward sweep peaks (the wind-up has played out
+## first). Everything else is the historic _swing_bat body: every
+## figure the corridor reaches takes BAT_DAMAGE and is LAUNCHED
+## (issue #549); the strike direction is sampled from the LIVE aim at
+## the strike moment (the wielder may re-aim through the wind-up).
+func _bat_strike() -> void:
+	_bat_strike_done = true
+	var parent := get_parent() as Node2D
+	if parent == null:
+		return
+	_bat_push_dir = _aim().normalized()
 	var dir := _bat_push_dir
 	var perp := Vector2(-dir.y, dir.x)
 	for group in ["player_team", "enemy_team"]:
@@ -1251,12 +1316,6 @@ func _swing_bat(power := 1.0) -> void:
 	if _bat_push.is_empty():
 		return
 	_bat_push_left = BAT_FLIGHT_CAP
-	if _bat_effect == null or not is_instance_valid(_bat_effect):
-			_bat_effect = Node.new()
-			_bat_effect.name = "BatKnockback"
-			_bat_effect.add_to_group(TurnController.EFFECT_GROUP)
-			if parent.get_parent() != null:
-				parent.get_parent().add_child(_bat_effect)
 
 
 ## Issue #549: the initial flight record of one victim — the impulse
@@ -1342,8 +1401,21 @@ func _end_bat_push() -> void:
 ## corridor with the spear's lateral tolerance but LESS reach than the
 ## spear, plus THE DIG: every swing carves the upright ellipse out of
 ## destructible ground in front of the wielder (see _shovel_dig).
-func _swing_shovel() -> void:
+## Issue #721 rework (owner 2026-11-28): charged — `power` (0..1, the
+## hold-F charge) scales the wind-up AND the dig carve; the swing winds
+## up first (see the swing tick in _physics_process) and the corridor
+## hit + dig land at the forward sweep's peak (see _shovel_strike).
+func _swing_shovel(power := 1.0) -> void:
+	_melee_power = clampf(power, 0.0, 1.0)
 	_shovel_swing_t = 0.0
+	_shovel_strike_done = false
+
+
+## Issue #721 rework: the shovel strike itself — the corridor hit and
+## the dig, run the instant the forward sweep peaks (after the
+## power-scaled wind-up).
+func _shovel_strike() -> void:
+	_shovel_strike_done = true
 	_shovel_sweep_hit()
 	_shovel_dig()
 
@@ -1397,11 +1469,16 @@ func _shovel_sweep_hit() -> void:
 ## the five swings are aimed while standing, the removed ground remains
 ## that one ellipse. Stamping into thin air is a no-op and indestructible
 ## ground ignores the dig, so a swing at nothing costs the shot and
-## moves nothing.
+## moves nothing. Issue #721 rework (owner 2026-11-28): the strike
+## POWER scales the carve (both radii at the MIN_SHOT_POWER..1 charge
+## scale; the full hold is the historic 64x64 bore) and a STRONGER
+## swing at the same anchor re-carves it deeper — an equal or weaker
+## swing stays the historic once-per-anchor no-op.
 func _shovel_dig() -> void:
 	var parent := get_parent() as Node2D
 	if parent == null:
 		return
+	var dig_scale := lerpf(MIN_SHOT_POWER, 1.0, _melee_power)
 	if _shovel_dig_body == Vector2.INF \
 				or parent.global_position.distance_to(_shovel_dig_body) \
 				> SHOVEL_DIG_REANCHOR:
@@ -1409,8 +1486,8 @@ func _shovel_dig() -> void:
 				+ _aim().normalized() * SHOVEL_DIG_OFFSET
 		_shovel_dig_up = _frame_up().normalized()
 		_shovel_dig_body = parent.global_position
-		_shovel_dig_carved = false
-	if _shovel_dig_carved:
+		_shovel_dig_power = -1.0
+	if _shovel_dig_power >= dig_scale:
 		return
 	var carved_any := false
 	for ground in get_tree().get_nodes_in_group("destructible_ground"):
@@ -1418,10 +1495,11 @@ func _shovel_dig() -> void:
 		if chunk != null and is_instance_valid(chunk) \
 				and chunk.has_method("apply_dig"):
 			chunk.apply_dig(_shovel_dig_anchor,
-					SHOVEL_DIG_WIDTH / 2.0, SHOVEL_DIG_HEIGHT / 2.0,
+					SHOVEL_DIG_WIDTH / 2.0 * dig_scale,
+					SHOVEL_DIG_HEIGHT / 2.0 * dig_scale,
 					_shovel_dig_up)
 			carved_any = true
-	_shovel_dig_carved = true
+	_shovel_dig_power = dig_scale
 	# Issue #721 (part 4c): a carve that actually opened ground pops a
 	# dusty earthy 3c hit star at the bore — the dig reads the moment it
 	# opens (the star reuses the shovel's own flash palette). Once per
@@ -1579,11 +1657,133 @@ func _spawn_body(kind: int, velocity: Vector2, damage: int, lifetime: float,
 	return body
 
 
-func _thrust_spear() -> void:
+## Issue #721 rework (owner 2026-11-28): the SIGNED hold anchor — the
+## registry magnitude, flipped to the opposite side of the aim for a
+## back-carry style (the baseball bat rests BEHIND the wielder; see
+## WeaponVisuals.carry_sign).
+func _carry_anchor() -> float:
+	var idx := _held_style_index()
+	return WeaponVisuals.anchor(idx) * WeaponVisuals.carry_sign(idx)
+
+
+## Issue #721 rework: the power-scaled wind-up duration of the melee
+## strike currently animating — MELEE_WINDUP_MIN on a tap,
+## +MELEE_WINDUP_RANGE at the full hold. The wind-up AMPLITUDE scales
+## with the power the same way (see the swing ticks).
+func _melee_windup_time() -> float:
+	return MELEE_WINDUP_MIN + MELEE_WINDUP_RANGE * _melee_power
+
+
+## Issue #721 rework: the spear's thrust reach for the current strike
+## power — MIN_SHOT_POWER..1 of the historic SPEAR_RANGE (a tap pokes
+## at 40%, the full hold is the classic lunge). Damage stays frozen.
+func _spear_reach() -> float:
+	return SPEAR_RANGE * lerpf(MIN_SHOT_POWER, 1.0, _melee_power)
+
+
+## Issue #721 rework: the bat/shovel strike sweep's peak OFFSET along
+## the aim, measured from the CURRENT (signed) carry anchor so the
+## strike centre lands exactly at the historic position (the default
+## anchor + half the corridor reach) wherever the weapon rests.
+func _melee_strike_offset(corridor_range: float) -> float:
+	var idx := _held_style_index()
+	return WeaponVisuals.anchor(idx) + corridor_range * 0.5 \
+			- _carry_anchor()
+
+
+## Issue #721 rework (owner 2026-11-28): the MELEE STRIKE state machine,
+## ticked from _physics_process BEFORE the held visual — the strike's
+## timing is gameplay now, not just animation:
+##   * SPEAR (issue #133/#257 base): a WIND-UP first — the spear pulls
+##     BACK (SPEAR_PULLBACK * power, eased out) over the power-scaled
+##     wind-up, then lunges fast out (0.12 s) to the power-scaled reach
+##     and returns slowly (0.5 s). The hitbox follows the spearhead for
+##     the whole lunge, out and back; the pull-back never hits.
+##   * BAT (issue #527 base) and SHOVEL (issue #656 base): the same
+##     wind-up (BAT_WINDUP / SHOVEL_WINDUP * power) then a fast forward
+##     sweep (0.1 s) to the historic strike position and a slow return
+##     (0.3 s). The corridor hit (and the shovel's dig) land exactly at
+##     the sweep's peak — _bat_strike / _shovel_strike — so the swing
+##     animation really happens BEFORE the strike, scaled by its power.
+## Runs for every wielder (the visual block below may be skipped for
+## stand-in shooters); the offsets are exposed for the held visual.
+func _tick_melee(delta: float) -> void:
+	_melee_thrust = 0.0
+	_melee_swing = 0.0
+	_melee_shovel_swing = 0.0
+	if _thrust_t >= 0.0:
+		_thrust_t += delta
+		var windup := _melee_windup_time()
+		var pull := SPEAR_PULLBACK * _melee_power
+		var reach := _spear_reach()
+		if _thrust_t <= windup:
+			_melee_thrust = -pull * ease(_thrust_t / windup, 0.6)
+		elif _thrust_t <= windup + 0.12:
+			_melee_thrust = lerpf(-pull, reach, (_thrust_t - windup) / 0.12)
+		elif _thrust_t <= windup + 0.62:
+			_melee_thrust = reach * (1.0 - (_thrust_t - windup - 0.12) / 0.5)
+		else:
+			_thrust_t = -1.0
+		# Issue #257: the hitbox follows the spearhead for the ENTIRE
+		# lunge (out and pull back) — everything between the wielder and
+		# the current tip position is damaged as it is reached. #721
+		# rework: the wind-up's negative tip is skipped — the strike is
+		# the lunge, not the pull-back.
+		if _thrust_t >= 0.0 and _thrust_t > windup:
+			_spear_sweep_hit(SPEAR_TIP_BASE + _melee_thrust
+					+ HELD_STYLES[3]["size"].x / 2.0)
+	if _bat_swing_t >= 0.0:
+		_bat_swing_t += delta
+		var windup := _melee_windup_time()
+		var cocked := -BAT_WINDUP * _melee_power
+		var peak := _melee_strike_offset(BAT_RANGE)
+		if _bat_swing_t > windup + BAT_SWING_OUT and not _bat_strike_done:
+			_bat_strike()
+		if _bat_swing_t <= windup:
+			_melee_swing = cocked * ease(_bat_swing_t / windup, 0.6)
+		elif _bat_swing_t <= windup + BAT_SWING_OUT:
+			_melee_swing = lerpf(cocked, peak,
+					(_bat_swing_t - windup) / BAT_SWING_OUT)
+		elif _bat_swing_t <= windup + BAT_SWING_OUT + BAT_SWING_BACK:
+			_melee_swing = peak * (1.0 - (_bat_swing_t - windup
+					- BAT_SWING_OUT) / BAT_SWING_BACK)
+		else:
+			_bat_swing_t = -1.0
+			# A whiffed swing releases its turn-effect gate once the
+			# animation is over (a hit keeps it until the flights land —
+			# see _tick_bat_push / _end_bat_push).
+			if _bat_push_left <= 0.0:
+				_end_bat_push()
+	if _shovel_swing_t >= 0.0:
+		_shovel_swing_t += delta
+		var windup := _melee_windup_time()
+		var cocked := -SHOVEL_WINDUP * _melee_power
+		var peak := _melee_strike_offset(SHOVEL_RANGE)
+		if _shovel_swing_t > windup + SHOVEL_SWING_OUT \
+				and not _shovel_strike_done:
+			_shovel_strike()
+		if _shovel_swing_t <= windup:
+			_melee_shovel_swing = cocked * ease(_shovel_swing_t / windup, 0.6)
+		elif _shovel_swing_t <= windup + SHOVEL_SWING_OUT:
+			_melee_shovel_swing = lerpf(cocked, peak,
+					(_shovel_swing_t - windup) / SHOVEL_SWING_OUT)
+		elif _shovel_swing_t <= windup + SHOVEL_SWING_OUT + SHOVEL_SWING_BACK:
+			_melee_shovel_swing = peak * (1.0 - (_shovel_swing_t - windup
+					- SHOVEL_SWING_OUT) / SHOVEL_SWING_BACK)
+		else:
+			_shovel_swing_t = -1.0
+
+
+func _thrust_spear(power := 1.0) -> void:
 	# Issue #257: no instant press-time hit — the held spear lunges along
 	# the aim axis and damages everything the spearhead actually passes
 	# through on its way out AND back (see _spear_sweep_hit, ticked from
-	# _physics_process while the thrust animates).
+	# _physics_process while the thrust animates). Issue #721 rework
+	# (owner 2026-11-28): the spear is CHARGED — `power` (0..1, the
+	# hold-F charge) scales the wind-up, the pull-back and the lunge
+	# reach; the spear goes BACK before the strike and the animation
+	# depends on that power.
+	_melee_power = clampf(power, 0.0, 1.0)
 	_thrust_hit.clear()
 	_thrust_t = 0.0
 

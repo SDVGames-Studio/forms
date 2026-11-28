@@ -91,12 +91,19 @@ func _ready() -> void:
 	add_child(victim)
 	victim.add_to_group("enemy_team")
 	gun._swing_bat()
-	_check(victim.health == 100 - WeaponScript.BAT_DAMAGE,
-			"the swing must damage the figure it reaches (got %d, want %d)"
-			% [victim.health, 100 - WeaponScript.BAT_DAMAGE])
 	var gated := get_tree().get_nodes_in_group(TurnController.EFFECT_GROUP)
 	_check(gated.size() == 1,
 			"the knockback must gate the turn handover while it runs")
+	# Issue #721 rework: the strike lands at the forward sweep's peak —
+	# wait out the wind-up before the damage/push assertions (the flight
+	# starts with the strike).
+	for i in 30:
+		await get_tree().physics_frame
+		if gun._bat_push_left > 0.0:
+			break
+	_check(victim.health == 100 - WeaponScript.BAT_DAMAGE,
+			"the swing must damage the figure it reaches (got %d, want %d)"
+			% [victim.health, 100 - WeaponScript.BAT_DAMAGE])
 	# Let the weapon's _physics_process tick the push a few times.
 	for i in 3:
 		await get_tree().physics_frame
@@ -140,10 +147,17 @@ func _ready() -> void:
 	aside.add_to_group("player_team")  # friendly fire corridor applies too
 	var fresh := _make_weapon()
 	fresh._swing_bat()
+	# Issue #721 rework: a whiffed swing holds its turn-effect gate only
+	# through the wind-up + sweep, then releases it — wait the swing out.
+	for i in 45:
+		await get_tree().physics_frame
+		if get_tree().get_nodes_in_group(TurnController.EFFECT_GROUP).is_empty():
+			break
 	_check(far.health == 100 and aside.health == 100,
 			"figures beyond the range or off the corridor must be missed")
 	_check(get_tree().get_nodes_in_group(TurnController.EFFECT_GROUP).is_empty(),
-			"a swing that hits nothing opens no turn-effect gate")
+			"a whiffed swing must release its turn-effect gate once the"
+			+ " swing ends")
 	far.queue_free()
 	aside.queue_free()
 	await get_tree().physics_frame  # let the misses settle
@@ -177,6 +191,12 @@ func _ready() -> void:
 				- WeaponScript.BAT_KNOCKBACK_SPEED) < 0.001,
 			"a full-charge swing must launch at the full speed (got %f)"
 			% full_gun._bat_push_speed)
+	# Issue #721 rework: wait out both wind-ups — the strikes land at the
+	# sweeps' peaks (the tap's wind-up is the shorter one).
+	for i in 30:
+		await get_tree().physics_frame
+		if tap_gun._bat_push_left > 0.0 and full_gun._bat_push_left > 0.0:
+			break
 	_check(tap_victim.health == 100 - WeaponScript.BAT_DAMAGE
 			and full_victim.health == 100 - WeaponScript.BAT_DAMAGE,
 			"the charge must scale the launch, not the damage")

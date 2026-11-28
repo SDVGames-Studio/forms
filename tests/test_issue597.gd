@@ -84,6 +84,12 @@ func _ready() -> void:
 	add_child(victim)
 	victim.add_to_group("enemy_team")
 	gun._swing_bat(1.0)
+	# Issue #721 rework: the strike lands at the forward sweep's peak —
+	# wait out the wind-up so the flight is live before the free below.
+	for i in 30:
+		await get_tree().physics_frame
+		if gun._bat_push_left > 0.0:
+			break
 	_check(victim.health == 100 - WeaponScript.BAT_DAMAGE,
 			"the swing must reach and damage the figure ahead")
 	await get_tree().physics_frame
@@ -135,6 +141,12 @@ func _ready() -> void:
 	add_child(victim2)
 	victim2.add_to_group("enemy_team")
 	gun2._swing_bat(1.0)
+	# Issue #721 rework: same wind-up wait — the flight must be live
+	# before the victim is freed mid-flight.
+	for i in 30:
+		await get_tree().physics_frame
+		if gun2._bat_push_left > 0.0:
+			break
 	_check(victim2.health == 100 - WeaponScript.BAT_DAMAGE,
 			"the second swing must reach its figure too")
 	_check(_effect_gates() == 1,
