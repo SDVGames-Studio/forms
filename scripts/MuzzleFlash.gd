@@ -24,15 +24,29 @@ const CORE := Color(1.0, 0.97, 0.86, 1.0)
 
 ## Burst radius in px — the forward spike reaches ~1.4x this.
 var size := 22.0
+## Issue #720 (roadmap part 4b): per-weapon PALETTE overrides (fed from
+## the WeaponVisuals "flash" registry data). The defaults are the #715
+## warm starburst; a style may re-palette the whole burst (the railgun's
+## icy cyan burst matches its beam) by passing "outer"/"inner"/"core"
+## colors through pop(). The dark outline stays shared — every rim in
+## the weapon art uses the same dark cartoon line.
+var fill_outer := FILL_OUTER
+var fill_inner := FILL_INNER
+var core_fill := CORE
 
 
 ## Pop a cartoon flash under `parent` at world position `at`, aimed
 ## along `dir` (the firing direction). The node animates and frees
-## itself; nothing else needs to track it.
+## itself; nothing else needs to track it. `burst` overrides the
+## radius; `palette` (the WeaponVisuals "flash" entry) may override
+## the fill colors per weapon (issue #720, part 4b).
 static func pop(parent: Node, at: Vector2, dir: Vector2,
-		burst := 22.0) -> MuzzleFlash:
+		burst := 22.0, palette := {}) -> MuzzleFlash:
 	var flash := MuzzleFlash.new()
 	flash.size = burst
+	flash.fill_outer = palette.get("outer", FILL_OUTER) as Color
+	flash.fill_inner = palette.get("inner", FILL_INNER) as Color
+	flash.core_fill = palette.get("core", CORE) as Color
 	parent.add_child(flash)
 	flash.global_position = at
 	flash.rotation = dir.angle() if dir.length_squared() > 0.0001 else 0.0
@@ -54,11 +68,13 @@ func _draw() -> void:
 	# Three stacked starbursts shrink inward (outline -> orange ->
 	# yellow), then a white-hot core circle with its own dark rim: the
 	# bold-outline, flat-fill look of the launcher and shotgun art.
+	# Issue #720: the fill layers are the per-weapon palette (the railgun
+	# pops an icy cyan version); only the outline rim is shared.
 	_draw_star(1.0, OUTLINE)
-	_draw_star(0.80, FILL_OUTER)
-	_draw_star(0.58, FILL_INNER)
+	_draw_star(0.80, fill_outer)
+	_draw_star(0.58, fill_inner)
 	draw_circle(Vector2.ZERO, size * 0.24, OUTLINE)
-	draw_circle(Vector2.ZERO, size * 0.20, CORE)
+	draw_circle(Vector2.ZERO, size * 0.20, core_fill)
 
 
 ## One starburst layer: 8 spikes whose reach stretches along the +X

@@ -35,6 +35,12 @@ extends RefCounted
 ##               committed shot (issue #680 part 3, visual only;
 ##               default DEFAULT_RECOIL, 0 for the melee styles whose
 ##               own lunge/swing IS the animation)
+##   flash      — per-weapon MUZZLE FLASH data (issue #720, part 4b):
+##               {"size": px, optional "outer"/"inner"/"core" Color
+##               overrides}. Styles without it keep the #715 default
+##               burst (DEFAULT_FLASH_SIZE and the warm starburst
+##               palette); Weapon._muzzle_flash feeds the whole dict
+##               to MuzzleFlash.pop.
 ##
 ## Slot order is Weapon.gd's WEAPON order (see _held_style_index there):
 ## shotgun, rocket, grenade, spear, then the rock TOOL, mine,
@@ -50,6 +56,14 @@ const SHOTGUN_TEX := preload("res://assets/weapons/shotgun.png")
 ## by ProjectileBody).
 const GRENADE_TEX := preload("res://assets/weapons/grenade.png")
 const MINE_TEX := preload("res://assets/weapons/mine.png")
+## Issue #720 (roadmap part 4b): the pistol and the railgun — the
+## remaining FIREARMS migrated to the cartoon art style. The pistol is
+## the compact hand gun (small slide/grip sprite, light kick, a small
+## hot flash); the railgun is the heavy twin-rail cannon (long low
+## sprite, the heaviest kick after the rocket launcher, a big icy
+## flash in the beam's own cyan family).
+const PISTOL_TEX := preload("res://assets/weapons/pistol.png")
+const RAILGUN_TEX := preload("res://assets/weapons/railgun.png")
 
 ## Issue #559: default distance from the body CENTRE along the aim axis
 ## — the 64 px reference body's EDGE (32 px), outside the modular
@@ -70,6 +84,10 @@ const DEFAULT_DROP := 9.0
 ## committed shot. Textured/heavy weapons override it upward; the melee
 ## styles (whose lunge or swing is already the animation) carry 0.
 const DEFAULT_RECOIL := 5.0
+## Issue #720 (roadmap part 4b): the default muzzle-flash data every
+## style without its own "flash" entry resolves to — the #715 burst
+## exactly as it was (22 px starburst, warm orange/yellow palette).
+const DEFAULT_FLASH := {"size": 22.0}
 
 const STYLES: Array = [
 	{# 0 shotgun — #680 part 2: the second cartoon weapon, proving the
@@ -107,12 +125,30 @@ const STYLES: Array = [
 	{# 6 jackhammer — the drill shake is the animation, no recoil.
 		"size": Vector2(10, 18), "color": Color(0.85, 0.85, 0.95, 1),
 		"recoil": 0.0},  # jackhammer (#307)
-	{# 7 railgun — part 3: a heavy hitscan slam, second only to the
-	 # rocket launcher.
-		"size": Vector2(46, 4), "color": Color(0.55, 0.85, 1.0, 1),
-		"recoil": 11.0},  # railgun (#359)
-	{"size": Vector2(18, 6), "color": Color(0.5, 0.55, 0.6, 1),   # pistol (#526)
-		"recoil": 4.0},
+	{# 7 railgun — issue #720 (roadmap part 4b): the twin-rail cartoon
+	 # cannon — steel rails with the dark energy channel, yellow coil
+	 # rings and the cyan core/muzzle glow. The long low body rides the
+	 # rocket launcher's hold; the recoil stays the part-3 heavy slam
+	 # (11 px) and the flash is a BIG icy burst in the beam's colors
+	 # (the #715 starburst, re-paletted to cyan/white through the
+	 # registry's per-weapon flash data).
+		"size": Vector2(48, 16), "color": Color(0.55, 0.85, 1.0, 1),
+		"texture": RAILGUN_TEX,
+		"anchor": 32.0, "lift_keep": 0.3, "drop": 9.0, "recoil": 11.0,
+		"flash": {
+			"size": 30.0,
+			"outer": Color(0.30, 0.62, 1.0, 1),
+			"inner": Color(0.55, 0.78, 1.0, 1),
+			"core": Color(0.95, 0.98, 1.0, 1),
+		}},
+	{# 8 pistol — issue #720 (roadmap part 4b): the compact hand gun —
+	 # dark slide, warm wood grip, yellow sight/trigger. The lightest
+	 # kick of the firearms (4 px, the part-3 baseline) and a SMALL hot
+	 # flash (the #715 palette, just a tighter burst).
+		"size": Vector2(24, 16), "color": Color(0.5, 0.55, 0.6, 1),
+		"texture": PISTOL_TEX,
+		"anchor": 30.0, "lift_keep": 0.35, "drop": 8.0, "recoil": 4.0,
+		"flash": {"size": 16.0}},
 	{# 9 baseball bat — melee: the swing is the animation, no recoil.
 		"size": Vector2(30, 8), "color": Color(0.85, 0.6, 0.3, 1),
 		"recoil": 0.0},  # baseball bat (#527)
@@ -161,6 +197,14 @@ static func drop(idx: int) -> float:
 static func recoil(idx: int) -> float:
 	var s := style(idx)
 	return s.get("recoil", DEFAULT_RECOIL) as float
+
+
+## Issue #720 (roadmap part 4b): per-weapon MUZZLE FLASH data (entry
+## override or the #715 default burst). The dict is fed straight into
+## MuzzleFlash.pop — "size" plus optional "outer"/"inner"/"core"
+## palette colors.
+static func flash_style(idx: int) -> Dictionary:
+	return style(idx).get("flash", DEFAULT_FLASH) as Dictionary
 
 
 ## Issue #719 (roadmap part 4a): the THROWN and PLACED sides of the two
