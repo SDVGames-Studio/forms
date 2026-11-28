@@ -14,6 +14,11 @@ extends Node
 ##  magnitude per-weapon in the registry (0 for melee styles) — plus a
 ##  cartoon MUZZLE FLASH (bold outline starburst, code-drawn) that pops
 ##  at the barrel, aimed along the shot, and frees itself.
+##  PART 3a (#716, idle & aim motion): the drawn weapon angle now EASES
+##  onto the aim axis (follow-through), so the post-swing rotation check
+##  waits for the convergence; the idle breathing bob never activates
+##  inside this test's sub-settle-delay still windows, so the exact
+##  hold-position checks stay exact.
 ##
 ##  1. REGISTRY: WeaponVisuals.STYLES is the single visual table — the
 ##     rocket and shotgun entries carry textures with per-weapon
@@ -214,8 +219,11 @@ func _ready() -> void:
 			% stance_h)
 	(aimer.get_parent() as AimShooter).grav = Vector2.DOWN
 	(aimer.get_parent() as AimShooter).aim = Vector2(-1, 0)
-	await get_tree().physics_frame
-	await get_tree().physics_frame
+	# Issue #716 (part 3a): the drawn weapon angle now EASES onto the aim
+	# axis (follow-through), so the post-swing rotation check waits for
+	# the convergence instead of the raw one-tick snap.
+	for i in 30:
+		await get_tree().physics_frame
 	_check(absf(absf(wrapf(aimer._held_sprite.rotation, -PI, PI)) - PI) < 0.01,
 			"aiming left must rotate the sprite onto the aim axis (got %s rad)"
 			% aimer._held_sprite.rotation)
