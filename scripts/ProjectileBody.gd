@@ -84,6 +84,17 @@ const SAW_CUT_RADIUS := 40.0
 const SAW_CUT_DPS := 20.0
 ## The blade's visual spin rate (rad/s) — cosmetic only.
 const SAW_SPIN_VISUAL := 14.0
+## Issue #722 (part 4d): the grind feedback palette — steel sparks in
+## the saw's own family (the same colors as the WeaponVisuals "flash"
+## entry of the held style), fed to CartoonBlast.pop_hit.
+const SAW_SPARK := {
+	"inner": Color(0.72, 0.78, 0.90, 1),
+	"core": Color(0.97, 0.98, 1.0, 1),
+}
+## Issue #722 (part 4d): minimum seconds between grind hit stars — the
+## 20 DPS streams whole-number chunks every ~0.05 s, a star each would
+## strobe.
+const SAW_STAR_INTERVAL := 0.3
 ## Safety net: a saw that never comes to rest still starts spinning
 ## after this many seconds (and the spin itself always ends after
 ## SAW_SPIN_TIME), so the turn handover can never get stuck on it.
@@ -181,6 +192,8 @@ var _saw_spin_left := 0.0
 var _saw_cut_acc: Dictionary = {}
 var _saw_blade: Polygon2D = null
 var _saw_player: AudioStreamPlayer = null
+## Issue #722 (part 4d): grind hit-star cooldown (see SAW_SPARK).
+var _saw_star_cd := 0.0
 ## Issue #680 part 3b (#717): the grenade's tumble direction — set from
 ## the launch velocity at spawn (+1 rolls forward when flying right,
 ## -1 when flying left); the rate itself scales with live speed in
@@ -463,6 +476,7 @@ func _tick_saw(delta: float) -> void:
 			_start_saw_spin()
 		return
 	_saw_spin_left -= delta
+	_saw_star_cd = maxf(0.0, _saw_star_cd - delta)
 	if _saw_blade != null:
 		_saw_blade.rotation += SAW_SPIN_VISUAL * delta
 	for group in ["player_team", "enemy_team"]:
@@ -494,6 +508,15 @@ func _tick_saw(delta: float) -> void:
 				if acc >= 1.0:
 					body.take_damage(int(acc))
 					acc -= floorf(acc)
+					# Issue #722 (part 4d): grind feedback — a throttled 3c
+					# hit star where the blade meets the ground figure, in
+					# the saw's steel-spark family. Purely visual — no
+					# gameplay calculation reads it.
+					if _saw_star_cd <= 0.0 and get_parent() != null:
+						CartoonBlast.pop_hit(get_parent(),
+								body.global_position \
+								+ to_blade.normalized() * 8.0, 0.8, SAW_SPARK)
+						_saw_star_cd = SAW_STAR_INTERVAL
 				_saw_cut_acc[body] = acc
 	if _saw_spin_left <= 0.0:
 		_end_saw_spin()
