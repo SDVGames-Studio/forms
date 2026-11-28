@@ -209,4 +209,9 @@ func _explode_now() -> void:
 	if blast_radius > 0.0 and get_parent() != null:
 		ShotLight.flash(get_parent(), global_position,
 			Color(1.0, 0.8, 0.4), blast_radius * 1.6, 3.0, 0.4)
+		# Issue #718 (roadmap part 3c): the cartoon fireball layered on
+		# top of the glow — bold outlines and flat vivid fills in the
+		# weapon-art language, peak radius below the blast radius so the
+		# gameplay information around the blast stays readable.
+		CartoonBlast.pop(get_parent(), global_position, blast_radius)
 	queue_free()

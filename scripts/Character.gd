@@ -60,6 +60,14 @@ var health: int = MAX_HEALTH
 var shielded := false
 var _shield_rect: ColorRect
 
+## Issue #718 (roadmap part 3c): the comic hit star — a small cartoon
+## "pow" burst pops at the figure the moment damage lands. Rate-
+## limited per figure: the continuous grinders (jackhammer, saw) deal
+## damage in many small chunks per second, and the star must read as
+## a steady rain of hits, not a strobe.
+const HIT_STAR_MIN_INTERVAL_MSEC := 380
+var _msec_last_hit_star := -1000000
+
 ## Issue #67: character's view (aim) angle in radians, 0 = horizontal.
 ## Positive raises the view, negative lowers it. Controlled with the
 ## view_up/view_down actions (W/S and Arrow Up/Down) on the player side,
@@ -390,6 +398,12 @@ func take_damage(amount: int, attacker: Node2D = null) -> void:
 	# the figures never manage it.
 	BotController.credit_combat_reward(attacker, self, amount)
 	_hit_flash()
+	# Issue #718 (roadmap part 3c): the comic hit star — every figure
+	# pops one small cartoon burst where the damage lands, so a hit is
+	# readable at a glance even without the debug damage numbers. One
+	# shared effect for every damage source (pellet, melee, blast);
+	# the rate limit inside keeps grinder ticks from strobing it.
+	_pop_hit_star(amount)
 	# Issue #559: the hit shows on the FACE too — a short SURPRISED
 	# flinch (purely visual; the animator restores the resting face).
 	if _animator != null:
@@ -410,6 +424,23 @@ func take_damage(amount: int, attacker: Node2D = null) -> void:
 		_die()
 	health_changed.emit(health, MAX_HEALTH)
 	_update_bar()
+
+
+## Issue #718 (roadmap part 3c): pop the comic hit star (see
+## take_damage). The star rides the level root, not the figure, so it
+## never rotates with the gravity frame and never dies with the node.
+func _pop_hit_star(amount: int) -> void:
+	var now := Time.get_ticks_msec()
+	if now - _msec_last_hit_star < HIT_STAR_MIN_INTERVAL_MSEC:
+		return
+	_msec_last_hit_star = now
+	var parent := get_parent()
+	if parent == null:
+		return
+	# Bigger hits read bigger: 1-2 chunk damage ticks stay small, a
+	# 30+ point hit gets a star that reads across the screen.
+	CartoonBlast.pop_hit(parent, global_position,
+			clampf(float(amount) / 18.0, 0.75, 1.7))
 
 
 ## Issue #186: figures flash on damage exactly alike — blast visuals
