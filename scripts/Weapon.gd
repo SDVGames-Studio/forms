@@ -424,6 +424,46 @@ var _recoil_t := -1.0
 ## hold position (seconds). Visual only — the kick never touches a
 ## gameplay number, corridor or hitbox.
 const RECOIL_TIME := 0.28
+## Issue #716 (roadmap part 3a — idle & aim motion): idle breathing bob
+## of the held weapon — amplitude in px along the wielder's
+## stance-gravity axis, and its period in seconds. Deliberately subtle:
+## the weapon should feel alive between shots, never bouncy.
+const IDLE_AMPLITUDE := 1.5
+const IDLE_PERIOD := 2.6
+## Issue #716: seconds the wielder must stand still (no walk command, no
+## re-aim, no busy weapon animation) before the breathing settles in —
+## the "settle" of the idle motion: right after a move or a swing the
+## weapon tracks the aim exactly, then relaxes into the bob.
+const IDLE_SETTLE_DELAY := 1.5
+## Issue #716: seconds the bob's amplitude takes to travel 0 -> 1 (or
+## back) — the breathing fades in and out, it never pops.
+const IDLE_FADE_TIME := 0.8
+## Issue #716: follow-through easing rate for the DRAWN weapon angle
+## (1/s; time constant ~1/16 s) — a swung aim leaves a slight barrel
+## trail that settles behind the swing. The LIVE aim stays
+## pixel-accurate: _aim() and every gameplay calculation keep the true
+## aim; only the drawn rotation lags.
+const AIM_FOLLOW_RATE := 16.0
+
+## Issue #716: idle-motion phase clock — advanced every physics tick
+## the held visual runs; the APPLIED amplitude is gated by _idle_amount,
+## so the phase never stalls and the bob stays a pure bounded sine (no
+## jitter, no accumulated drift).
+var _idle_t := 0.0
+## Issue #716: eased 0..1 amplitude of the breathing bob — 1 only while
+## the wielder stands settled (see IDLE_SETTLE_DELAY), eased back to 0
+## the moment they walk, re-aim or run a weapon animation.
+var _idle_amount := 0.0
+## Issue #716: seconds since the wielder last walked, re-aimed or ran a
+## weapon animation — the settle clock the bob fades in on.
+var _still_for := 0.0
+## Issue #716: the angle the weapon is currently DRAWN at — eases toward
+## the live aim angle for the follow-through (snapped on the first tick
+## so a freshly held weapon never swings in from angle 0).
+var _drawn_aim_angle := NAN
+## Issue #716: the TRUE aim angle of the previous tick — a change beyond
+## a small epsilon is a re-aim, which resets the idle settle clock.
+var _last_aim_angle := NAN
 
 ## Issue #354: true while THIS member is the one acting — the active
 ## member of the currently running turn. Only that figure takes a
@@ -721,6 +761,46 @@ func _physics_process(delta: float) -> void:
 		# drill direction instead of along the aim.
 		if _drill_left > 0.0:
 			aim = _drill_dir
+		# Issue #716 (part 3a — follow-through): the DRAWN weapon angle
+		# eases toward the live aim instead of snapping, so a swung aim
+		# leaves a slight barrel trail that settles behind the swing.
+		# VISUAL ONLY — the hold POSITION below still rides the TRUE aim
+		# axis, and _aim(), corridors, hitboxes and every spawn calculation
+		# keep the live aim: aiming stays pixel-accurate (part 3a
+		# acceptance); only the drawn rotation lags.
+		var aim_angle := aim.angle()
+		if is_nan(_drawn_aim_angle) or is_nan(_last_aim_angle):
+			_drawn_aim_angle = aim_angle
+			_last_aim_angle = aim_angle
+		else:
+			# A re-aim beyond a small epsilon resets the idle settle clock
+			# (wrap-safe across the ±PI seam).
+			if absf(wrapf(aim_angle - _last_aim_angle, -PI, PI)) > 0.02:
+				_still_for = 0.0
+			_drawn_aim_angle = lerp_angle(_drawn_aim_angle, aim_angle,
+					1.0 - exp(-AIM_FOLLOW_RATE * delta))
+			_last_aim_angle = aim_angle
+		# Issue #716 (part 3a — idle breathing): the bob fades in only
+		# while the wielder stands SETTLED — no walk command, a steady aim
+		# and no busy weapon animation — and eases back out the moment any
+		# of that changes, so it never pops.
+		var settled_input := true
+		if _thrust_t >= 0.0 or _bat_swing_t >= 0.0 or _shovel_swing_t >= 0.0 \
+				or _drill_left > 0.0 or _charging:
+			settled_input = false
+		elif parent.has_method("walk_command") \
+				and parent.walk_command() != 0.0:
+			# Issue #700's walk command (0.0 = planted) is the same signal the
+			# facing follows — the character is only "standing still" when the
+			# brain commands no walk.
+			settled_input = false
+		if settled_input:
+			_still_for += delta
+		else:
+			_still_for = 0.0
+		_idle_amount = move_toward(_idle_amount,
+				1.0 if _still_for >= IDLE_SETTLE_DELAY else 0.0,
+			delta / IDLE_FADE_TIME)
 		var style: Dictionary = HELD_STYLES[_held_style_index()]
 		# Issue #680 (part 2): per-weapon anchor from the registry (plain
 		# styles resolve to the historic #559 default).
@@ -729,7 +809,9 @@ func _physics_process(delta: float) -> void:
 		# Issue #133: the spear (and every held weapon) rotates to the aim
 		# axis instead of staying parallel to the ground.
 		_held.pivot_offset = style["size"] / 2.0
-		_held.rotation = aim.angle()
+		# Issue #716: the drawn angle is the eased follow-through angle
+		# (see above), not the raw aim — visual only.
+		_held.rotation = _drawn_aim_angle
 		# Issue #133 (rework): thrust offset along the aim axis — fast out,
 		# slow back. 0.12 s lunge to SPEAR_RANGE, then 0.5 s return.
 		var thrust := 0.0
@@ -825,6 +907,28 @@ func _physics_process(delta: float) -> void:
 			_held_sprite.position = sprite_pos
 			_held_sprite.rotation = _held.rotation
 			_held_sprite.flip_v = absf(_held.rotation) > PI / 2.0
+		# Issue #716 (part 3a — idle breathing): the settled bob — a slow
+		# pure sine along the wielder's STANCE-GRAVITY axis (the body's up),
+		# so the weapon gently rises and settles with the holder in every
+		# stance, flat, tilted or radial. Applied LAST, on top of the
+		# anchor/thrust/swing/recoil math and to BOTH render nodes, so it
+		# composes with the recoil instead of fighting it (part 3a keeps
+		# #715's kick untouched). A pure sine of the phase clock: bounded
+		# by IDLE_AMPLITUDE forever (no drift) and exactly zero unless the
+		# wielder is settled. VISUAL ONLY — no gameplay calculation reads
+		# the drawn position.
+		_idle_t += delta
+		var bob := sin(TAU * _idle_t / IDLE_PERIOD) * IDLE_AMPLITUDE \
+				* _idle_amount
+		if bob != 0.0:
+			var idle_axis := Vector2.DOWN
+			if parent.has_method("current_gravity"):
+				var stance: Vector2 = parent.current_gravity()
+				if stance.length_squared() > 0.5:
+					idle_axis = stance.normalized()
+			_held.position += idle_axis * bob
+			if _held_textured():
+				_held_sprite.position += idle_axis * bob
 
 
 ## Issue #322: the charge bar (the power indicator) is authored above
