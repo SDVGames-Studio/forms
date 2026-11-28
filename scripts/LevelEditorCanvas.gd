@@ -82,6 +82,18 @@ extends Control
 ## then land exactly where the cursor sits. The BRUSH shape keeps
 ## painting whole grid cells either way (its cells ARE the grid
 ## squares it paints).
+##
+## Issue #740 — pictures per GROUND KIND plus the BACKGROUND: the
+## editor chooses one picture each for indestructible ground,
+## destructible ground and the level background (set_picture /
+## clear_picture / get_picture by kind; the legacy #633 single
+## ground picture API still works and fills both kinds). Every
+## ground picture carries its own exact TILE SIZE (level pixels per
+## repetition — a picture smaller than its ground repeats
+## periodically) and ROTATION; the canvas tiles it in LEVEL space
+## (the same mapping the playable ground draws in), while a zero
+## tile size stretches the picture over each piece's bounds like
+## #633 did. The background picture fills the whole level space.
 
 const IndestructibleGroundScript := preload(
 	"res://scripts/IndestructibleGround.gd")
@@ -143,13 +155,13 @@ var _hover := Vector2(-1000, -1000)
 ## Issue #632: vertices clicked so far for the multi-click shapes
 ## ("loop" / "curve") — cleared when the piece is placed.
 var _pending := PackedVector2Array()
-## Issue #633: the level's optional ground PICTURE — a background
-## image chosen in the editor (kept as its PNG bytes so level files
-## can embed it) that fills every ground piece; the kind-colored
-## outline keeps indestructible/destructible readable.
-var _pic: Texture2D = null
-var _pic_name := ""
-var _pic_png := PackedByteArray()
+## Issue #740: the level's pictures, keyed by slot —
+## "indestructible" / "destructible" / "background" — each
+## {texture, name, png, size, rotation}: `size` is the exact tile a
+## repetition covers in level pixels (Vector2.ZERO = stretch over
+## the piece's bounds, the legacy #633 behavior) and `rotation`
+## turns the tile pattern (degrees).
+var _pictures := {}
 ## Issue #639: the edit-tool grab (indices into _pieces and that
 ## piece's handle list) and the handle under the cursor, for
 ## highlighting. -1 = none.
@@ -171,10 +183,14 @@ var _panning := false
 var _snap_enabled := true
 
 
+const PICTURE_KINDS := ["indestructible", "destructible", "background"]
+
+
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	resized.connect(_update_view)
 	_update_view()
+	_update_texture_repeat()
 	queue_redraw()
 
 
@@ -309,31 +325,96 @@ func get_spawns() -> Array:
 	return _spawns.duplicate(true)
 
 
-## Issue #633: the ground picture (level-wide, both ground kinds).
+## Issue #740: set one slot's picture — "indestructible" or
+## "destructible" ground, or the level "background". `size` is the
+## exact tile a repetition covers (level pixels; Vector2.ZERO
+## stretches over each piece's bounds), `rotation` the pattern's
+## turn in degrees.
+func set_picture(kind: String, tex: Texture2D, pic_name: String,
+		png: PackedByteArray, size := Vector2.ZERO,
+		rotation := 0.0) -> void:
+	_pictures[kind] = {"texture": tex, "name": pic_name, "png": png,
+		"size": size, "rotation": rotation}
+	_update_texture_repeat()
+	queue_redraw()
+
+
+## Issue #740: live-update one ground picture's tile size and
+## rotation (the editor's spinboxes drive this as they change).
+func set_picture_transform(kind: String, size: Vector2,
+		rotation: float) -> void:
+	var pic: Dictionary = _pictures.get(kind, {})
+	if pic.is_empty():
+		return
+	pic["size"] = size
+	pic["rotation"] = rotation
+	_update_texture_repeat()
+	queue_redraw()
+
+
+## Issue #740: drop one slot's picture — flat colors / the plain
+## background return on the canvas and in the playable level.
+func clear_picture(kind: String) -> void:
+	_pictures.erase(kind)
+	_update_texture_repeat()
+	queue_redraw()
+
+
+## Issue #740: one slot's picture as {texture, name, png, size,
+## rotation}; empty when the slot has no picture.
+func get_picture(kind: String) -> Dictionary:
+	var pic: Dictionary = _pictures.get(kind, {})
+	if pic.is_empty():
+		return {}
+	return {"texture": pic["texture"], "name": pic["name"],
+		"png": pic["png"], "size": pic["size"],
+		"rotation": pic["rotation"]}
+
+
+## Issue #740: does one slot carry a picture?
+func has_picture(kind: String) -> bool:
+	var pic: Dictionary = _pictures.get(kind, {})
+	return not pic.is_empty()
+
+
+## Issue #633 API kept (legacy callers/tests): ONE picture on BOTH
+## ground kinds, stretched over each piece's bounds.
 func set_ground_picture(tex: Texture2D, pic_name: String,
 		png: PackedByteArray) -> void:
-	_pic = tex
-	_pic_name = pic_name
-	_pic_png = png
-	queue_redraw()
+	for kind in ["indestructible", "destructible"]:
+		set_picture(kind, tex, pic_name, png, Vector2.ZERO, 0.0)
 
 
 func clear_ground_picture() -> void:
-	_pic = null
-	_pic_name = ""
-	_pic_png = PackedByteArray()
-	queue_redraw()
+	for kind in ["indestructible", "destructible"]:
+		clear_picture(kind)
 
 
-## The current ground picture as {texture, name, png}; empty when none.
 func get_ground_picture() -> Dictionary:
-	if _pic == null:
-		return {}
-	return {"texture": _pic, "name": _pic_name, "png": _pic_png}
+	var pic := get_picture("indestructible")
+	if pic.is_empty():
+		pic = get_picture("destructible")
+	return pic
 
 
 func has_ground_picture() -> bool:
-	return _pic != null
+	return has_picture("indestructible") or has_picture("destructible")
+
+
+## Issue #740: texture wrapping turns on only while some ground
+## picture actually tiles — a stretched picture keeps its exact
+## #633 rendering (clamped edges) that way.
+func _update_texture_repeat() -> void:
+	var tiled := false
+	for kind in ["indestructible", "destructible"]:
+		var pic: Dictionary = _pictures.get(kind, {})
+		if pic.is_empty():
+			continue
+		var size: Vector2 = pic["size"]
+		if size.x > 0.001 and size.y > 0.001:
+			tiled = true
+	texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED if tiled \
+			else CanvasItem.TEXTURE_REPEAT_DISABLED
 
 
 func clear_all() -> void:
@@ -914,6 +995,11 @@ func _draw() -> void:
 	draw_rect(Rect2(Vector2.ZERO, size), VOID_COLOR)
 	draw_set_transform_matrix(_view_transform())
 	draw_rect(Rect2(Vector2.ZERO, CANVAS_SIZE), BG_COLOR)
+	# Issue #740: the level's background picture fills the map.
+	var background: Dictionary = _pictures.get("background", {})
+	if not background.is_empty():
+		draw_texture_rect(background["texture"] as Texture2D,
+			Rect2(Vector2.ZERO, CANVAS_SIZE), false)
 	_draw_grid()
 	for piece in _pieces:
 		_draw_piece(piece)
@@ -930,49 +1016,112 @@ func _draw() -> void:
 
 
 func _draw_piece(piece: Dictionary) -> void:
+	var kind := str(piece["kind"])
 	var color: Color = IndestructibleGroundScript.COLOR \
-		if piece["kind"] == "indestructible" \
+		if kind == "indestructible" \
 		else DestructibleGroundScript.COLOR
+	var tex: Texture2D = _piece_texture(kind)
 	match str(piece.get("shape", "rect")):
 		"circle":
 			var rect: Rect2 = piece["rect"]
 			var center := rect.get_center()
 			var radius := minf(rect.size.x, rect.size.y) * 0.5
-			if _pic != null:
+			if tex != null:
 				var disc := _disc_points(center, radius)
 				draw_polygon(disc, _fill(disc.size()),
-					_bounds_uvs(disc), _pic)
+					_picture_uvs(disc, kind), tex)
 			else:
 				draw_circle(center, radius, Color(color, 0.85))
 			draw_arc(center, radius, 0.0, TAU, 48, color, 2.0)
 		"tri":
-			var pts := triangle_polygon(piece["rect"])
-			_draw_shape_fill(pts, color)
+			_draw_shape_fill(triangle_polygon(piece["rect"]), color, kind)
 		"loop":
-			var loop_pts: PackedVector2Array = piece["points"]
-			_draw_shape_fill(loop_pts, color)
+			_draw_shape_fill(piece["points"], color, kind)
 		"curve":
-			var strip := curve_strip_polygon(
-					piece["points"], CURVE_THICKNESS)
-			_draw_shape_fill(strip, color)
+			_draw_shape_fill(curve_strip_polygon(
+					piece["points"], CURVE_THICKNESS), color, kind)
 		_:
 			var rect: Rect2 = piece["rect"]
-			if _pic != null:
-				draw_texture_rect(_pic, rect, false)
-			else:
-				draw_rect(rect, Color(color, 0.85))
+			var corners := PackedVector2Array([
+				rect.position,
+				Vector2(rect.end.x, rect.position.y),
+				rect.end,
+				Vector2(rect.position.x, rect.end.y)])
+			_draw_shape_fill(corners, color, kind)
 			draw_rect(rect, color, false, 2.0)
 
 
-## Issue #633: polygon piece fill — the ground picture stretched over
-## the polygon bounds, or the translucent kind color; the kind-colored
-## outline stays in both cases.
-func _draw_shape_fill(pts: PackedVector2Array, color: Color) -> void:
-	if _pic != null:
-		draw_polygon(pts, _fill(pts.size()), _bounds_uvs(pts), _pic)
+## Issue #633/#740: polygon piece fill — the ground kind's picture
+## (tiled at its exact size / rotated, or stretched over the bounds
+## when no size is set), or the translucent kind color; the
+## kind-colored outline stays in both cases.
+func _draw_shape_fill(pts: PackedVector2Array, color: Color,
+		kind: String) -> void:
+	var tex: Texture2D = _piece_texture(kind)
+	if tex != null:
+		draw_polygon(pts, _fill(pts.size()), _picture_uvs(pts, kind), tex)
 	else:
 		draw_colored_polygon(pts, Color(color, 0.85))
 	_draw_outline(pts, color)
+
+
+## Issue #740: the texture one ground kind currently carries.
+func _piece_texture(kind: String) -> Texture2D:
+	var pic: Dictionary = _pictures.get(kind, {})
+	if pic.is_empty():
+		return null
+	return pic["texture"] as Texture2D
+
+
+## Issue #740: UVs mapping `points` (level space) onto the kind's
+## picture — tiled at its exact size with the pattern turned by its
+## rotation, in LEVEL space so tiles line up across pieces and match
+## the playable ground; a zero size stretches over the bounds (the
+## legacy #633 mapping, rotation included).
+func _picture_uvs(points: PackedVector2Array, kind: String) \
+		-> PackedVector2Array:
+	var pic: Dictionary = _pictures.get(kind, {})
+	if pic.is_empty():
+		return PackedVector2Array()
+	var size: Vector2 = pic["size"]
+	var rotation := float(pic["rotation"])
+	if size.x > 0.001 and size.y > 0.001:
+		return tiled_uvs(points, Vector2.ZERO, size, rotation)
+	var uvs := _bounds_uvs(points)
+	return _rotated_uvs(uvs, rotation)
+
+
+## Issue #740: UVs tiling a picture at an exact `tile` size (level
+## pixels per repetition) with the pattern turned by `rotation_deg` —
+## the same mapping the playable ground draws in, so the editor
+## preview matches the built level.
+static func tiled_uvs(points: PackedVector2Array, origin: Vector2,
+		tile: Vector2, rotation_deg: float) -> PackedVector2Array:
+	var uvs := PackedVector2Array()
+	var a := -deg_to_rad(rotation_deg)
+	var c := cos(a)
+	var s := sin(a)
+	for p in points:
+		var d: Vector2 = p - origin
+		uvs.append(Vector2(
+			(d.x * c - d.y * s) / maxf(tile.x, 0.001),
+			(d.x * s + d.y * c) / maxf(tile.y, 0.001)))
+	return uvs
+
+
+## Issue #740: bounds-stretched UVs rotated around their centre.
+static func _rotated_uvs(uvs: PackedVector2Array, rotation_deg: float) \
+		-> PackedVector2Array:
+	if absf(rotation_deg) <= 0.01:
+		return uvs
+	var a := -deg_to_rad(rotation_deg)
+	var c := cos(a)
+	var s := sin(a)
+	for i in uvs.size():
+		var d: Vector2 = uvs[i] - Vector2(0.5, 0.5)
+		uvs[i] = Vector2(d.x * c - d.y * s,
+				d.x * s + d.y * c) + Vector2(0.5, 0.5)
+	return uvs
 
 
 ## A regular polygon disc — the picture fill's geometry for circles

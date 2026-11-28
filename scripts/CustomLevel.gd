@@ -19,6 +19,13 @@ extends Node2D
 ## spread along the top of the authoring space (it drops onto the
 ## ground under gravity, like a new round's paratroopers would).
 
+## Issue #740: per-ground-kind PICTURES plus the level's BACKGROUND
+## picture — the level file carries one picture each for
+## indestructible ground, destructible ground (with an exact tile
+## size and rotation, so a picture smaller than its ground repeats)
+## and the background (stretched over the authoring space, drawn
+## behind everything). The legacy single "picture" key of #633 still
+## loads and fills both ground kinds.
 const FORMAT := "forms-level/1"
 const LEVELS_DIR := "user://levels"
 ## The editor's authoring space — LevelEditorCanvas.CANVAS_SIZE.
@@ -41,9 +48,12 @@ const EditorCanvas := preload("res://scripts/LevelEditorCanvas.gd")
 ## Issue #632: how finely a circle piece becomes a polygon disc.
 const DISC_SEGMENTS := 32
 
-## Issue #633: the level's ground PICTURE (decoded once, applied to
-## every ground body the build creates).
-var _picture: Texture2D = null
+## Issue #740: the level's pictures, decoded once — the ground kinds'
+## textures, their tile sizes and rotations, and the background.
+var _ground_pictures := {}
+var _ground_picture_sizes := {}
+var _ground_picture_rotations := {}
+var _background_picture: Texture2D = null
 
 
 func _ready() -> void:
@@ -104,8 +114,8 @@ func _build(stem: String) -> void:
 			if typeof(raw) == TYPE_DICTIONARY:
 				spawns.append(Vector2(
 					float(raw.get("x", 0.0)), float(raw.get("y", 0.0))))
-	# Issue #633: the optional ground picture applies to every piece.
-	_picture = _picture_texture(level)
+	# Issue #740: the ground kinds' pictures and the background.
+	_load_pictures(level)
 	for i in pieces.size():
 		_add_ground(pieces[i], i)
 	var plan := _figure_plan()
@@ -142,9 +152,17 @@ func _make_ground(kind: String, index: int) -> StaticBody2D:
 	ground.name = "Ground%d" % index
 	ground.script = IndestructibleScript \
 		if kind == "indestructible" else DestructibleScript
-	# Issue #633: the level's picture fills both ground kinds.
-	if _picture != null:
-		ground.set("picture", _picture)
+	# Issue #740: the ground kinds carry their OWN picture, with its
+	# exact tile size and rotation (a zero size stretches over the
+	# form's bounds — the legacy #633 look).
+	var tex: Texture2D = _ground_pictures.get(kind)
+	if tex != null:
+		ground.set("picture", tex)
+		var size: Vector2 = _ground_picture_sizes.get(kind, Vector2.ZERO)
+		if size.x > 0.0 and size.y > 0.0:
+			ground.set("picture_size", size)
+		ground.set("picture_rotation",
+				float(_ground_picture_rotations.get(kind, 0.0)))
 	return ground
 
 
@@ -229,6 +247,71 @@ static func _picture_texture(level: Dictionary) -> Texture2D:
 	return ImageTexture.create_from_image(image)
 
 
+## Issue #740: the level's background picture, stretched over the
+## authoring space behind everything (a parent's own drawing renders
+## under all its children). Null = the plain backdrop.
+func _draw() -> void:
+	if _background_picture != null:
+		draw_texture_rect(_background_picture,
+			Rect2(Vector2.ZERO, CANVAS_SIZE), false)
+
+
+## Issue #740: the level's background picture (for tests and
+## callers); null when the level has none.
+func background_picture() -> Texture2D:
+	return _background_picture
+
+
+## Issue #740: decode the level file's pictures — one per ground kind
+## (with its exact tile size and rotation) plus the background; a
+## legacy #633 single "picture" fills both ground kinds. A broken
+## entry quietly drops to flat colors (never break the level).
+func _load_pictures(level: Dictionary) -> void:
+	_ground_pictures = {}
+	_ground_picture_sizes = {}
+	_ground_picture_rotations = {}
+	_background_picture = null
+	var raw_pics = level.get("pictures", null)
+	if typeof(raw_pics) == TYPE_DICTIONARY:
+		for kind in ["indestructible", "destructible"]:
+			var raw = (raw_pics as Dictionary).get(kind, {})
+			if typeof(raw) != TYPE_DICTIONARY:
+				continue
+			var tex := _entry_texture(raw)
+			if tex == null:
+				continue
+			_ground_pictures[kind] = tex
+			_ground_picture_sizes[kind] = Vector2(
+				float((raw as Dictionary).get("w", 0.0)),
+				float((raw as Dictionary).get("h", 0.0)))
+			_ground_picture_rotations[kind] = \
+					float((raw as Dictionary).get("rot", 0.0))
+		var raw_bg = (raw_pics as Dictionary).get("background", {})
+		if typeof(raw_bg) == TYPE_DICTIONARY:
+			_background_picture = _entry_texture(raw_bg)
+	else:
+		# Legacy #633: one picture for both ground kinds.
+		var legacy := _picture_texture(level)
+		if legacy != null:
+			for kind in ["indestructible", "destructible"]:
+				_ground_pictures[kind] = legacy
+	if _background_picture != null:
+		queue_redraw()
+
+
+## Issue #740: decode one level-file picture entry; null when absent
+## or unreadable.
+static func _entry_texture(raw: Dictionary) -> Texture2D:
+	var b64 := str(raw.get("png", ""))
+	if b64.is_empty():
+		return null
+	var image := Image.new()
+	if image.load_png_from_buffer(
+				Marshalls.base64_to_raw(b64)) != OK:
+		return null
+	return ImageTexture.create_from_image(image)
+
+
 ## A local-space polygon ground. Indestructible ground keeps it whole
 ## (LevelTerrain reads the polygon; static collision decomposes concave
 ## loops by itself). Destructible chunks carve exactly when CONVEX
@@ -261,7 +344,8 @@ func _add_polygon_ground(local: PackedVector2Array, at: Vector2,
 	# across the split (all parts share the same local frame).
 	var pic_origin := Vector2.ZERO
 	var pic_span := Vector2.ZERO
-	if kind != "indestructible" and _picture != null:
+	if kind != "indestructible" \
+			and _ground_pictures.get("destructible") != null:
 		var aabb := Rect2(local[0], Vector2.ZERO)
 		for p in local:
 			aabb = aabb.expand(p)

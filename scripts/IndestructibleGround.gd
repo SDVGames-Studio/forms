@@ -50,9 +50,19 @@ const MIN_CORNER := 3.0 * Stats.BODY_SIZE
 
 ## Issue #633: the optional ground PICTURE (a background image
 ## chosen in the level editor, embedded in the level file) — drawn
-## as the fill of every ground form instead of the flat color; the
-## editor applies it to BOTH ground kinds. Null keeps the flat color.
+## as the fill of every ground form instead of the flat color. Null
+## keeps the flat color.
+## Issue #740: the level's ground kinds carry their OWN picture —
+## this body draws the indestructible one, tiled at its exact size
+## and rotated as authored (a zero size stretches it over the form's
+## bounds, the legacy #633 mapping).
 @export var picture: Texture2D
+## Issue #740: the picture's exact TILE SIZE in pixels — one
+## repetition of the pattern; Vector2.ZERO stretches the picture
+## over the form's bounds instead.
+@export var picture_size := Vector2.ZERO
+## Issue #740: the tile pattern's rotation in degrees.
+@export var picture_rotation := 0.0
 
 ## Effective slab geometry after the issue #270 guards (slab mode only):
 ## the real size, the local y offset of the slab's centre (the thickness
@@ -95,22 +105,26 @@ func _ready() -> void:
 		poly.position = Vector2(0.0, _eff_offset)
 		poly.polygon = rounded_rect_polygon(_eff_size, _corner)
 		add_child(poly)
+	# Issue #740: a tiled picture needs texture wrapping on.
+	if picture != null and picture_size.x > 0.0 and picture_size.y > 0.0:
+		texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
 	queue_redraw()
 
 
 func _draw() -> void:
 	if radius > 0.0:
 		if picture != null:
-			# Issue #633: the disc maps the picture over its square bounds.
+			# Issue #633/#740: the disc maps the picture — tiled at its
+			# exact size (or stretched over its square bounds).
 			var disc := _disc_polygon(radius)
 			draw_polygon(disc, _fill(disc.size()),
-				_bounds_uvs(disc), picture)
+				_picture_uvs(disc), picture)
 		else:
 			draw_circle(Vector2.ZERO, radius, COLOR)
 	elif polygon.size() >= 3:
 		if picture != null:
 			draw_polygon(polygon, _fill(polygon.size()),
-				_bounds_uvs(polygon), picture)
+				_picture_uvs(polygon), picture)
 		else:
 			draw_colored_polygon(polygon, COLOR)
 	else:
@@ -118,9 +132,39 @@ func _draw() -> void:
 				_eff_offset)
 		if picture != null:
 			draw_polygon(slab, _fill(slab.size()),
-				_bounds_uvs(slab), picture)
+				_picture_uvs(slab), picture)
 		else:
 			draw_colored_polygon(slab, COLOR)
+
+
+## Issue #740: UVs mapping `points` (local space) onto the picture —
+## tiled at `picture_size` world pixels per repetition, the pattern
+## turned by `picture_rotation`, in WORLD space (local + position) so
+## separate bodies keep one continuous, editor-matching pattern. A
+## zero size stretches over the points' bounds (the legacy #633
+## mapping, rotation included).
+func _picture_uvs(points: PackedVector2Array) -> PackedVector2Array:
+	if picture_size.x > 0.001 and picture_size.y > 0.001:
+		var tiled := PackedVector2Array()
+		var a := -deg_to_rad(picture_rotation)
+		var c := cos(a)
+		var s := sin(a)
+		for p in points:
+			var d: Vector2 = p + position
+			tiled.append(Vector2(
+				(d.x * c - d.y * s) / picture_size.x,
+				(d.x * s + d.y * c) / picture_size.y))
+		return tiled
+	var uvs := _bounds_uvs(points)
+	if absf(picture_rotation) > 0.01:
+		var a := -deg_to_rad(picture_rotation)
+		var c := cos(a)
+		var s := sin(a)
+		for i in uvs.size():
+			var d: Vector2 = uvs[i] - Vector2(0.5, 0.5)
+			uvs[i] = Vector2(d.x * c - d.y * s,
+					d.x * s + d.y * c) + Vector2(0.5, 0.5)
+	return uvs
 
 
 ## A regular polygon disc of `radius` — the picture fill's geometry.

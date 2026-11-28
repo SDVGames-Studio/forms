@@ -59,6 +59,16 @@ extends Control
 ## map — the wheel zooms toward the cursor, a middle/right drag pans
 ## (see LevelEditorCanvas) — and RESET VIEW in the bar under the
 ## canvas restores the fitted whole-map view.
+##
+## Issue #740: pictures per GROUND KIND plus the level BACKGROUND —
+## the GROUND PICTURES column of the palette gives INDESTRUCTIBLE and
+## DESTRUCTIBLE ground their own picture (each with a live preview
+## thumbnail in the interface, an exact TILE SIZE — W/H in level
+## pixels per repetition, so a picture smaller than its ground
+## repeats periodically — and a ROTATION) and the BACKGROUND group
+## picks the level's backdrop. Level files embed them as
+## "pictures": {kind: {name, png, w, h, rot}} (the legacy #633
+## single "picture" key still loads, filling both ground kinds).
 
 const LEVELS_DIR := "user://levels"
 const FORMAT := "forms-level/1"
@@ -88,14 +98,30 @@ const MAX_PICTURE_SIDE := 1152
 @onready var _download_button: Button = %DownloadButton
 @onready var _open_dialog: FileDialog = %OpenDialog
 @onready var _save_dialog: FileDialog = %SaveDialog
-@onready var _picture_button: Button = %PictureButton
-@onready var _no_picture_button: Button = %NoPictureButton
 @onready var _reset_view_button: Button = %ResetViewButton
 @onready var _snap_button: Button = %SnapButton
 @onready var _picture_dialog: FileDialog = %PictureDialog
 @onready var _clear_button: Button = %ClearButton
 @onready var _back_button: Button = %BackButton
 @onready var _status_text: Label = %StatusText
+# Issue #740: the per-kind picture controls of the GROUND PICTURES
+# column — choose / drop buttons, a preview thumbnail and (for the
+# ground kinds) the tile size W/H and rotation spinboxes.
+@onready var _in_pic_button: Button = %IndestructiblePicButton
+@onready var _in_no_pic_button: Button = %IndestructibleNoPicButton
+@onready var _in_preview: TextureRect = %IndestructiblePreview
+@onready var _in_w: SpinBox = %IndestructibleW
+@onready var _in_h: SpinBox = %IndestructibleH
+@onready var _in_rot: SpinBox = %IndestructibleRot
+@onready var _de_pic_button: Button = %DestructiblePicButton
+@onready var _de_no_pic_button: Button = %DestructibleNoPicButton
+@onready var _de_preview: TextureRect = %DestructiblePreview
+@onready var _de_w: SpinBox = %DestructibleW
+@onready var _de_h: SpinBox = %DestructibleH
+@onready var _de_rot: SpinBox = %DestructibleRot
+@onready var _bg_pic_button: Button = %BackgroundPicButton
+@onready var _bg_no_pic_button: Button = %BackgroundNoPicButton
+@onready var _bg_preview: TextureRect = %BackgroundPreview
 
 var _files: PackedStringArray = []
 
@@ -107,6 +133,10 @@ var _current_path := ""
 ## The loaded file's level NAME — SAVE writes in place while the name
 ## field still shows it; typing a different name creates a new level.
 var _loaded_name := ""
+
+## Issue #740: the picture slot the chooser was opened for
+## ("indestructible" / "destructible" / "background").
+var _picture_kind := ""
 
 
 func _ready() -> void:
@@ -141,8 +171,33 @@ func _ready() -> void:
 	_download_button.pressed.connect(_on_download_pressed)
 	_open_dialog.file_selected.connect(_on_open_dialog_selected)
 	_save_dialog.file_selected.connect(_on_save_dialog_selected)
-	_picture_button.pressed.connect(_on_picture_pressed)
-	_no_picture_button.pressed.connect(_on_no_picture_pressed)
+	# Issue #740: the per-kind picture controls — choose / drop for
+	# the two ground kinds and the background, live tile size /
+	# rotation for the ground kinds.
+	_in_pic_button.pressed.connect(
+		func() -> void: _on_kind_picture_pressed("indestructible"))
+	_in_no_pic_button.pressed.connect(
+		func() -> void: _on_kind_no_picture_pressed("indestructible"))
+	_de_pic_button.pressed.connect(
+		func() -> void: _on_kind_picture_pressed("destructible"))
+	_de_no_pic_button.pressed.connect(
+		func() -> void: _on_kind_no_picture_pressed("destructible"))
+	_bg_pic_button.pressed.connect(
+		func() -> void: _on_kind_picture_pressed("background"))
+	_bg_no_pic_button.pressed.connect(
+		func() -> void: _on_kind_no_picture_pressed("background"))
+	_in_w.value_changed.connect(
+		_on_ground_param_changed.bind("indestructible"))
+	_in_h.value_changed.connect(
+		_on_ground_param_changed.bind("indestructible"))
+	_in_rot.value_changed.connect(
+		_on_ground_param_changed.bind("indestructible"))
+	_de_w.value_changed.connect(
+		_on_ground_param_changed.bind("destructible"))
+	_de_h.value_changed.connect(
+		_on_ground_param_changed.bind("destructible"))
+	_de_rot.value_changed.connect(
+		_on_ground_param_changed.bind("destructible"))
 	_reset_view_button.pressed.connect(_on_reset_view_pressed)
 	# Issue #699: SNAP TO GRID — a toggle, on by default.
 	_snap_button.toggled.connect(_on_snap_toggled)
@@ -229,14 +284,27 @@ func _serialize_level(name: String) -> Dictionary:
 		"pieces": pieces,
 		"spawns": spawns,
 	}
-	# Issue #633: the ground picture travels INSIDE the level file, so
-	# downloads/loads keep it without side-car files.
-	var picture: Dictionary = _canvas.get_ground_picture()
-	if not picture.is_empty():
-		level["picture"] = {
-			"name": picture["name"],
-			"png": Marshalls.raw_to_base64(picture["png"]),
+	# Issue #740: every picture travels INSIDE the level file, so
+	# downloads/loads keep them without side-car files — one entry
+	# per ground kind (with its exact tile size and rotation) plus
+	# the background.
+	var pictures := {}
+	for kind in ["indestructible", "destructible", "background"]:
+		var pic: Dictionary = _canvas.get_picture(kind)
+		if pic.is_empty():
+			continue
+		var entry := {
+			"name": str(pic["name"]),
+			"png": Marshalls.raw_to_base64(pic["png"]),
 		}
+		if kind != "background":
+			var size: Vector2 = pic["size"]
+			entry["w"] = size.x
+			entry["h"] = size.y
+			entry["rot"] = float(pic["rotation"])
+		pictures[kind] = entry
+	if not pictures.is_empty():
+		level["pictures"] = pictures
 	return level
 
 
@@ -303,14 +371,28 @@ func _on_save_dialog_selected(path: String) -> void:
 		_set_status("downloaded %s" % path)
 
 
-## Issue #633: choose the ground PICTURE — any image the user picks is
-## decoded, downscaled to MAX_PICTURE_SIDE and embedded (as PNG) with
-## the level. It fills every ground piece of BOTH kinds on the canvas
-## and in the playable level; the kind-colored outlines stay.
-func _on_picture_pressed() -> void:
+## Issue #740: open the picture chooser for one slot — an
+## "indestructible" or "destructible" ground picture, or the level
+## "background".
+func _on_kind_picture_pressed(kind: String) -> void:
+	_picture_kind = kind
 	_picture_dialog.popup_centered(Vector2i(900, 600))
 
 
+## Issue #740: drop one slot's picture — flat colors / the plain
+## background return on the canvas and in the playable level.
+func _on_kind_no_picture_pressed(kind: String) -> void:
+	_canvas.clear_picture(kind)
+	_refresh_picture_ui()
+	_set_status("%s picture cleared" % kind)
+
+
+## Issue #633/#740: choose a PICTURE for the slot the chooser was
+## opened for — any image the user picks is decoded, downscaled to
+## MAX_PICTURE_SIDE and embedded (as PNG) with the level. A ground
+## picture starts at its native size as its exact tile (smaller
+## than the ground → it repeats); the size and rotation are then
+## free to change in the interface.
 func _on_picture_selected(path: String) -> void:
 	var image := Image.new()
 	var err := ERR_FILE_UNRECOGNIZED
@@ -333,17 +415,59 @@ func _on_picture_selected(path: String) -> void:
 		image.resize(maxi(1, int(image.get_width() * factor)),
 				maxi(1, int(image.get_height() * factor)),
 			Image.INTERPOLATE_LANCZOS)
-	_canvas.set_ground_picture(ImageTexture.create_from_image(image),
-		path.get_file(), image.save_png_to_buffer())
-	_set_status("ground picture %s (%dx%d)" % [path.get_file(),
-		image.get_width(), image.get_height()])
+	var pic_name := path.get_file()
+	var png := image.save_png_to_buffer()
+	if _picture_kind == "background":
+		_canvas.set_picture("background",
+			ImageTexture.create_from_image(image), pic_name, png)
+		_refresh_picture_ui()
+		_set_status("background picture %s (%dx%d)" % [pic_name,
+			image.get_width(), image.get_height()])
+		return
+	var size := Vector2(image.get_width(), image.get_height())
+	_canvas.set_picture(_picture_kind,
+		ImageTexture.create_from_image(image), pic_name, png, size, 0.0)
+	_refresh_picture_ui()
+	_set_status("%s ground picture %s (%dx%d, tiles at %dx%d)" % [
+		_picture_kind, pic_name, image.get_width(), image.get_height(),
+		int(size.x), int(size.y)])
 
 
-## Issue #633: drop the picture — ground pieces get their flat colors
-## back on the canvas and in the playable level.
-func _on_no_picture_pressed() -> void:
-	_canvas.clear_ground_picture()
-	_set_status("ground picture cleared")
+## Issue #740: a tile-size / rotation spinbox changed — push the
+## ground kind's new exact size and rotation to the canvas live.
+func _on_ground_param_changed(_value: float, kind: String) -> void:
+	if kind == "indestructible":
+		_canvas.set_picture_transform(kind, Vector2(
+			_in_w.value, _in_h.value), _in_rot.value)
+	else:
+		_canvas.set_picture_transform(kind, Vector2(
+			_de_w.value, _de_h.value), _de_rot.value)
+
+
+## Issue #740: sync the picture previews and the tile size /
+## rotation spinboxes with the canvas state (after a choose, a clear
+## or a load).
+func _refresh_picture_ui() -> void:
+	_sync_picture_group("indestructible", _in_preview,
+		_in_w, _in_h, _in_rot)
+	_sync_picture_group("destructible", _de_preview,
+		_de_w, _de_h, _de_rot)
+	var background: Dictionary = _canvas.get_picture("background")
+	_bg_preview.texture = background["texture"] as Texture2D \
+			if not background.is_empty() else null
+
+
+func _sync_picture_group(kind: String, preview: TextureRect,
+		w: SpinBox, h: SpinBox, rot: SpinBox) -> void:
+	var pic: Dictionary = _canvas.get_picture(kind)
+	if pic.is_empty():
+		preview.texture = null
+	else:
+		preview.texture = pic["texture"] as Texture2D
+	var size: Vector2 = pic.get("size", Vector2.ZERO)
+	w.set_value_no_signal(size.x)
+	h.set_value_no_signal(size.y)
+	rot.set_value_no_signal(float(pic.get("rotation", 0.0)))
 
 
 ## Load any forms level file (user://levels entry or a path from the
@@ -407,7 +531,7 @@ func _load_from_path(path: String) -> bool:
 			float((raw as Dictionary).get("y", 0.0))))
 	_canvas.set_pieces(pieces)
 	_canvas.set_spawns(spawns)
-	_load_ground_picture(level)
+	_load_pictures(level)
 	_current_path = path
 	var loaded_name := str(level.get("name", ""))
 	_loaded_name = loaded_name if not loaded_name.is_empty() \
@@ -415,28 +539,57 @@ func _load_from_path(path: String) -> bool:
 	_file_name_edit.text = _loaded_name
 	_refresh_file_list(path.get_file().get_basename()
 		if path.begins_with(LEVELS_DIR) else "")
+	var picture_count := 0
+	for kind in ["indestructible", "destructible", "background"]:
+		if _canvas.has_picture(kind):
+			picture_count += 1
 	_set_status("loaded %s (%d pieces, %d spawns%s)" % [
 		path.get_file(), pieces.size(), spawns.size(),
-		", picture" if _canvas.has_ground_picture() else ""])
+		", %d pictures" % picture_count if picture_count > 0 else ""])
 	return true
 
 
-## Issue #633: restore the level file's embedded ground picture onto
-## the canvas; a missing/broken one quietly falls back to flat colors.
-func _load_ground_picture(level: Dictionary) -> void:
-	var raw = level.get("picture", {})
-	if typeof(raw) == TYPE_DICTIONARY:
-		var b64 := str((raw as Dictionary).get("png", ""))
-		if not b64.is_empty():
+## Issue #740: restore the level file's pictures onto the canvas —
+## one per ground kind (with its exact tile size and rotation) plus
+## the background; a legacy #633 single "picture" fills BOTH ground
+## kinds (stretched, as before). A missing/broken entry quietly
+## falls back to flat colors.
+func _load_pictures(level: Dictionary) -> void:
+	for kind in ["indestructible", "destructible", "background"]:
+		_canvas.clear_picture(kind)
+	var raw_pics = level.get("pictures", null)
+	if typeof(raw_pics) == TYPE_DICTIONARY:
+		for kind in ["indestructible", "destructible", "background"]:
+			var raw = (raw_pics as Dictionary).get(kind, {})
+			if typeof(raw) == TYPE_DICTIONARY:
+				_apply_picture_entry(kind, raw)
+	else:
+		var legacy = level.get("picture", {})
+		if typeof(legacy) == TYPE_DICTIONARY:
+			var png := Marshalls.base64_to_raw(
+					str((legacy as Dictionary).get("png", "")))
 			var image := Image.new()
-			if image.load_png_from_buffer(
-					Marshalls.base64_to_raw(b64)) == OK:
-				_canvas.set_ground_picture(
-					ImageTexture.create_from_image(image),
-					str((raw as Dictionary).get("name", "picture")),
-					Marshalls.base64_to_raw(b64))
-				return
-	_canvas.clear_ground_picture()
+			if not png.is_empty() \
+						and image.load_png_from_buffer(png) == OK:
+				var tex := ImageTexture.create_from_image(image)
+				for kind in ["indestructible", "destructible"]:
+					_canvas.set_picture(kind, tex,
+							str((legacy as Dictionary).get("name", "picture")),
+						png, Vector2.ZERO, 0.0)
+	_refresh_picture_ui()
+
+
+## Issue #740: decode and apply one level-file picture entry onto
+## its canvas slot.
+func _apply_picture_entry(kind: String, raw: Dictionary) -> void:
+	var png := Marshalls.base64_to_raw(str(raw.get("png", "")))
+	var image := Image.new()
+	if png.is_empty() or image.load_png_from_buffer(png) != OK:
+		return
+	_canvas.set_picture(kind, ImageTexture.create_from_image(image),
+		str(raw.get("name", "picture")), png,
+		Vector2(float(raw.get("w", 0.0)), float(raw.get("h", 0.0))),
+		float(raw.get("rot", 0.0)))
 
 
 func _on_load_pressed() -> void:
