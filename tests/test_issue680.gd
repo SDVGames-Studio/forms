@@ -306,15 +306,19 @@ func _ready() -> void:
 	shooter3.get_parent().queue_free()
 	await get_tree().physics_frame
 
-	# The other weapons keep their plain rectangle fills — except the
-	# grenade (2) and the mine (5), migrated to cartoon sprites by the
-	# part 4a sub-issue #719 (thrown & placed weapons).
+	# The other weapons keep their plain rectangle fills — the
+	# migration state of the #680 arsenal roadmap: part 4a (#719) moved
+	# the grenade (2) and the mine (5), part 4b (#720) the railgun (7)
+	# and the pistol (8), part 4c (#721) the three melee weapons — the
+	# spear (3), the bat (9) and the shovel (11). Still plain: the rock
+	# tool (4) and the contact weapons of #722 — the jackhammer (6) and
+	# the circular saw (10).
 	for slot in WeaponVisualsScript.STYLES.size():
-		if slot == WEAPON_SLOT_SHOTGUN or slot == WEAPON_SLOT_ROCKET \
-				or slot == 2 or slot == 5:
+		if slot in [WEAPON_SLOT_SHOTGUN, WEAPON_SLOT_ROCKET, 2, 5,
+				7, 8, 3, 9, 11]:
 			continue
 		_check(not WeaponVisualsScript.STYLES[slot].has("texture"),
-				"slot %d must keep its plain rectangle fill (only the rocket, shotgun, grenade and mine are migrated)"
+				"slot %d must keep its plain rectangle fill (the rock, jackhammer and saw stay plain until #722)"
 				% slot)
 
 	# 5) PART 3 — recoil: the kick-back magnitude is registry data,

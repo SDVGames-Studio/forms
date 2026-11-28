@@ -1137,6 +1137,21 @@ func _muzzle_flash(at: Vector2, dir := Vector2.RIGHT) -> void:
 			flash.get("size", 22.0) as float, flash)
 
 
+## Issue #721 (roadmap part 4c): melee hit feedback — the shared 3c
+## comic hit star (CartoonBlast.pop_hit) popped at a strike point in
+## the weapon's own palette (the registry "flash" entry, the same
+## route the railgun's #720 world strike takes). Callers pass WORLD
+## positions; the star rides the level root so it never rotates with
+## the gravity frame and never dies with a figure. Purely visual — no
+## gameplay calculation reads it.
+func _pop_melee_hit(at: Vector2, intensity: float) -> void:
+	var parent := get_parent()
+	if parent == null or parent.get_parent() == null:
+		return
+	CartoonBlast.pop_hit(parent.get_parent(), at, intensity,
+			WeaponVisuals.flash_style(_held_style_index()))
+
+
 func _spawn_projectile(type: int, velocity: Vector2, damage: int, lifetime: float,
 		size: Vector2, color: Color, blast_radius: float = 0.0,
 		pop_flash := true) -> Area2D:
@@ -1216,6 +1231,11 @@ func _swing_bat(power := 1.0) -> void:
 			var lateral := absf(offset.dot(perp))
 			if along > 0.0 and along <= BAT_RANGE and lateral <= BAT_LATERAL:
 				body.take_damage(BAT_DAMAGE)
+				# Issue #721 (part 4c): the bat strike pops the 3c hit star
+				# where the barrel met the victim — the warm wood family,
+				# big for the heaviest melee damage.
+				_pop_melee_hit(global_position + dir
+						* minf(along, BAT_RANGE * 0.5), 1.5)
 				_bat_push.append(_bat_launch(body))
 	if _bat_push.is_empty():
 		return
@@ -1342,6 +1362,10 @@ func _shovel_sweep_hit() -> void:
 			var lateral := absf(offset.dot(perp))
 			if along > 0.0 and along <= SHOVEL_RANGE and lateral <= 12.0:
 				body.take_damage(SHOVEL_DAMAGE)
+				# Issue #721 (part 4c): the shovel strike star — small (the
+				# shovel's chip damage) and earthy, at the contact point.
+				_pop_melee_hit(global_position + dir
+						* minf(along, SHOVEL_RANGE * 0.5), 0.8)
 
 
 ## Issue #656: THE DIG — one use carves ONE upright ellipse out of
@@ -1377,6 +1401,7 @@ func _shovel_dig() -> void:
 		_shovel_dig_carved = false
 	if _shovel_dig_carved:
 		return
+	var carved_any := false
 	for ground in get_tree().get_nodes_in_group("destructible_ground"):
 		var chunk := ground as Node2D
 		if chunk != null and is_instance_valid(chunk) \
@@ -1384,7 +1409,15 @@ func _shovel_dig() -> void:
 			chunk.apply_dig(_shovel_dig_anchor,
 					SHOVEL_DIG_WIDTH / 2.0, SHOVEL_DIG_HEIGHT / 2.0,
 					_shovel_dig_up)
+			carved_any = true
 	_shovel_dig_carved = true
+	# Issue #721 (part 4c): a carve that actually opened ground pops a
+	# dusty earthy 3c hit star at the bore — the dig reads the moment it
+	# opens (the star reuses the shovel's own flash palette). Once per
+	# anchor: later swings skip the carve above and never reach this pop;
+	# a swing into thin air stays silent.
+	if carved_any:
+		_pop_melee_hit(_shovel_dig_anchor, 1.1)
 
 
 func _fire_rocket(power := 1.0) -> void:
@@ -1570,6 +1603,11 @@ func _spear_sweep_hit(tip_forward: float) -> void:
 			if forward > 0.0 and forward <= tip_forward and lateral <= lateral_tolerance:
 				_thrust_hit.append(body)
 				body.take_damage(SPEAR_DAMAGE)
+				# Issue #721 (part 4c): the spearhead strike pops the 3c hit
+				# star at the contact point — the spear's steel family —
+				# so the point landing reads where it bit.
+				_pop_melee_hit(global_position + dir
+						* minf(forward, tip_forward), 1.3)
 
 
 ## Issue #307: the gravity direction at the WIELDER's current spot — the

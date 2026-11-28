@@ -64,6 +64,16 @@ const MINE_TEX := preload("res://assets/weapons/mine.png")
 ## flash in the beam's own cyan family).
 const PISTOL_TEX := preload("res://assets/weapons/pistol.png")
 const RAILGUN_TEX := preload("res://assets/weapons/railgun.png")
+## Issue #721 (roadmap part 4c): the MELEE weapons — the spear, the
+## baseball bat and the entrenching shovel — join the cartoon style.
+## Melee holds stay their own animation (the thrust lunge, the swing
+## and the dig carry recoil 0), and each "flash" entry is purely a
+## HIT-STAR palette (3c CartoonBlast.pop_hit) — melee has no muzzle,
+## so nothing pops a muzzle burst; the strike star reads in the
+## weapon's own family exactly like the railgun's #720 world hit.
+const SPEAR_TEX := preload("res://assets/weapons/spear.png")
+const BASEBALL_BAT_TEX := preload("res://assets/weapons/baseball_bat.png")
+const SHOVEL_TEX := preload("res://assets/weapons/entrenching_shovel.png")
 
 ## Issue #559: default distance from the body CENTRE along the aim axis
 ## — the 64 px reference body's EDGE (32 px), outside the modular
@@ -110,9 +120,21 @@ const STYLES: Array = [
 		"size": Vector2(16, 16), "color": Color(0.3, 0.7, 0.3, 1),
 		"texture": GRENADE_TEX,
 		"anchor": 30.0, "lift_keep": 0.3, "drop": 8.0, "recoil": 6.0},
-	{# 3 spear — melee: the thrust lunge is the animation, no recoil.
-		"size": Vector2(40, 4), "color": Color(0.8, 0.8, 0.9, 1),
-		"recoil": 0.0},
+	{# 3 spear — issue #721 (roadmap part 4c): the cartoon spear —
+	 # slender warm-wood shaft, leather grip wrap, steel pommel and a
+	 # light-steel leaf head. MELEE: the thrust lunge is the animation,
+	 # no recoil; the drawn height grows 4 -> 8 for the readable
+	 # shaft+head silhouette, while size.x stays EXACTLY 40 — the sweep
+	 # hitbox reads HELD_STYLES[3]["size"].x (Weapon._spear_sweep_hit),
+	 # so the balance is frozen. No anchor override either: the hitbox
+	 # rides the SPEAR_TIP_BASE constant tied to the #559 default.
+		"size": Vector2(40, 8), "color": Color(0.8, 0.8, 0.9, 1),
+		"texture": SPEAR_TEX,
+		"lift_keep": 0.3, "drop": 7.0, "recoil": 0.0,
+		"flash": {
+			"inner": Color(0.55, 0.68, 0.95, 1),
+			"core": Color(0.93, 0.97, 1.0, 1),
+		}},
 	{"size": Vector2(14, 14), "color": Color(0.55, 0.5, 0.45, 1)},  # rock (tool)
 	{# 5 mine — issue #719 (roadmap part 4a): the naval contact mine —
 	 # dark navy hull with a stud ring that reads at ANY rotation (the
@@ -149,13 +171,34 @@ const STYLES: Array = [
 		"texture": PISTOL_TEX,
 		"anchor": 30.0, "lift_keep": 0.35, "drop": 8.0, "recoil": 4.0,
 		"flash": {"size": 16.0}},
-	{# 9 baseball bat — melee: the swing is the animation, no recoil.
-		"size": Vector2(30, 8), "color": Color(0.85, 0.6, 0.3, 1),
-		"recoil": 0.0},  # baseball bat (#527)
+	{# 9 baseball bat — issue #721 (roadmap part 4c): the cartoon bat —
+	 # honey wood with a top highlight following the taper, a dark
+	 # taped grip and a round knob, fat barrel toward the strike.
+	 # MELEE: the swing lunge is the animation, no recoil; the swing
+	 # corridor is the fixed BAT_RANGE constant, so the size change
+	 # (30x8 -> 32x10) is visual only.
+		"size": Vector2(32, 10), "color": Color(0.85, 0.6, 0.3, 1),
+		"texture": BASEBALL_BAT_TEX,
+		"anchor": 30.0, "lift_keep": 0.3, "drop": 8.0, "recoil": 0.0,
+		"flash": {
+			"inner": Color(1.0, 0.55, 0.15, 1),
+			"core": Color(1.0, 0.9, 0.7, 1),
+		}},
 	{"size": Vector2(16, 16), "color": Color(0.75, 0.78, 0.85, 1)},  # circular saw (#570)
-	{# 11 entrenching shovel — melee: the dig swing is the animation.
-		"size": Vector2(22, 8), "color": Color(0.55, 0.42, 0.28, 1),
-		"recoil": 0.0},  # entrenching shovel (#656)
+	{# 11 entrenching shovel — issue #721 (roadmap part 4c): the
+	 # cartoon entrenching spade — warm-wood T-grip, steel tube shaft
+	 # and the wide stamped blade with the center rib. MELEE: the dig
+	 # swing is the animation, no recoil; the corridor is the fixed
+	 # SHOVEL_RANGE constant, so the size change (22x8 -> 26x12) is
+	 # visual only. The deepest drop of the three melee weapons — a
+	 # digging tool rides lowest on the body.
+		"size": Vector2(26, 12), "color": Color(0.55, 0.42, 0.28, 1),
+		"texture": SHOVEL_TEX,
+		"anchor": 30.0, "lift_keep": 0.3, "drop": 10.0, "recoil": 0.0,
+		"flash": {
+			"inner": Color(0.72, 0.45, 0.2, 1),
+			"core": Color(0.95, 0.82, 0.6, 1),
+		}},
 ]
 
 
