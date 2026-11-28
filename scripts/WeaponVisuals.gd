@@ -74,6 +74,16 @@ const RAILGUN_TEX := preload("res://assets/weapons/railgun.png")
 const SPEAR_TEX := preload("res://assets/weapons/spear.png")
 const BASEBALL_BAT_TEX := preload("res://assets/weapons/baseball_bat.png")
 const SHOVEL_TEX := preload("res://assets/weapons/entrenching_shovel.png")
+## Issue #722 (roadmap part 4d): the CONTACT weapons — the jackhammer
+## and the circular saw — join the cartoon style. Each keeps its own
+## contact motion as the animation (the drill shake, the thrown body's
+## spinning blade), so the jackhammer stays at recoil 0 and the saw
+## keeps the part-3 throw kick; the "flash" entries are CONTACT
+## FEEDBACK palettes — steel sparks for the grind/bore hit stars (the
+## same route the melee weapons' #721 stars take) and the saw throw's
+## small spark burst.
+const JACKHAMMER_TEX := preload("res://assets/weapons/jackhammer.png")
+const CIRCULAR_SAW_TEX := preload("res://assets/weapons/circular_saw.png")
 
 ## Issue #559: default distance from the body CENTRE along the aim axis
 ## — the 64 px reference body's EDGE (32 px), outside the modular
@@ -144,9 +154,22 @@ const STYLES: Array = [
 		"size": Vector2(18, 18), "color": Color(0.22, 0.24, 0.3, 1),
 		"texture": MINE_TEX,
 		"anchor": 30.0, "lift_keep": 0.3, "drop": 8.0, "recoil": 6.0},
-	{# 6 jackhammer — the drill shake is the animation, no recoil.
-		"size": Vector2(10, 18), "color": Color(0.85, 0.85, 0.95, 1),
-		"recoil": 0.0},  # jackhammer (#307)
+	{# 6 jackhammer — issue #722 (roadmap part 4d): the cartoon
+	 # pneumatic drill — chunky dark-steel motor with the yellow hazard
+	 # stripe, D-handle arch, exhaust stub, warm-wood lower grip and
+	 # the long spiral bit. CONTACT: the drill shake is the animation
+	 # (recoil 0, #307); the grind and bore feedback pop 3c hit stars
+	 # in the steel-spark palette (Weapon._jackhammer_sweep_hit /
+	 # _tick_jackhammer). The drawn size grows 10x18 -> 26x18 for the
+	 # readable silhouette — nothing reads this size (only the spear's
+	 # size.x feeds a hitbox).
+		"size": Vector2(26, 18), "color": Color(0.85, 0.85, 0.95, 1),
+		"texture": JACKHAMMER_TEX,
+		"anchor": 30.0, "lift_keep": 0.3, "drop": 9.0, "recoil": 0.0,
+		"flash": {
+			"inner": Color(0.55, 0.65, 0.85, 1),
+			"core": Color(0.95, 0.97, 1.0, 1),
+		}},
 	{# 7 railgun — issue #720 (roadmap part 4b): the twin-rail cartoon
 	 # cannon — steel rails with the dark energy channel, yellow coil
 	 # rings and the cyan core/muzzle glow. The long low body rides the
@@ -184,7 +207,25 @@ const STYLES: Array = [
 			"inner": Color(1.0, 0.55, 0.15, 1),
 			"core": Color(1.0, 0.9, 0.7, 1),
 		}},
-	{"size": Vector2(16, 16), "color": Color(0.75, 0.78, 0.85, 1)},  # circular saw (#570)
+	{# 10 circular saw — issue #722 (roadmap part 4d): the cartoon saw
+	 # — light-steel 8-tooth blade (the same star silhouette the thrown
+	 # body's blade polygon spins, #570) under the dark-steel hood, the
+	 # vivid orange motor, top handle and steel shoe. The THROWN body
+	 # keeps its own code-drawn spinning blade (the saw motion is its
+	 # animation); the throw pops a small steel-spark burst (flash size
+	 # 18) and the grind streams throttled 3c hit stars in the same
+	 # palette (ProjectileBody._tick_saw). The throw kick stays the
+	 # part-3 default (no recoil override). Drawn size 16x16 -> 22x16,
+	 # visual only.
+		"size": Vector2(22, 16), "color": Color(0.75, 0.78, 0.85, 1),
+		"texture": CIRCULAR_SAW_TEX,
+		"anchor": 30.0, "lift_keep": 0.3, "drop": 8.0,
+		"flash": {
+			"size": 18.0,
+			"outer": Color(0.45, 0.50, 0.62, 1),
+			"inner": Color(0.72, 0.78, 0.90, 1),
+			"core": Color(0.97, 0.98, 1.0, 1),
+		}},
 	{# 11 entrenching shovel — issue #721 (roadmap part 4c): the
 	 # cartoon entrenching spade — warm-wood T-grip, steel tube shaft
 	 # and the wide stamped blade with the center rib. MELEE: the dig

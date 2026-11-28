@@ -351,6 +351,15 @@ var _drill_carve_at := Vector2.INF
 var _drill_last_pos := Vector2.ZERO
 var _drill_stall := 0.0
 var _drill_effect: Node = null
+## Issue #722 (part 4d): the drill's 3c feedback-star cooldowns — the
+## steel-spark stars are throttled: the grind chunks land every ~0.1 s
+## (PUSH_DPS 10) and the bore circles every ~0.05 s (CARVE_STEP 6 at
+## SPEED 130), a star each would strobe (the Character's own damage
+## star runs a similar 380 ms limit, #718).
+var _drill_dust_cd := 0.0
+var _drill_grind_cd := 0.0
+## Issue #722 (part 4d): seconds between the drill's feedback stars.
+const DRILL_STAR_INTERVAL := 0.3
 
 ## Issue #99: when an NPC fires a grenade, the weapon lobs it ballistically
 ## at this target (cleared after one shot). Player grenades keep the
@@ -1140,7 +1149,9 @@ func _muzzle_flash(at: Vector2, dir := Vector2.RIGHT) -> void:
 ## Issue #721 (roadmap part 4c): melee hit feedback — the shared 3c
 ## comic hit star (CartoonBlast.pop_hit) popped at a strike point in
 ## the weapon's own palette (the registry "flash" entry, the same
-## route the railgun's #720 world strike takes). Callers pass WORLD
+## route the railgun's #720 world strike takes). Issue #722 (part 4d):
+## the CONTACT weapons reuse it for their grind/bore feedback (the
+## jackhammer's grind chunks and bore dust). Callers pass WORLD
 ## positions; the star rides the level root so it never rotates with
 ## the gravity frame and never dies with a figure. Purely visual — no
 ## gameplay calculation reads it.
@@ -1659,6 +1670,8 @@ func _tick_jackhammer(delta: float) -> void:
 		_end_jackhammer()
 		return
 	_drill_left -= delta
+	_drill_dust_cd = maxf(0.0, _drill_dust_cd - delta)
+	_drill_grind_cd = maxf(0.0, _drill_grind_cd - delta)
 	# Issue #316: the drill follows the LIVE aim at every tick — steering
 	# the aim (W/S) turns a running drill, and there is no cancel: it runs
 	# until the time is up or it stalls. On radial arenas the aim frame
@@ -1671,11 +1684,20 @@ func _tick_jackhammer(delta: float) -> void:
 	var carve_point := parent.global_position + _drill_dir * 12.0
 	if _drill_carve_at.distance_to(carve_point) >= JACKHAMMER_CARVE_STEP:
 		_drill_carve_at = carve_point
-		for ground in get_tree().get_nodes_in_group("destructible_ground"):
+		var grounds := get_tree().get_nodes_in_group("destructible_ground")
+		for ground in grounds:
 				var chunk := ground as Node2D
 				if chunk != null and is_instance_valid(chunk) \
 						and chunk.has_method("apply_blast"):
 						chunk.apply_blast(carve_point, JACKHAMMER_RADIUS)
+		# Issue #722 (part 4d): contact feedback — a drill that is actually
+		# opening ground pops a small 3c dust star at the bore, throttled
+		# to ~3/s while the tunnel advances (a stalled drill opens no
+		# fresh circles, and a level with no destructible ground pops
+		# nothing). Purely visual — no gameplay calculation reads it.
+		if not grounds.is_empty() and _drill_dust_cd <= 0.0:
+			_pop_melee_hit(carve_point, 0.7)
+			_drill_dust_cd = DRILL_STAR_INTERVAL
 	_jackhammer_sweep_hit(parent, delta)
 	# Push the wielder along the drill direction. Player._physics_process
 	# keeps the velocity while the handover freezes input (#316), so this
@@ -1743,6 +1765,14 @@ func _jackhammer_sweep_hit(parent: Node2D, delta: float) -> void:
 			var whole := int(accrued)
 			if whole >= 1:
 				body.take_damage(whole)
+				# Issue #722 (part 4d): grind feedback — a 3c hit star where
+				# the bit meets the victim, in the jackhammer's own
+				# steel-spark palette, throttled (the chunks land every
+				# ~0.1 s). Purely visual.
+				if _drill_grind_cd <= 0.0:
+					_pop_melee_hit(
+							body.global_position - _drill_dir * 8.0, 0.9)
+					_drill_grind_cd = DRILL_STAR_INTERVAL
 				_drill_push[body] = accrued - whole
 			else:
 				_drill_push[body] = accrued

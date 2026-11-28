@@ -310,15 +310,15 @@ func _ready() -> void:
 	# migration state of the #680 arsenal roadmap: part 4a (#719) moved
 	# the grenade (2) and the mine (5), part 4b (#720) the railgun (7)
 	# and the pistol (8), part 4c (#721) the three melee weapons — the
-	# spear (3), the bat (9) and the shovel (11). Still plain: the rock
-	# tool (4) and the contact weapons of #722 — the jackhammer (6) and
-	# the circular saw (10).
+	# spear (3), the bat (9) and the shovel (11) — and part 4d (#722)
+	# the contact weapons — the jackhammer (6) and the circular saw
+	# (10). Still plain: the rock tool (4) only.
 	for slot in WeaponVisualsScript.STYLES.size():
 		if slot in [WEAPON_SLOT_SHOTGUN, WEAPON_SLOT_ROCKET, 2, 5,
-				7, 8, 3, 9, 11]:
+				7, 8, 3, 9, 11, 6, 10]:
 			continue
 		_check(not WeaponVisualsScript.STYLES[slot].has("texture"),
-				"slot %d must keep its plain rectangle fill (the rock, jackhammer and saw stay plain until #722)"
+				"slot %d must keep its plain rectangle fill (only the rock tool stays plain)"
 				% slot)
 
 	# 5) PART 3 — recoil: the kick-back magnitude is registry data,
